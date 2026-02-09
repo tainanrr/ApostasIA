@@ -502,9 +502,11 @@ def predict_shots(match: MatchAnalysis) -> tuple[float, float, float, float, dic
     a_shots_base = getattr(away, 'shots_total_avg', away.shots_on_target_avg * 2.8)
 
     # Ajustes: defesa adversária e forma recente
-    # Time com defesa forte → adversário finaliza menos
-    defense_factor_h = max(0.5, 1.3 - away.defense_strength * 0.3)  # defesa forte adversária = menos chutes
-    defense_factor_a = max(0.5, 1.3 - home.defense_strength * 0.3)
+    # defense_strength: ALTO = defesa fraca (sofre mais gols), BAIXO = defesa forte (sofre menos)
+    # Contra defesa FRACA (alto) → time finaliza MAIS
+    # Contra defesa FORTE (baixo) → time finaliza MENOS
+    defense_factor_h = max(0.6, min(1.5, 0.7 + away.defense_strength * 0.3))
+    defense_factor_a = max(0.6, min(1.5, 0.7 + home.defense_strength * 0.3))
 
     form_factor_h = 0.85 + home.form_points * 0.30
     form_factor_a = 0.85 + away.form_points * 0.30
