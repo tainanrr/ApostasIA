@@ -109,8 +109,8 @@ def estimate_attack_defense_params(
     Estima parâmetros α (ataque) e β (defesa) para casa e fora.
 
     Baseado no modelo de força relativa:
-        λ = α_home × β_away × league_avg / 2
-        μ = α_away × β_home × league_avg / 2
+        α = gols_marcados / (media_liga / 2)
+        β = gols_sofridos / (media_liga / 2)
 
     Returns:
         (alpha_home, beta_home, alpha_away, beta_away)
@@ -125,13 +125,32 @@ def estimate_attack_defense_params(
     return alpha_home, beta_home, alpha_away, beta_away
 
 
+def _regress_to_mean(observed_avg: float, league_mean: float,
+                      games_played: int, min_games: int = 8) -> float:
+    """
+    Regressão bayesiana simples à média da liga.
+    Com poucas amostras, usa mais a média da liga.
+    Com muitas amostras, confia mais na média observada.
+
+    weight = min(1, games_played / min_games)
+    resultado = weight * observed + (1 - weight) * league_mean
+    """
+    if games_played >= min_games:
+        return observed_avg
+    weight = games_played / min_games
+    return weight * observed_avg + (1 - weight) * league_mean
+
+
 def calculate_expected_goals(match: MatchAnalysis) -> tuple[float, float]:
     """
     Calcula os gols esperados (xG) para casa e fora usando
     parâmetros de força de ataque/defesa.
 
-    λ = α_home_team × β_away_team × home_advantage × league_factor
-    μ = α_away_team × β_home_team × league_factor
+    λ = α_home_team × β_away_team × home_advantage × form_factor
+    μ = α_away_team × β_home_team × form_factor
+
+    Usa a média REAL de gols da liga (match.league_avg_goals) para calibrar
+    os parâmetros α/β. Com poucas amostras, aplica regressão à média.
 
     Quando odds_home_away_suspect é True (odds sugerem possível inversão
     de mandante/visitante), o modelo usa estatísticas NEUTRAS (média de
@@ -140,28 +159,40 @@ def calculate_expected_goals(match: MatchAnalysis) -> tuple[float, float]:
     home = match.home_team
     away = match.away_team
 
+    # Média de gols REAL da liga (vem dos standings)
+    league_avg = getattr(match, 'league_avg_goals', 2.7) or 2.7
+    league_half = league_avg / 2.0  # Média por time
+
     # ── Verificar se odds sugerem inversão casa/fora ──
     suspect = getattr(match, 'odds_home_away_suspect', False)
 
     if suspect:
         # Usar estatísticas NEUTRAS: média de desempenho em casa e fora
-        # para ambos os times — remove viés de mando incorreto
         h_scored = (home.home_goals_scored_avg + home.away_goals_scored_avg) / 2
         h_conceded = (home.home_goals_conceded_avg + home.away_goals_conceded_avg) / 2
         a_scored = (away.home_goals_scored_avg + away.away_goals_scored_avg) / 2
         a_conceded = (away.home_goals_conceded_avg + away.away_goals_conceded_avg) / 2
         home_advantage = 1.0  # SEM vantagem de mando (campo neutro)
     else:
-        # Usar estatísticas posicionais normais (casa vs fora)
         h_scored = home.home_goals_scored_avg
         h_conceded = home.home_goals_conceded_avg
         a_scored = away.away_goals_scored_avg
         a_conceded = away.away_goals_conceded_avg
         home_advantage = 1.08  # Fator de vantagem de mando
 
-    # Parâmetros de ataque/defesa
+    # ── Regressão à média da liga (amostras pequenas) ──
+    # Com poucos jogos, regredimos as médias em direção à média da liga
+    home_gp = home.games_played or 1
+    away_gp = away.games_played or 1
+    h_scored = _regress_to_mean(h_scored, league_half, home_gp)
+    h_conceded = _regress_to_mean(h_conceded, league_half, home_gp)
+    a_scored = _regress_to_mean(a_scored, league_half, away_gp)
+    a_conceded = _regress_to_mean(a_conceded, league_half, away_gp)
+
+    # Parâmetros de ataque/defesa (usando média REAL da liga)
     alpha_h, beta_h, alpha_a, beta_a = estimate_attack_defense_params(
-        h_scored, h_conceded, a_scored, a_conceded
+        h_scored, h_conceded, a_scored, a_conceded,
+        league_avg_goals=league_avg
     )
 
     # Força de ataque do time da casa vs defesa do visitante
@@ -176,8 +207,8 @@ def calculate_expected_goals(match: MatchAnalysis) -> tuple[float, float]:
     mu *= away_form_factor
 
     # Clamp para valores realistas
-    lambda_ = max(0.3, min(4.0, lambda_))
-    mu = max(0.2, min(3.5, mu))
+    lambda_ = max(0.3, min(3.5, lambda_))
+    mu = max(0.2, min(3.0, mu))
 
     return round(lambda_, 4), round(mu, 4)
 

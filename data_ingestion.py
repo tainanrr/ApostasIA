@@ -262,6 +262,8 @@ class MatchAnalysis:
     data_quality_score: float = 0.0        # 0.0 a 1.0 — índice de confiança dos dados
     # ── Validação casa/fora ──
     odds_home_away_suspect: bool = False   # True = odds sugerem que mandante/visitante pode estar invertido
+    # ── Média de gols da liga (calculada dos standings) ──
+    league_avg_goals: float = 2.7          # Gols por jogo na liga (default genérico)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1108,6 +1110,16 @@ def _parse_fixture_to_match(
         home_stats = _build_team_from_standings(home_id, home_name, standings, True)
         away_stats = _build_team_from_standings(away_id, away_name, standings, False)
 
+        # Calcular média real de gols da liga a partir dos standings
+        _league_total_gf = 0
+        _league_total_played = 0
+        for _e in standings:
+            _a = _e.get("all", {})
+            _league_total_gf += (_a.get("goals", {}).get("for", 0) or 0)
+            _league_total_played += (_a.get("played", 0) or 0)
+        _league_avg_gpg = (_league_total_gf / max(1, _league_total_played)) * 2 if _league_total_played > 0 else 2.7
+        _league_avg_gpg = max(1.5, _league_avg_gpg)
+
         # Odds
         odds_raw = odds_cache.get(fix_id, {})
         odds = _parse_odds_response(odds_raw) if odds_raw else MarketOdds()
@@ -1181,6 +1193,7 @@ def _parse_fixture_to_match(
             has_real_standings=_has_real_standings,
             data_quality_score=round(dq, 2),
             odds_home_away_suspect=_odds_suspect,
+            league_avg_goals=round(_league_avg_gpg, 2),
         )
     except Exception as e:
         print(f"    [PARSE] ❌ Erro ao parsear fixture: {e}")

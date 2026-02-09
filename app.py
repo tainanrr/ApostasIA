@@ -464,6 +464,7 @@ def deserialize_match(d: dict) -> MatchAnalysis:
         has_real_weather=d.get("has_real_weather", False),
         data_quality_score=d.get("data_quality", 0.0),
         odds_home_away_suspect=d.get("odds_home_away_suspect", False),
+        league_avg_goals=d.get("league_avg_goals", 2.7),
     )
     return match
 
@@ -839,6 +840,7 @@ def serialize_match(m: MatchAnalysis) -> dict:
         "home_has_real_data": h.has_real_data,
         "away_has_real_data": a.has_real_data,
         "odds_home_away_suspect": getattr(m, 'odds_home_away_suspect', False),
+        "league_avg_goals": getattr(m, 'league_avg_goals', 2.7),
     }
 
 

@@ -13,6 +13,7 @@ Implementa:
 
 from dataclasses import dataclass, field
 from typing import Optional
+import unicodedata
 
 import numpy as np
 from scipy.optimize import brentq
@@ -514,16 +515,61 @@ def generate_reasoning(match: MatchAnalysis, market: str,
 
     # ── 4. CÁLCULO DE xG ──
     lines.append("⚽ CÁLCULO DE xG (Gols Esperados):")
+    league_avg = getattr(match, 'league_avg_goals', 2.7) or 2.7
+    league_half = league_avg / 2.0
+    suspect = getattr(match, 'odds_home_away_suspect', False)
+    home_adv = 1.0 if suspect else 1.08
+
+    # Recalcular os MESMOS α/β usados em calculate_expected_goals
+    if suspect:
+        _h_sc = (home.home_goals_scored_avg + home.away_goals_scored_avg) / 2
+        _h_co = (home.home_goals_conceded_avg + home.away_goals_conceded_avg) / 2
+        _a_sc = (away.home_goals_scored_avg + away.away_goals_scored_avg) / 2
+        _a_co = (away.home_goals_conceded_avg + away.away_goals_conceded_avg) / 2
+    else:
+        _h_sc = home.home_goals_scored_avg
+        _h_co = home.home_goals_conceded_avg
+        _a_sc = away.away_goals_scored_avg
+        _a_co = away.away_goals_conceded_avg
+
+    # Regressão à média (mesmo que no modelo)
+    from models import _regress_to_mean
+    home_gp = home.games_played or 1
+    away_gp = away.games_played or 1
+    _h_sc = _regress_to_mean(_h_sc, league_half, home_gp)
+    _h_co = _regress_to_mean(_h_co, league_half, home_gp)
+    _a_sc = _regress_to_mean(_a_sc, league_half, away_gp)
+    _a_co = _regress_to_mean(_a_co, league_half, away_gp)
+
+    _half = league_avg / 2.0
+    _ah = max(0.3, _h_sc / _half) if _half > 0 else 1.0
+    _bh = max(0.3, _h_co / _half) if _half > 0 else 1.0
+    _aa = max(0.3, _a_sc / _half) if _half > 0 else 1.0
+    _ba = max(0.3, _a_co / _half) if _half > 0 else 1.0
+
     home_form_factor = 0.85 + home.form_points * 0.30
     away_form_factor = 0.85 + away.form_points * 0.30
-    lines.append(f"  λ (Casa) = α_casa × β_visitante × vantagem_mando × forma")
-    lines.append(f"    = {home.attack_strength:.2f} × {away.defense_strength:.2f} × 1.08 × {home_form_factor:.2f}")
+
+    lines.append(f"  Média de gols da liga: {league_avg:.2f} gols/jogo")
+    if home_gp < 8 or away_gp < 8:
+        lines.append(f"  ⚠️ Amostra pequena (Casa:{home_gp} jogos, Fora:{away_gp} jogos) — regressão à média aplicada")
+    lines.append(f"  Fórmula (Dixon-Coles):")
+    lines.append(f"    λ (Casa) = α_casa × β_fora × vantagem_mando({home_adv}) × fator_forma")
+    lines.append(f"    μ (Fora) = α_fora × β_casa × fator_forma")
+    lines.append(f"")
+    lines.append(f"  Cálculo λ ({home.team_name}):")
+    lines.append(f"    = {_ah:.2f} × {_ba:.2f} × {home_adv} × {home_form_factor:.2f}")
+    _raw_lambda = _ah * _ba * home_adv * home_form_factor
+    lines.append(f"    = {_raw_lambda:.2f}{' → clamped 3.5' if _raw_lambda > 3.5 else ''}")
     lines.append(f"    → xG Casa = {match.model_home_xg:.2f}")
-    lines.append(f"  μ (Fora) = α_fora × β_casa × forma")
-    lines.append(f"    = {away.attack_strength:.2f} × {home.defense_strength:.2f} × {away_form_factor:.2f}")
+    lines.append(f"")
+    lines.append(f"  Cálculo μ ({away.team_name}):")
+    lines.append(f"    = {_aa:.2f} × {_bh:.2f} × {away_form_factor:.2f}")
+    _raw_mu = _aa * _bh * away_form_factor
+    lines.append(f"    = {_raw_mu:.2f}{' → clamped 3.0' if _raw_mu > 3.0 else ''}")
     lines.append(f"    → xG Fora = {match.model_away_xg:.2f}")
     total_xg = match.model_home_xg + match.model_away_xg
-    lines.append(f"  xG Total = {total_xg:.2f}")
+    lines.append(f"  → xG Total = {total_xg:.2f}")
     lines.append("")
 
     # ── 5. PROBABILIDADES DO MODELO ──
@@ -875,58 +921,8 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
             ))
 
     # ── MERCADO OVER/UNDER 2.5 ──
-    ou_odds = [odds.over_25, odds.under_25]
-    ou_fair = devig_odds(ou_odds)
-    model_over25 = match.model_prob_over25
-    model_under25 = 1.0 - model_over25
-
-    for label, model_p, market_o, implied_p in [
-        ("Over 2.5 Gols", model_over25, odds.over_25, ou_fair[0]),
-        ("Under 2.5 Gols", model_under25, odds.under_25, ou_fair[1]),
-    ]:
-        if not _is_odd_valid(market_o, "O/U 2.5"):
-            continue
-        if not _is_model_sane(model_p, total_xg, "O/U 2.5"):
-            continue
-        edge = calculate_edge(model_p, market_o)
-        if edge >= config.MAX_EDGE_SANE:
-            continue
-        if edge >= config.MIN_EDGE_THRESHOLD:
-            fair_odd = round(1.0 / max(0.01, model_p), 2)
-            kelly = fractional_kelly(model_p, market_o)
-            conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
-            reasoning = generate_reasoning(match, f"O/U 2.5 - {label}", edge, model_p)
-
-            opportunities.append(ValueOpportunity(
-                match_id=match.match_id,
-                league_name=match.league_name,
-                league_country=match.league_country,
-                match_date=match.match_date,
-                match_time=match.match_time,
-                home_team=match.home_team.team_name,
-                away_team=match.away_team.team_name,
-                market="O/U 2.5",
-                selection=label,
-                market_odd=market_o,
-                fair_odd=fair_odd,
-                model_prob=round(model_p, 4),
-                implied_prob=round(implied_p, 4),
-                edge=round(edge, 4),
-                edge_pct=f"+{edge*100:.1f}%",
-                kelly_fraction=round(kelly, 4),
-                kelly_bet_pct=f"{kelly*100:.2f}%",
-                confidence=conf,
-                reasoning=reasoning,
-                home_xg=match.model_home_xg,
-                away_xg=match.model_away_xg,
-                weather_note=match.weather.description,
-                fatigue_note="",
-                urgency_home=match.league_urgency_home,
-                urgency_away=match.league_urgency_away,
-                bookmaker=match.odds.bookmaker,
-                data_quality=match.data_quality_score,
-                odds_suspect=getattr(match, 'odds_home_away_suspect', False),
-            ))
+    # REMOVIDO: Scanner dedicado O/U 2.5 (agora tratado pelo scanner genérico "goals_ou"
+    # para manter padrão uniforme "Gols O/U" com suporte a multi-bookmaker)
 
     # ── MERCADO BTTS ──
     btts_odds = [odds.btts_yes, odds.btts_no]
@@ -996,8 +992,8 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
 
     if model_probs:
         for market_key, market_cfg in _ALL_MARKETS.items():
-            # Pular 1x2 e double_chance (já tratados acima)
-            if market_key in ("1x2", "double_chance"):
+            # Pular mercados já tratados por scanners dedicados acima
+            if market_key in ("1x2", "double_chance", "btts"):
                 continue
 
             market_label = market_cfg["label"]
@@ -1093,7 +1089,29 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                     odds_suspect=getattr(match, 'odds_home_away_suspect', False),
                 ))
 
-    return opportunities
+    # ═══ DEDUPLICAÇÃO FINAL ═══
+    # Remover duplicatas: mesma seleção equivalente para o mesmo jogo, manter a de maior edge
+    def _norm_sel(s):
+        """Normaliza seleção removendo acentos, traços, pontuação e case."""
+        # Remover acentos (ã→a, é→e, etc.)
+        nfkd = unicodedata.normalize('NFKD', s)
+        ascii_str = ''.join(c for c in nfkd if not unicodedata.combining(c))
+        # Lowercase + remover traços/pontuação + normalizar espaços
+        return ascii_str.lower().replace('—', ' ').replace('–', ' ').replace('-', ' ').replace('  ', ' ').strip()
+
+    seen = {}
+    deduped = []
+    for opp in opportunities:
+        key = _norm_sel(opp.selection)
+        if key in seen:
+            idx = seen[key]
+            if opp.edge > deduped[idx].edge:
+                deduped[idx] = opp
+        else:
+            seen[key] = len(deduped)
+            deduped.append(opp)
+
+    return deduped
 
 
 def find_all_value(matches: list[MatchAnalysis]) -> list[ValueOpportunity]:
