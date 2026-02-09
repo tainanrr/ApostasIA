@@ -375,7 +375,7 @@
         .modal-overlay.show { display: flex; }
         .modal {
             background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: var(--radius-lg); width: 98%; max-width: 1100px;
+            border-radius: var(--radius-lg); width: 98%; max-width: 1400px;
             max-height: none; box-shadow: 0 25px 60px rgba(0,0,0,0.6);
             margin: auto;
         }
@@ -1585,15 +1585,15 @@ function showOppDetail(idx) {
 
             <!-- ══ HISTÓRICO DE JOGOS (carregado sob demanda) ══ -->
             ${m ? `
-            <div class="m-section" style="margin-top:20px">📋 Histórico de Jogos Recentes</div>
+            <div class="m-section" style="margin-top:20px">📋 Historico de Jogos Recentes</div>
             <div id="history-container" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:16px 20px">
                 <div style="display:flex;gap:8px;margin-bottom:16px">
                     <button id="btn-load-history" onclick="loadTeamHistory(${m.home_team_id ?? 0}, ${m.away_team_id ?? 0}, ${m.league_id ?? 0}, '${(o.home_team||'').replace(/'/g,"\\'")}', '${(o.away_team||'').replace(/'/g,"\\'")}', '${(o.league_name||'').replace(/'/g,"\\'")}' )" style="flex:1;padding:10px 16px;background:var(--accent-green-dim);color:var(--accent-green);border:1px solid var(--accent-green)40;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px">
-                        Carregar Historico Detalhado
+                        Carregar Historico Detalhado + Confronto Direto
                     </button>
                 </div>
                 <div id="history-content" style="color:var(--text-muted);font-size:12px;text-align:center">
-                    Clique acima para carregar dados históricos dos times (usa cache — não gasta créditos se já buscou antes)
+                    Clique acima para carregar historico e confronto direto (usa cache)
                 </div>
             </div>
             ` : ''}
@@ -2264,7 +2264,7 @@ function closeModal(e) {
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 
 // ═══════════════════════════════════════════════════════
-// HISTÓRICO DE TIMES — Carregamento sob demanda
+// HISTORICO DE TIMES — Carregamento sob demanda
 // ═══════════════════════════════════════════════════════
 
 async function loadTeamHistory(homeId, awayId, leagueId, homeName, awayName, leagueName) {
@@ -2274,16 +2274,17 @@ async function loadTeamHistory(homeId, awayId, leagueId, homeName, awayName, lea
 
     btn.disabled = true;
     btn.textContent = 'Carregando...';
-    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Buscando dados historicos... (usa cache se disponivel)</div>';
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Buscando historico + confronto direto... (usa cache se disponivel)</div>';
 
     try {
-        const [homeRes, awayRes] = await Promise.all([
+        const [homeRes, awayRes, h2hRes] = await Promise.all([
             fetch(`/api/team-history/${homeId}?league_id=${leagueId}&last=10`).then(r => r.json()),
             fetch(`/api/team-history/${awayId}?league_id=${leagueId}&last=10`).then(r => r.json()),
+            fetch(`/api/h2h/${homeId}/${awayId}`).then(r => r.json()),
         ]);
 
         btn.style.display = 'none';
-        container.innerHTML = renderTeamHistory(homeRes, awayRes, leagueId, homeName, awayName, leagueName);
+        container.innerHTML = renderTeamHistory(homeRes, awayRes, h2hRes, leagueId, homeName, awayName, leagueName);
     } catch (err) {
         container.innerHTML = `<div style="color:var(--accent-red);padding:12px">Erro ao carregar: ${err.message}</div>`;
         btn.disabled = false;
@@ -2291,125 +2292,183 @@ async function loadTeamHistory(homeId, awayId, leagueId, homeName, awayName, lea
     }
 }
 
-function renderTeamHistory(homeData, awayData, leagueId, homeName, awayName, leagueName) {
-    const renderMatchRow = (match) => {
-        const resColor = match.result === 'W' ? 'var(--accent-green)' : match.result === 'L' ? 'var(--accent-red)' : 'var(--accent-yellow)';
-        const resLabel = match.result === 'W' ? 'V' : match.result === 'L' ? 'D' : 'E';
-        const favIcon = match.was_favorite === true ? '<span title="Favorito" style="color:var(--accent-yellow);font-size:10px">★</span>' : match.was_favorite === false ? '<span title="Underdog" style="color:var(--text-muted);font-size:10px">☆</span>' : '';
-        const homeAway = match.is_home ? 'C' : 'F';
-        const homeAwayColor = match.is_home ? 'var(--accent-green)' : 'var(--accent-blue)';
-        const score = `${match.score_home}-${match.score_away}`;
-        const totalGoals = match.total_goals;
-        const overUnder = totalGoals > 2.5 ? '<span style="color:var(--accent-green);font-size:10px">O2.5</span>' : '<span style="color:var(--accent-red);font-size:10px">U2.5</span>';
+function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, awayName, leagueName) {
 
-        // Estatísticas do jogo
-        const s = match.stats || {};
-        const corners = s.total_corners != null ? s.total_corners : '-';
-        const cards = s.total_cards != null ? s.total_cards : '-';
-        const lineupBadge = match.lineup_type === 'disponivel' ? '<span title="Escalacao disponivel" style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(0,255,136,0.1);color:var(--accent-green)">XI</span>' : '';
+    // ── Helpers reutilizaveis ──
+    const calcSummary = (matches) => {
+        if (!matches.length) return null;
+        const w = matches.filter(m => m.result === 'W').length;
+        const d = matches.filter(m => m.result === 'D').length;
+        const l = matches.filter(m => m.result === 'L').length;
+        const goalsFor = matches.reduce((s, m) => s + (m.is_home ? m.score_home : m.score_away), 0);
+        const goalsAgainst = matches.reduce((s, m) => s + (m.is_home ? m.score_away : m.score_home), 0);
+        const over25 = matches.filter(m => m.total_goals > 2.5).length;
+        const tCorners = matches.filter(m => m.stats?.total_corners != null).reduce((s, m) => s + (m.stats.total_corners || 0), 0);
+        const nCorners = matches.filter(m => m.stats?.total_corners != null).length;
+        const tCards = matches.filter(m => m.stats?.total_cards != null).reduce((s, m) => s + (m.stats.total_cards || 0), 0);
+        const nCards = matches.filter(m => m.stats?.total_cards != null).length;
+        const favW = matches.filter(m => m.was_favorite && m.result === 'W').length;
+        const favT = matches.filter(m => m.was_favorite === true).length;
+        return { w, d, l, goalsFor, goalsAgainst, over25, tCorners, nCorners, tCards, nCards, favW, favT, total: matches.length };
+    };
 
-        return `<tr style="border-bottom:1px solid var(--border)20;font-size:11px">
-            <td style="padding:5px 4px;color:var(--text-muted)">${match.date}</td>
-            <td style="padding:5px 4px"><span style="color:${homeAwayColor};font-weight:700;font-size:10px">${homeAway}</span></td>
-            <td style="padding:5px 4px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis" title="${match.opponent}">${match.opponent} ${favIcon}</td>
-            <td style="padding:5px 4px;font-weight:800;font-family:'JetBrains Mono';text-align:center"><span style="color:${resColor}">${score}</span></td>
-            <td style="padding:5px 4px;text-align:center"><span style="background:${resColor}20;color:${resColor};padding:2px 6px;border-radius:4px;font-weight:800;font-size:10px">${resLabel}</span></td>
-            <td style="padding:5px 4px;text-align:center">${overUnder}</td>
-            <td style="padding:5px 4px;text-align:center;color:var(--text-muted)">${corners}</td>
-            <td style="padding:5px 4px;text-align:center;color:var(--text-muted)">${cards}</td>
-            <td style="padding:5px 4px;text-align:center">${lineupBadge}</td>
+    const badge = (text, bg, fg) => `<span style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;background:${bg};color:${fg}">${text}</span>`;
+
+    const summaryBadges = (s) => {
+        if (!s) return '';
+        const avg = ((s.goalsFor + s.goalsAgainst) / s.total).toFixed(1);
+        const avgC = s.nCorners > 0 ? (s.tCorners / s.nCorners).toFixed(1) : '-';
+        const avgK = s.nCards > 0 ? (s.tCards / s.nCards).toFixed(1) : '-';
+        const o25 = ((s.over25 / s.total) * 100).toFixed(0);
+        const fPct = s.favT > 0 ? ((s.favW / s.favT) * 100).toFixed(0) + '%' : '';
+        return `<div style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 10px">
+            ${badge(s.w+'V','rgba(0,255,136,0.12)','var(--accent-green)')}
+            ${badge(s.d+'E','rgba(255,200,0,0.12)','var(--accent-yellow)')}
+            ${badge(s.l+'D','rgba(255,80,80,0.12)','var(--accent-red)')}
+            ${badge(s.goalsFor+'GP '+s.goalsAgainst+'GC','rgba(255,255,255,0.05)','var(--text-secondary)')}
+            ${badge('Media '+avg+'g/j','rgba(255,255,255,0.05)','var(--text-secondary)')}
+            ${badge('O2.5: '+o25+'%','rgba(255,255,255,0.05)','var(--text-secondary)')}
+            ${badge('Esc: '+avgC+'/j','rgba(255,255,255,0.05)','var(--text-secondary)')}
+            ${badge('Cart: '+avgK+'/j','rgba(255,255,255,0.05)','var(--text-secondary)')}
+            ${fPct ? badge('Fav: '+fPct,'rgba(255,255,255,0.05)','var(--accent-yellow)') : ''}
+        </div>`;
+    };
+
+    const thStyle = 'padding:6px 8px;text-align:left;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)';
+    const tdStyle = 'padding:6px 8px;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.04)';
+
+    const matchRow = (m) => {
+        const rc = m.result === 'W' ? 'var(--accent-green)' : m.result === 'L' ? 'var(--accent-red)' : 'var(--accent-yellow)';
+        const rl = m.result === 'W' ? 'V' : m.result === 'L' ? 'D' : 'E';
+        const hac = m.is_home ? 'var(--accent-green)' : 'var(--accent-blue)';
+        const ha = m.is_home ? 'C' : 'F';
+        const fav = m.was_favorite === true ? ' <span title="Favorito" style="color:var(--accent-yellow)">★</span>' : m.was_favorite === false ? ' <span title="Underdog" style="color:var(--text-muted)">☆</span>' : '';
+        const ou = m.total_goals > 2.5 ? '<span style="color:var(--accent-green)">O2.5</span>' : '<span style="color:var(--accent-red)">U2.5</span>';
+        const s = m.stats || {};
+        const esc = s.total_corners != null ? s.total_corners : '-';
+        const cart = s.total_cards != null ? s.total_cards : '-';
+        const xi = m.lineup_type === 'disponivel' ? '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(0,255,136,0.1);color:var(--accent-green)">XI</span>' : '';
+        return `<tr>
+            <td style="${tdStyle};color:var(--text-muted);white-space:nowrap">${m.date}</td>
+            <td style="${tdStyle};text-align:center"><span style="color:${hac};font-weight:700;font-size:10px">${ha}</span></td>
+            <td style="${tdStyle};max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.opponent}">${m.opponent}${fav}</td>
+            <td style="${tdStyle};text-align:center;font-weight:800;font-family:'JetBrains Mono'"><span style="color:${rc}">${m.score_home}-${m.score_away}</span></td>
+            <td style="${tdStyle};text-align:center"><span style="background:${rc}20;color:${rc};padding:2px 6px;border-radius:4px;font-weight:800;font-size:10px">${rl}</span></td>
+            <td style="${tdStyle};text-align:center;font-size:10px">${ou}</td>
+            <td style="${tdStyle};text-align:center;color:var(--text-muted)">${esc}</td>
+            <td style="${tdStyle};text-align:center;color:var(--text-muted)">${cart}</td>
+            <td style="${tdStyle};text-align:center">${xi}</td>
         </tr>`;
     };
 
-    const renderTeamSection = (data, teamLabel, teamColor) => {
-        const allM = data.all_matches || [];
-        const lgM = data.league_matches || [];
+    const tableWrap = (rows) => `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:600px">
+        <thead><tr>
+            <th style="${thStyle}">Data</th>
+            <th style="${thStyle};text-align:center">C/F</th>
+            <th style="${thStyle}">Adversario</th>
+            <th style="${thStyle};text-align:center">Placar</th>
+            <th style="${thStyle};text-align:center">Res</th>
+            <th style="${thStyle};text-align:center">O/U</th>
+            <th style="${thStyle};text-align:center">Esc</th>
+            <th style="${thStyle};text-align:center">Cart</th>
+            <th style="${thStyle};text-align:center">XI</th>
+        </tr></thead><tbody>${rows}</tbody></table></div>`;
 
-        // Calcular resumos
-        const calcSummary = (matches) => {
-            if (!matches.length) return null;
-            const w = matches.filter(m => m.result === 'W').length;
-            const d = matches.filter(m => m.result === 'D').length;
-            const l = matches.filter(m => m.result === 'L').length;
-            const goalsFor = matches.reduce((s, m) => s + (m.is_home ? m.score_home : m.score_away), 0);
-            const goalsAgainst = matches.reduce((s, m) => s + (m.is_home ? m.score_away : m.score_home), 0);
-            const over25 = matches.filter(m => m.total_goals > 2.5).length;
-            const totalCorners = matches.filter(m => m.stats?.total_corners != null).reduce((s, m) => s + (m.stats.total_corners || 0), 0);
-            const cornersCount = matches.filter(m => m.stats?.total_corners != null).length;
-            const totalCards = matches.filter(m => m.stats?.total_cards != null).reduce((s, m) => s + (m.stats.total_cards || 0), 0);
-            const cardsCount = matches.filter(m => m.stats?.total_cards != null).length;
-            const favWins = matches.filter(m => m.was_favorite && m.result === 'W').length;
-            const favTotal = matches.filter(m => m.was_favorite === true).length;
-            return { w, d, l, goalsFor, goalsAgainst, over25, totalCorners, cornersCount, totalCards, cardsCount, favWins, favTotal, total: matches.length };
-        };
+    const sectionTitle = (icon, text, color) => `<div style="font-size:15px;font-weight:800;color:${color};margin:20px 0 4px;padding-bottom:6px;border-bottom:2px solid ${color}30">${icon} ${text}</div>`;
+    const subTitle = (text) => `<div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin:12px 0 4px;text-transform:uppercase;letter-spacing:1px">${text}</div>`;
 
-        const lgSummary = calcSummary(lgM);
-        const allSummary = calcSummary(allM);
+    // ── Renderizar secao de um time ──
+    const renderTeam = (data, name, color) => {
+        const lg = data.league_matches || [];
+        const all = data.all_matches || [];
+        let html = sectionTitle('', name, color);
 
-        const summaryHtml = (s, label) => {
-            if (!s) return '';
-            const avgGoals = ((s.goalsFor + s.goalsAgainst) / s.total).toFixed(1);
-            const avgCorners = s.cornersCount > 0 ? (s.totalCorners / s.cornersCount).toFixed(1) : '-';
-            const avgCards = s.cardsCount > 0 ? (s.totalCards / s.cardsCount).toFixed(1) : '-';
-            const over25Pct = ((s.over25 / s.total) * 100).toFixed(0);
-            const favWinPct = s.favTotal > 0 ? ((s.favWins / s.favTotal) * 100).toFixed(0) : '-';
-            return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-                <span style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;background:var(--accent-green)15;color:var(--accent-green)">${s.w}V</span>
-                <span style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;background:var(--accent-yellow)15;color:var(--accent-yellow)">${s.d}E</span>
-                <span style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;background:var(--accent-red)15;color:var(--accent-red)">${s.l}D</span>
-                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">${s.goalsFor}GP ${s.goalsAgainst}GC</span>
-                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">Avg ${avgGoals}g/j</span>
-                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">O2.5: ${over25Pct}%</span>
-                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">Esc: ${avgCorners}/j</span>
-                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">Cart: ${avgCards}/j</span>
-                ${s.favTotal > 0 ? `<span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--accent-yellow)">★Fav: ${favWinPct}%</span>` : ''}
-            </div>`;
-        };
-
-        const tableHeader = `<table style="width:100%;border-collapse:collapse">
-            <thead><tr style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">
-                <th style="text-align:left;padding:4px">Data</th>
-                <th style="padding:4px">C/F</th>
-                <th style="text-align:left;padding:4px">Adversario</th>
-                <th style="text-align:center;padding:4px">Placar</th>
-                <th style="text-align:center;padding:4px">Res</th>
-                <th style="text-align:center;padding:4px">O/U</th>
-                <th style="text-align:center;padding:4px">Esc</th>
-                <th style="text-align:center;padding:4px">Cart</th>
-                <th style="text-align:center;padding:4px">XI</th>
-            </tr></thead><tbody>`;
-
-        let html = `<div style="margin-bottom:20px">
-            <div style="font-size:14px;font-weight:800;color:${teamColor};margin-bottom:12px">${teamLabel}</div>`;
-
-        // Jogos no campeonato
-        if (lgM.length > 0) {
-            html += `<div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">No Campeonato Atual (${lgM[0]?.league_name || ''})</div>`;
-            html += summaryHtml(lgSummary, 'campeonato');
-            html += tableHeader + lgM.map(renderMatchRow).join('') + '</tbody></table>';
+        if (lg.length > 0) {
+            html += subTitle('No Campeonato Atual (' + (lg[0]?.league_name || '') + ')');
+            html += summaryBadges(calcSummary(lg));
+            html += tableWrap(lg.map(matchRow).join(''));
         }
-
-        // Todos os jogos
-        if (allM.length > 0) {
-            html += `<div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;margin-top:16px;text-transform:uppercase;letter-spacing:1px">Todas as Competicoes (ultimos ${allM.length})</div>`;
-            html += summaryHtml(allSummary, 'geral');
-            html += tableHeader + allM.map(renderMatchRow).join('') + '</tbody></table>';
+        if (all.length > 0) {
+            html += subTitle('Todas as Competicoes (ultimos ' + all.length + ')');
+            html += summaryBadges(calcSummary(all));
+            html += tableWrap(all.map(matchRow).join(''));
         }
-
-        if (!lgM.length && !allM.length) {
-            html += '<div style="color:var(--text-muted);padding:8px">Sem dados historicos disponiveis</div>';
+        if (!lg.length && !all.length) {
+            html += '<div style="color:var(--text-muted);padding:12px;text-align:center">Sem dados historicos disponiveis</div>';
         }
-
-        html += '</div>';
         return html;
     };
 
-    return `<div style="display:flex;gap:16px;flex-wrap:wrap">
-        <div style="flex:1;min-width:300px">${renderTeamSection(homeData, homeName || 'Casa', 'var(--accent-green)')}</div>
-        <div style="flex:1;min-width:300px">${renderTeamSection(awayData, awayName || 'Fora', 'var(--accent-blue)')}</div>
+    // ── Renderizar H2H ──
+    const renderH2H = (matches, hName, aName) => {
+        if (!matches || !matches.length) return sectionTitle('⚔️', 'Confronto Direto', 'var(--accent-yellow)') + '<div style="color:var(--text-muted);padding:12px;text-align:center">Sem confrontos diretos encontrados</div>';
+
+        // Estatisticas do H2H
+        let hWins = 0, aWins = 0, draws = 0, totalG = 0, over25 = 0;
+        matches.forEach(m => {
+            totalG += m.total_goals;
+            if (m.total_goals > 2.5) over25++;
+            if (m.score_home > m.score_away) {
+                // Verificar quem eh quem
+                if (m.home_team === hName || m.home_id === (homeData?.team_id)) hWins++; else aWins++;
+            } else if (m.score_away > m.score_home) {
+                if (m.away_team === hName || m.away_id === (homeData?.team_id)) hWins++; else aWins++;
+            } else {
+                draws++;
+            }
+        });
+
+        const avgG = (totalG / matches.length).toFixed(1);
+        const o25Pct = ((over25 / matches.length) * 100).toFixed(0);
+
+        let html = sectionTitle('⚔️', 'Confronto Direto — ' + hName + ' vs ' + aName, 'var(--accent-yellow)');
+        html += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 10px">
+            ${badge(hWins + ' vit. ' + hName, 'rgba(0,255,136,0.12)', 'var(--accent-green)')}
+            ${badge(draws + ' empates', 'rgba(255,200,0,0.12)', 'var(--accent-yellow)')}
+            ${badge(aWins + ' vit. ' + aName, 'rgba(100,180,255,0.12)', 'var(--accent-blue)')}
+            ${badge('Media ' + avgG + ' gols/j', 'rgba(255,255,255,0.05)', 'var(--text-secondary)')}
+            ${badge('O2.5: ' + o25Pct + '%', 'rgba(255,255,255,0.05)', 'var(--text-secondary)')}
+        </div>`;
+
+        // Tabela H2H
+        const h2hRows = matches.map(m => {
+            const tg = m.total_goals;
+            const ou = tg > 2.5 ? '<span style="color:var(--accent-green)">O2.5</span>' : '<span style="color:var(--accent-red)">U2.5</span>';
+            const hc = m.score_home > m.score_away ? 'var(--accent-green)' : m.score_home < m.score_away ? 'var(--accent-red)' : 'var(--accent-yellow)';
+            const ac = m.score_away > m.score_home ? 'var(--accent-green)' : m.score_away < m.score_home ? 'var(--accent-red)' : 'var(--accent-yellow)';
+            return `<tr>
+                <td style="${tdStyle};color:var(--text-muted);white-space:nowrap">${m.date}</td>
+                <td style="${tdStyle};font-size:11px">${m.league_name || ''}</td>
+                <td style="${tdStyle};text-align:right;font-weight:600"><span style="color:${hc}">${m.home_team}</span></td>
+                <td style="${tdStyle};text-align:center;font-weight:800;font-family:'JetBrains Mono';font-size:14px">${m.score_home} - ${m.score_away}</td>
+                <td style="${tdStyle};font-weight:600"><span style="color:${ac}">${m.away_team}</span></td>
+                <td style="${tdStyle};text-align:center;font-size:10px">${ou}</td>
+            </tr>`;
+        }).join('');
+
+        html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:500px">
+            <thead><tr>
+                <th style="${thStyle}">Data</th>
+                <th style="${thStyle}">Competicao</th>
+                <th style="${thStyle};text-align:right">Mandante</th>
+                <th style="${thStyle};text-align:center">Placar</th>
+                <th style="${thStyle}">Visitante</th>
+                <th style="${thStyle};text-align:center">O/U</th>
+            </tr></thead><tbody>${h2hRows}</tbody></table></div>`;
+
+        return html;
+    };
+
+    // ── Montar tudo verticalmente ──
+    return `<div>
+        ${renderTeam(homeData, homeName || 'Casa', 'var(--accent-green)')}
+        <div style="height:8px"></div>
+        ${renderTeam(awayData, awayName || 'Fora', 'var(--accent-blue)')}
+        <div style="height:8px"></div>
+        ${renderH2H(h2hData, homeName || 'Casa', awayName || 'Fora')}
     </div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:8px;text-align:center">
-        ★ = Favorito pelas odds | ☆ = Underdog | C = Casa | F = Fora | XI = Escalacao disponivel | O2.5/U2.5 = Over/Under 2.5 gols | Esc = Escanteios | Cart = Cartoes
+    <div style="font-size:10px;color:var(--text-muted);margin-top:12px;text-align:center;padding-top:8px;border-top:1px solid var(--border)">
+        ★ Favorito pelas odds &nbsp;|&nbsp; ☆ Underdog &nbsp;|&nbsp; C = Casa &nbsp;|&nbsp; F = Fora &nbsp;|&nbsp; XI = Escalacao disponivel &nbsp;|&nbsp; O2.5/U2.5 = Over/Under 2.5 gols &nbsp;|&nbsp; Esc = Escanteios &nbsp;|&nbsp; Cart = Cartoes
     </div>`;
 }
 

@@ -569,15 +569,13 @@ def api_leagues():
 
 @app.route("/api/team-history/<int:team_id>")
 def api_team_history(team_id):
-    """Busca histórico completo de um time (sob demanda).
-    Usa cache local para não gastar créditos desnecessariamente.
-    Query params: league_id (opcional), last (default 10)"""
+    """Busca historico completo de um time (sob demanda)."""
     from flask import request as flask_request
     from data_ingestion import fetch_team_history
 
     league_id = flask_request.args.get("league_id", None, type=int)
     last = flask_request.args.get("last", 10, type=int)
-    last = min(last, 15)  # Limitar a 15 para economia
+    last = min(last, 15)
 
     try:
         history = fetch_team_history(team_id, league_id=league_id, last=last)
@@ -587,6 +585,19 @@ def api_team_history(team_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e), "team_id": team_id, "all_matches": [], "league_matches": []}), 500
+
+
+@app.route("/api/h2h/<int:team1_id>/<int:team2_id>")
+def api_h2h(team1_id, team2_id):
+    """Busca confrontos diretos entre dois times."""
+    from data_ingestion import fetch_h2h
+
+    try:
+        matches = fetch_h2h(team1_id, team2_id, last=10)
+        return jsonify(matches)
+    except Exception as e:
+        print(f"[API] Erro ao buscar H2H {team1_id} vs {team2_id}: {e}")
+        return jsonify([]), 500
 
 
 @app.route("/api/history")

@@ -1206,6 +1206,47 @@ def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> d
     return result
 
 
+def fetch_h2h(team1_id: int, team2_id: int, last: int = 10) -> list[dict]:
+    """Busca confrontos diretos (head-to-head) entre dois times."""
+    data = _api_football_request("fixtures/headtohead", {
+        "h2h": f"{team1_id}-{team2_id}", "last": last, "status": "FT-AET-PEN"
+    })
+    raw = data.get("response", [])
+    matches = []
+    for fix_raw in raw:
+        fixture = fix_raw.get("fixture", {})
+        league = fix_raw.get("league", {})
+        teams = fix_raw.get("teams", {})
+        goals = fix_raw.get("goals", {})
+
+        fix_id = fixture.get("id", 0)
+        date_str = fixture.get("date", "")
+        try:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            match_date = dt.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            match_date = "N/D"
+
+        home_info = teams.get("home", {})
+        away_info = teams.get("away", {})
+        score_home = goals.get("home", 0) or 0
+        score_away = goals.get("away", 0) or 0
+
+        matches.append({
+            "fixture_id": fix_id,
+            "date": match_date,
+            "league_name": league.get("name", "?"),
+            "home_team": home_info.get("name", "?"),
+            "away_team": away_info.get("name", "?"),
+            "home_id": home_info.get("id", 0),
+            "away_id": away_info.get("id", 0),
+            "score_home": score_home,
+            "score_away": score_away,
+            "total_goals": score_home + score_away,
+        })
+    return matches
+
+
 def _safe_int(val) -> int | None:
     """Converte valor para int, retorna None se impossível."""
     if val is None:
