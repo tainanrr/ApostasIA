@@ -2267,6 +2267,20 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal()
 // HISTORICO DE TIMES — Carregamento sob demanda
 // ═══════════════════════════════════════════════════════
 
+// ── Troca de aba de mercado no painel de análise ──
+function switchMktTab(uid, tabId) {
+    document.querySelectorAll('[data-mkt-uid="' + uid + '"]').forEach(el => el.style.display = 'none');
+    const p = document.getElementById(uid + '_' + tabId);
+    if (p) p.style.display = 'block';
+    document.querySelectorAll('[data-mkt-btn="' + uid + '"]').forEach(btn => {
+        btn.style.background = 'rgba(255,255,255,0.05)';
+        btn.style.color = 'var(--text-secondary)';
+        btn.style.borderColor = 'rgba(255,255,255,0.08)';
+    });
+    const ab = document.getElementById(uid + '_btn_' + tabId);
+    if (ab) { ab.style.background = 'var(--accent-green)'; ab.style.color = '#000'; ab.style.borderColor = 'var(--accent-green)'; }
+}
+
 async function loadTeamHistory(homeId, awayId, leagueId, homeName, awayName, leagueName) {
     const btn = document.getElementById('btn-load-history');
     const container = document.getElementById('history-content');
@@ -2395,10 +2409,393 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
     const sectionTitle = (icon, text, color) => `<div style="font-size:15px;font-weight:800;color:${color};margin:20px 0 4px;padding-bottom:6px;border-bottom:2px solid ${color}30">${icon} ${text}</div>`;
     const subTitle = (text) => `<div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin:12px 0 4px;text-transform:uppercase;letter-spacing:1px">${text}</div>`;
 
+    // ═══════════════════════════════════════════════════════════════
+    //  ANÁLISE POR MERCADO — painel completo com tabs
+    // ═══════════════════════════════════════════════════════════════
+    const buildMarketAnalysis = (matches, uid) => {
+        const ms = matches.filter(m => m.stats && Object.keys(m.stats).length > 0);
+        const n = ms.length;
+        if (!n) return '<div style="color:var(--text-muted);padding:12px;font-size:11px;text-align:center">Estatisticas detalhadas indisponiveis para analise de mercados</div>';
+
+        const parsePoss = (v) => { if (v == null) return null; if (typeof v === 'string') return parseFloat(v.replace('%','')); return parseFloat(v); };
+        const si = (v) => v != null ? parseInt(v) : null;
+
+        // ── Helpers visuais ──
+        const kpi = (label, value, color) => `<div style="background:rgba(255,255,255,0.03);padding:8px 10px;border-radius:6px;text-align:center;min-width:80px;flex:1">
+            <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">${label}</div>
+            <div style="font-size:17px;font-weight:800;color:${color}">${value}</div>
+        </div>`;
+
+        const pctBar = (label, count, total, color) => {
+            const pct = total > 0 ? ((count / total) * 100) : 0;
+            return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0">
+                <div style="min-width:48px;font-size:11px;color:var(--text-secondary);text-align:right;font-weight:600">${label}</div>
+                <div style="flex:1;height:22px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden;position:relative">
+                    <div style="height:100%;width:${pct.toFixed(0)}%;background:${color};border-radius:4px;transition:width .3s"></div>
+                    <span style="position:absolute;right:8px;top:3px;font-size:10px;font-weight:700;color:var(--text-primary)">${count}/${total} (${pct.toFixed(0)}%)</span>
+                </div>
+            </div>`;
+        };
+
+        const detailOpen = `<details style="margin-top:10px"><summary style="cursor:pointer;font-size:10px;color:var(--accent-green);font-weight:700;padding:4px 0">▶ VER JOGO A JOGO</summary><div style="overflow-x:auto;margin-top:6px">`;
+        const detailClose = `</div></details>`;
+        const _th = thStyle;
+        const _td = tdStyle;
+
+        // ═══ TAB 1: GOLS & BTTS ═══
+        const goalsPanel = (() => {
+            let teamG = 0, oppG = 0, btts = 0, cs = 0, fts = 0;
+            const lines = [0.5, 1.5, 2.5, 3.5, 4.5];
+            const oc = lines.map(() => 0);
+            ms.forEach(m => {
+                const my = m.is_home ? m.score_home : m.score_away;
+                const op = m.is_home ? m.score_away : m.score_home;
+                teamG += my; oppG += op;
+                if (my > 0 && op > 0) btts++;
+                if (op === 0) cs++;
+                if (my === 0) fts++;
+                lines.forEach((l, i) => { if (m.total_goals > l) oc[i]++; });
+            });
+            let h = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+                ${kpi('Media Gols/J', ((teamG + oppG) / n).toFixed(1), 'var(--text-primary)')}
+                ${kpi('Gols Pro/J', (teamG / n).toFixed(1), 'var(--accent-green)')}
+                ${kpi('Gols Contra/J', (oppG / n).toFixed(1), 'var(--accent-red)')}
+                ${kpi('BTTS (Ambas)', ((btts / n) * 100).toFixed(0) + '%', 'var(--accent-yellow)')}
+                ${kpi('Clean Sheet', ((cs / n) * 100).toFixed(0) + '%', 'var(--accent-blue)')}
+                ${kpi('Falhou Marcar', ((fts / n) * 100).toFixed(0) + '%', 'var(--accent-red)')}
+            </div>`;
+            h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase">Over/Under Gols</div>';
+            lines.forEach((l, i) => { h += pctBar('O ' + l, oc[i], n, 'var(--accent-green)'); });
+
+            h += detailOpen + `<table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr>
+                <th style="${_th}">Data</th><th style="${_th}">Adversario</th>
+                <th style="${_th};text-align:center">GP</th><th style="${_th};text-align:center">GC</th>
+                <th style="${_th};text-align:center">Total</th><th style="${_th};text-align:center">O/U 2.5</th>
+                <th style="${_th};text-align:center">BTTS</th>
+            </tr></thead><tbody>`;
+            ms.forEach(m => {
+                const my = m.is_home ? m.score_home : m.score_away;
+                const op = m.is_home ? m.score_away : m.score_home;
+                const ou = m.total_goals > 2.5 ? '<span style="color:var(--accent-green)">Over</span>' : '<span style="color:var(--accent-red)">Under</span>';
+                const bt = (my > 0 && op > 0) ? '<span style="color:var(--accent-green)">Sim</span>' : '<span style="color:var(--accent-red)">Nao</span>';
+                h += `<tr><td style="${_td};color:var(--text-muted)">${m.date}</td><td style="${_td}">${m.opponent}</td>
+                    <td style="${_td};text-align:center;color:var(--accent-green)">${my}</td>
+                    <td style="${_td};text-align:center;color:var(--accent-red)">${op}</td>
+                    <td style="${_td};text-align:center;font-weight:700">${m.total_goals}</td>
+                    <td style="${_td};text-align:center">${ou}</td>
+                    <td style="${_td};text-align:center">${bt}</td></tr>`;
+            });
+            h += '</tbody></table>' + detailClose;
+            return h;
+        })();
+
+        // ═══ TAB 2: ESCANTEIOS ═══
+        const cornersPanel = (() => {
+            const valid = ms.filter(m => m.stats?.total_corners != null);
+            if (!valid.length) return '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:16px">Dados de escanteios indisponiveis</div>';
+            const vn = valid.length;
+            let tc = 0, oc_ = 0;
+            const lines = [7.5, 8.5, 9.5, 10.5, 11.5];
+            const ovc = lines.map(() => 0);
+            valid.forEach(m => {
+                const t = si(m.stats.team_corners) || 0;
+                const o = si(m.stats.opp_corners) || 0;
+                tc += t; oc_ += o;
+                lines.forEach((l, i) => { if (m.stats.total_corners > l) ovc[i]++; });
+            });
+            let h = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+                ${kpi('Media Total/J', ((tc + oc_) / vn).toFixed(1), 'var(--text-primary)')}
+                ${kpi('Media Time/J', (tc / vn).toFixed(1), 'var(--accent-green)')}
+                ${kpi('Media Advers./J', (oc_ / vn).toFixed(1), 'var(--accent-red)')}
+                ${kpi('Jogos c/ Dados', vn + '/' + n, 'var(--text-muted)')}
+            </div>`;
+            h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase">Over/Under Escanteios</div>';
+            lines.forEach((l, i) => { h += pctBar('O ' + l, ovc[i], vn, 'var(--accent-blue)'); });
+
+            h += detailOpen + `<table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr>
+                <th style="${_th}">Data</th><th style="${_th}">Adversario</th>
+                <th style="${_th};text-align:center">Time</th><th style="${_th};text-align:center">Advers.</th>
+                <th style="${_th};text-align:center">Total</th><th style="${_th};text-align:center">O/U 9.5</th>
+            </tr></thead><tbody>`;
+            valid.forEach(m => {
+                const t = si(m.stats.team_corners) ?? '-';
+                const o = si(m.stats.opp_corners) ?? '-';
+                const tot = m.stats.total_corners;
+                const ou = tot > 9.5 ? '<span style="color:var(--accent-green)">Over</span>' : '<span style="color:var(--accent-red)">Under</span>';
+                h += `<tr><td style="${_td};color:var(--text-muted)">${m.date}</td><td style="${_td}">${m.opponent}</td>
+                    <td style="${_td};text-align:center">${t}</td><td style="${_td};text-align:center">${o}</td>
+                    <td style="${_td};text-align:center;font-weight:700">${tot}</td>
+                    <td style="${_td};text-align:center">${ou}</td></tr>`;
+            });
+            h += '</tbody></table>' + detailClose;
+            return h;
+        })();
+
+        // ═══ TAB 3: CARTÕES ═══
+        const cardsPanel = (() => {
+            const valid = ms.filter(m => m.stats?.total_cards != null);
+            if (!valid.length) return '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:16px">Dados de cartoes indisponiveis</div>';
+            const vn = valid.length;
+            let ty = 0, tr_ = 0, oy = 0, or_ = 0;
+            const lines = [2.5, 3.5, 4.5, 5.5, 6.5];
+            const ovc = lines.map(() => 0);
+            valid.forEach(m => {
+                ty += si(m.stats.team_cards_yellow) || 0;
+                tr_ += si(m.stats.team_cards_red) || 0;
+                oy += si(m.stats.opp_cards_yellow) || 0;
+                or_ += si(m.stats.opp_cards_red) || 0;
+                lines.forEach((l, i) => { if (m.stats.total_cards > l) ovc[i]++; });
+            });
+            const totalC = ty + tr_ + oy + or_;
+            let h = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+                ${kpi('Media Total/J', (totalC / vn).toFixed(1), 'var(--text-primary)')}
+                ${kpi('🟨 Time/J', (ty / vn).toFixed(1), 'var(--accent-yellow)')}
+                ${kpi('🟥 Time/J', (tr_ / vn).toFixed(1), 'var(--accent-red)')}
+                ${kpi('🟨 Advers./J', (oy / vn).toFixed(1), 'var(--accent-yellow)')}
+                ${kpi('🟥 Advers./J', (or_ / vn).toFixed(1), 'var(--accent-red)')}
+            </div>`;
+            h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase">Over/Under Cartoes</div>';
+            lines.forEach((l, i) => { h += pctBar('O ' + l, ovc[i], vn, 'var(--accent-yellow)'); });
+
+            h += detailOpen + `<table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr>
+                <th style="${_th}">Data</th><th style="${_th}">Adversario</th>
+                <th style="${_th};text-align:center">🟨 T</th><th style="${_th};text-align:center">🟥 T</th>
+                <th style="${_th};text-align:center">🟨 A</th><th style="${_th};text-align:center">🟥 A</th>
+                <th style="${_th};text-align:center">Total</th><th style="${_th};text-align:center">O/U 4.5</th>
+            </tr></thead><tbody>`;
+            valid.forEach(m => {
+                const _ty = si(m.stats.team_cards_yellow) ?? '-';
+                const _tr = si(m.stats.team_cards_red) ?? '-';
+                const _oy = si(m.stats.opp_cards_yellow) ?? '-';
+                const _or = si(m.stats.opp_cards_red) ?? '-';
+                const tot = m.stats.total_cards;
+                const ou = tot > 4.5 ? '<span style="color:var(--accent-green)">Over</span>' : '<span style="color:var(--accent-red)">Under</span>';
+                h += `<tr><td style="${_td};color:var(--text-muted)">${m.date}</td><td style="${_td}">${m.opponent}</td>
+                    <td style="${_td};text-align:center">${_ty}</td><td style="${_td};text-align:center">${_tr}</td>
+                    <td style="${_td};text-align:center">${_oy}</td><td style="${_td};text-align:center">${_or}</td>
+                    <td style="${_td};text-align:center;font-weight:700">${tot}</td>
+                    <td style="${_td};text-align:center">${ou}</td></tr>`;
+            });
+            h += '</tbody></table>' + detailClose;
+            return h;
+        })();
+
+        // ═══ TAB 4: FINALIZAÇÕES ═══
+        const shotsPanel = (() => {
+            const valid = ms.filter(m => m.stats?.team_shots != null);
+            if (!valid.length) return '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:16px">Dados de finalizacoes indisponiveis</div>';
+            const vn = valid.length;
+            let tShots = 0, tSoT = 0, oShots = 0, oSoT = 0, tSaves = 0, oSaves = 0;
+            valid.forEach(m => {
+                tShots += si(m.stats.team_shots) || 0;
+                tSoT += si(m.stats.team_shots_on_target) || 0;
+                oShots += si(m.stats.opp_shots) || 0;
+                oSoT += si(m.stats.opp_shots_on_target) || 0;
+                tSaves += si(m.stats.team_saves) || 0;
+                oSaves += si(m.stats.opp_saves) || 0;
+            });
+            let h = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+                ${kpi('Finaliz. Time/J', (tShots / vn).toFixed(1), 'var(--accent-green)')}
+                ${kpi('No Alvo Time/J', (tSoT / vn).toFixed(1), 'var(--accent-green)')}
+                ${kpi('Finaliz. Adv./J', (oShots / vn).toFixed(1), 'var(--accent-red)')}
+                ${kpi('No Alvo Adv./J', (oSoT / vn).toFixed(1), 'var(--accent-red)')}
+                ${kpi('Defesas Gol./J', (tSaves / vn).toFixed(1), 'var(--accent-blue)')}
+                ${kpi('% Acerto Time', tShots > 0 ? ((tSoT / tShots) * 100).toFixed(0) + '%' : '-', 'var(--accent-yellow)')}
+            </div>`;
+
+            const totalLines = [17.5, 19.5, 21.5, 23.5, 25.5];
+            const ovc = totalLines.map(() => 0);
+            valid.forEach(m => {
+                const tot = (si(m.stats.team_shots) || 0) + (si(m.stats.opp_shots) || 0);
+                totalLines.forEach((l, i) => { if (tot > l) ovc[i]++; });
+            });
+            h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase">Over/Under Finalizacoes Totais no Jogo</div>';
+            totalLines.forEach((l, i) => { h += pctBar('O ' + l, ovc[i], vn, 'var(--accent-green)'); });
+
+            h += detailOpen + `<table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr>
+                <th style="${_th}">Data</th><th style="${_th}">Adversario</th>
+                <th style="${_th};text-align:center">Fin. T</th><th style="${_th};text-align:center">Alvo T</th>
+                <th style="${_th};text-align:center">Fin. A</th><th style="${_th};text-align:center">Alvo A</th>
+                <th style="${_th};text-align:center">Total</th><th style="${_th};text-align:center">Def. T</th>
+            </tr></thead><tbody>`;
+            valid.forEach(m => {
+                const ts = si(m.stats.team_shots) ?? '-';
+                const tst = si(m.stats.team_shots_on_target) ?? '-';
+                const os = si(m.stats.opp_shots) ?? '-';
+                const ost = si(m.stats.opp_shots_on_target) ?? '-';
+                const tot = (si(m.stats.team_shots) || 0) + (si(m.stats.opp_shots) || 0);
+                const sv = si(m.stats.team_saves) ?? '-';
+                h += `<tr><td style="${_td};color:var(--text-muted)">${m.date}</td><td style="${_td}">${m.opponent}</td>
+                    <td style="${_td};text-align:center">${ts}</td><td style="${_td};text-align:center">${tst}</td>
+                    <td style="${_td};text-align:center">${os}</td><td style="${_td};text-align:center">${ost}</td>
+                    <td style="${_td};text-align:center;font-weight:700">${tot}</td>
+                    <td style="${_td};text-align:center">${sv}</td></tr>`;
+            });
+            h += '</tbody></table>' + detailClose;
+            return h;
+        })();
+
+        // ═══ TAB 5: POSSE, FALTAS, xG, PASSES ═══
+        const otherPanel = (() => {
+            let html = '';
+
+            // Posse
+            const possValid = ms.filter(m => m.stats?.team_possession != null);
+            if (possValid.length) {
+                const pvn = possValid.length;
+                let tp = 0;
+                possValid.forEach(m => { tp += parsePoss(m.stats.team_possession) || 0; });
+                const avg = (tp / pvn).toFixed(1);
+                html += `<div style="margin-bottom:16px">
+                    <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase">Posse de Bola</div>
+                    <div style="display:flex;align-items:center;gap:12px">
+                        <div style="font-size:28px;font-weight:800;color:var(--accent-green)">${avg}%</div>
+                        <div style="flex:1">${pctBar('Media', Math.round(tp / pvn), 100, 'var(--accent-green)')}</div>
+                    </div>
+                </div>`;
+            }
+
+            // xG
+            const xgValid = ms.filter(m => m.stats?.team_expected_goals != null);
+            if (xgValid.length) {
+                const xn = xgValid.length;
+                let txg = 0, oxg = 0;
+                xgValid.forEach(m => {
+                    txg += parseFloat(m.stats.team_expected_goals) || 0;
+                    oxg += parseFloat(m.stats.opp_expected_goals) || 0;
+                });
+                html += `<div style="margin-bottom:16px">
+                    <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase">Expected Goals (xG)</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                        ${kpi('xG Time/J', (txg / xn).toFixed(2), 'var(--accent-green)')}
+                        ${kpi('xG Advers./J', (oxg / xn).toFixed(2), 'var(--accent-red)')}
+                        ${kpi('xG Total/J', ((txg + oxg) / xn).toFixed(2), 'var(--text-primary)')}
+                        ${kpi('xG Diff/J', ((txg - oxg) / xn > 0 ? '+' : '') + ((txg - oxg) / xn).toFixed(2), (txg - oxg) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)')}
+                    </div>
+                </div>`;
+            }
+
+            // Faltas
+            const foulsValid = ms.filter(m => m.stats?.team_fouls != null);
+            if (foulsValid.length) {
+                const fn_ = foulsValid.length;
+                let tf = 0, of_ = 0;
+                foulsValid.forEach(m => {
+                    tf += si(m.stats.team_fouls) || 0;
+                    of_ += si(m.stats.opp_fouls) || 0;
+                });
+                const fLines = [17.5, 19.5, 21.5, 23.5, 25.5];
+                const fOvc = fLines.map(() => 0);
+                foulsValid.forEach(m => {
+                    const tot = (si(m.stats.team_fouls) || 0) + (si(m.stats.opp_fouls) || 0);
+                    fLines.forEach((l, i) => { if (tot > l) fOvc[i]++; });
+                });
+                html += `<div style="margin-bottom:16px">
+                    <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase">Faltas</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+                        ${kpi('Media Time/J', (tf / fn_).toFixed(1), 'var(--accent-yellow)')}
+                        ${kpi('Media Advers./J', (of_ / fn_).toFixed(1), 'var(--accent-red)')}
+                        ${kpi('Total/J', ((tf + of_) / fn_).toFixed(1), 'var(--text-primary)')}
+                    </div>
+                    <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase">Over/Under Faltas Totais</div>
+                    ${fLines.map((l, i) => pctBar('O ' + l, fOvc[i], fn_, 'var(--accent-yellow)')).join('')}
+                </div>`;
+            }
+
+            // Impedimentos
+            const offValid = ms.filter(m => m.stats?.team_offsides != null);
+            if (offValid.length) {
+                const on_ = offValid.length;
+                let to_ = 0, oo_ = 0;
+                offValid.forEach(m => {
+                    to_ += si(m.stats.team_offsides) || 0;
+                    oo_ += si(m.stats.opp_offsides) || 0;
+                });
+                html += `<div style="margin-bottom:16px">
+                    <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase">Impedimentos</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                        ${kpi('Media Time/J', (to_ / on_).toFixed(1), 'var(--text-primary)')}
+                        ${kpi('Media Advers./J', (oo_ / on_).toFixed(1), 'var(--text-primary)')}
+                    </div>
+                </div>`;
+            }
+
+            // Passes
+            const passValid = ms.filter(m => m.stats?.team_passes != null);
+            if (passValid.length) {
+                const pn = passValid.length;
+                let tpass = 0, opass = 0;
+                passValid.forEach(m => {
+                    tpass += si(m.stats.team_passes) || 0;
+                    opass += si(m.stats.opp_passes) || 0;
+                });
+                const pctV = ms.filter(m => m.stats?.team_passes_pct != null);
+                let tpct = 0, opct = 0;
+                if (pctV.length) {
+                    pctV.forEach(m => {
+                        tpct += parsePoss(m.stats.team_passes_pct) || 0;
+                        opct += parsePoss(m.stats.opp_passes_pct) || 0;
+                    });
+                }
+                html += `<div style="margin-bottom:16px">
+                    <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase">Passes</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                        ${kpi('Media Time/J', (tpass / pn).toFixed(0), 'var(--accent-green)')}
+                        ${kpi('Media Advers./J', (opass / pn).toFixed(0), 'var(--accent-red)')}
+                        ${pctV.length ? kpi('Precisao Time', (tpct / pctV.length).toFixed(0) + '%', 'var(--accent-green)') : ''}
+                        ${pctV.length ? kpi('Precisao Adv.', (opct / pctV.length).toFixed(0) + '%', 'var(--accent-red)') : ''}
+                    </div>
+                </div>`;
+            }
+
+            if (!html) html = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:16px">Dados gerais indisponiveis</div>';
+            return html;
+        })();
+
+        // ═══ Montar tabs ═══
+        const tabs = [
+            { id: 'goals',   label: '⚽ Gols & BTTS',    content: goalsPanel },
+            { id: 'corners', label: '🏁 Escanteios',     content: cornersPanel },
+            { id: 'cards',   label: '🟨 Cartoes',        content: cardsPanel },
+            { id: 'shots',   label: '🎯 Finalizacoes',   content: shotsPanel },
+            { id: 'other',   label: '📊 Posse/xG/Gerais', content: otherPanel },
+        ];
+
+        const btnStyle = 'padding:6px 14px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,0.08);transition:all .2s';
+
+        let html = `<div style="margin-top:16px;padding:14px;background:rgba(255,255,255,0.015);border-radius:10px;border:1px solid var(--border)">`;
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+            <div style="font-size:12px;font-weight:800;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">📊 Analise por Mercado</div>
+            <div style="font-size:9px;color:var(--text-muted)">${n} jogos com estatisticas de ${ms.length > 0 ? ms.length : 0} partidas</div>
+        </div>`;
+
+        html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">`;
+        tabs.forEach((t, i) => {
+            const bg = i === 0 ? 'var(--accent-green)' : 'rgba(255,255,255,0.05)';
+            const fg = i === 0 ? '#000' : 'var(--text-secondary)';
+            const bc = i === 0 ? 'var(--accent-green)' : 'rgba(255,255,255,0.08)';
+            html += `<button id="${uid}_btn_${t.id}" data-mkt-btn="${uid}" style="${btnStyle};background:${bg};color:${fg};border-color:${bc}" onclick="switchMktTab('${uid}','${t.id}')">${t.label}</button>`;
+        });
+        html += '</div>';
+
+        tabs.forEach((t, i) => {
+            html += `<div id="${uid}_${t.id}" data-mkt-uid="${uid}" style="display:${i === 0 ? 'block' : 'none'}">${t.content}</div>`;
+        });
+
+        html += '</div>';
+        return html;
+    };
+
     // ── Renderizar secao de um time ──
+    let _mktCounter = 0;
     const renderTeam = (data, name, color) => {
         const lg = data.league_matches || [];
         const all = data.all_matches || [];
+        const mktUid = 'mkt_' + (++_mktCounter) + '_' + Date.now();
         let html = sectionTitle('', name, color);
 
         if (lg.length > 0) {
@@ -2414,6 +2811,13 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
         if (!lg.length && !all.length) {
             html += '<div style="color:var(--text-muted);padding:12px;text-align:center">Sem dados historicos disponiveis</div>';
         }
+
+        // Análise por Mercado — usa all_matches (mais dados) ou lg se all vazio
+        const mktMatches = all.length > 0 ? all : lg;
+        if (mktMatches.length > 0) {
+            html += buildMarketAnalysis(mktMatches, mktUid);
+        }
+
         return html;
     };
 
