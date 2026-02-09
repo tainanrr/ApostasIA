@@ -48,6 +48,7 @@ from data_ingestion import (
     ingest_all_fixtures, _check_api_plan, _api_call_count,
     MatchAnalysis, TeamStats, WeatherData, RefereeStats, MarketOdds,
     get_cached_player_shots,
+    _get_cached_response, _parse_odds_response,
 )
 from models import run_models_batch
 from context_engine import apply_context_batch
@@ -506,6 +507,29 @@ def recalculate_engine():
             print(f"[RECALC] Erro ao deserializar match {d.get('match_id', '?')}: {e}")
 
     print(f"[RECALC] {len(matches)} partidas reconstruidas")
+
+    # ── 2b. Re-parsear odds a partir do cache BRUTO da API ──
+    # Corrige bugs de parsing anteriores (ex: BTTS 1o Tempo sobrescrevendo BTTS)
+    # usando a versão corrigida de _parse_odds_response, SEM nenhuma API call.
+    odds_refreshed = 0
+    for match in matches:
+        if not match.has_real_odds:
+            continue
+        # Buscar dados brutos de odds no cache local/Supabase (0 API calls)
+        raw = _get_cached_response("odds", {"fixture": match.match_id})
+        if not raw:
+            continue
+        response = raw.get("response", [])
+        if not response:
+            continue
+        odds_raw = response[0]
+        # Re-parsear com o parser corrigido
+        new_odds = _parse_odds_response(odds_raw)
+        if new_odds.bookmaker not in ("N/D", "Modelo (Estimado)", ""):
+            match.odds = new_odds
+            odds_refreshed += 1
+
+    print(f"[RECALC] Odds re-parseadas do cache bruto: {odds_refreshed}/{len(matches)} partidas")
 
     # ── 3. Re-executar MODELOS (inclui novos mercados de finalizações) ──
     print("[RECALC] Executando modelos estatisticos (Dixon-Coles + NB Shots)...")
