@@ -283,6 +283,12 @@
         .market-btts { background: var(--accent-cyan); color: #000; opacity: 0.85; }
         .market-corners { background: var(--accent-yellow-dim); color: var(--accent-yellow); }
         .market-cards { background: var(--accent-red-dim); color: var(--accent-red); }
+        .market-cs { background: rgba(0,206,209,0.18); color: #00ced1; }
+        .market-wtn { background: rgba(255,165,0,0.18); color: #ffa500; }
+        .market-ht { background: rgba(147,112,219,0.18); color: #9370db; }
+        .market-oe { background: rgba(255,105,180,0.18); color: #ff69b4; }
+        .market-exact { background: rgba(34,139,34,0.18); color: #228b22; }
+        .market-team-ou { background: rgba(255,215,0,0.18); color: #daa520; }
 
         /* ── SORTABLE TABLE HEADERS ── */
         th.sortable {
@@ -704,10 +710,20 @@
                                 <option value="">Todos</option>
                                 <option value="1x2">1x2</option>
                                 <option value="Dupla Chance">Dupla Chance</option>
-                                <option value="O/U 2.5">O/U 2.5</option>
+                                <option value="Gols O/U">Gols O/U</option>
                                 <option value="BTTS">BTTS</option>
-                                <option value="Corners">Escanteios</option>
-                                <option value="Cartões">Cartões</option>
+                                <option value="Gols Casa O/U">Gols Casa O/U</option>
+                                <option value="Gols Fora O/U">Gols Fora O/U</option>
+                                <option value="Clean Sheet">Clean Sheet</option>
+                                <option value="Vit. s/ Sofrer">Vit s/ Sofrer</option>
+                                <option value="1o Tempo">1o Tempo</option>
+                                <option value="Gols 1o Tempo">Gols 1o Tempo</option>
+                                <option value="Par/Impar">Par/Impar</option>
+                                <option value="Escanteios O/U">Escanteios O/U</option>
+                                <option value="Cartoes O/U">Cartoes O/U</option>
+                                <option value="Placar Exato">Placar Exato</option>
+                                <option value="O/U 2.5">O/U 2.5 (legado)</option>
+                                <option value="Corners">Escanteios (legado)</option>
                             </select></th>
                             <th><input class="col-filter" type="text" id="cf-selection" placeholder="Seleção..." oninput="applyColumnFilters()"></th>
                             <th><input class="col-filter" type="text" id="cf-bookmaker" placeholder="Casa..." oninput="applyColumnFilters()"></th>
@@ -804,6 +820,99 @@ let stats = {};
 let apiStatus = {};
 let engineRunning = false;
 let timerInterval = null;
+
+// ═══════════════════════════════════════════
+// MARKET CLASS HELPER
+// ═══════════════════════════════════════════
+function getMarketClass(market) {
+    if (!market) return 'market-ou';
+    const m = market.toLowerCase();
+    if (m === '1x2') return 'market-1x2';
+    if (m.includes('dupla chance')) return 'market-dc';
+    if (m.includes('btts')) return 'market-btts';
+    if (m.includes('clean sheet')) return 'market-cs';
+    if (m.includes('sofrer')) return 'market-wtn';
+    if (m.includes('1o tempo') || m.includes('1° tempo')) return 'market-ht';
+    if (m.includes('par/impar') || m.includes('par') || m.includes('impar')) return 'market-oe';
+    if (m.includes('placar exato')) return 'market-exact';
+    if (m.includes('escanteio') || m.includes('corners')) return 'market-corners';
+    if (m.includes('cart')) return 'market-cards';
+    if (m.includes('gols casa') || m.includes('gols fora')) return 'market-team-ou';
+    if (m.includes('gols') || m.includes('o/u')) return 'market-ou';
+    return 'market-ou';
+}
+
+// ═══════════════════════════════════════════
+// ALL MARKETS ODDS BUILDER
+// ═══════════════════════════════════════════
+function buildAllMarketsOdds(m) {
+    const _MARKET_LABELS = {
+        "1x2": "⚽ 1x2 (Match Winner)",
+        "double_chance": "🎯 Dupla Chance",
+        "goals_ou": "⚽ Gols Over/Under",
+        "btts": "🤝 Ambas Marcam (BTTS)",
+        "home_goals_ou": "🏠 Gols Casa O/U",
+        "away_goals_ou": "✈️ Gols Fora O/U",
+        "cs_home": "🧤 Clean Sheet Casa",
+        "cs_away": "🧤 Clean Sheet Fora",
+        "wtn_home": "💪 Vitória s/ Sofrer Casa",
+        "wtn_away": "💪 Vitória s/ Sofrer Fora",
+        "odd_even": "🎲 Par/Impar Gols",
+        "ht_result": "⏱️ 1° Tempo (Resultado)",
+        "ht_goals_ou": "⏱️ 1° Tempo Gols O/U",
+        "h2_goals_ou": "⏱️ 2° Tempo Gols O/U",
+        "corners_ou": "🏁 Escanteios O/U",
+        "cards_ou": "🟨 Cartoes O/U",
+        "exact_score": "🎯 Placar Exato (Top)",
+        "asian_handicap": "📐 Asian Handicap",
+        "ht_ft": "⏱️ HT/FT",
+        "win_both_halves": "💪 Vencer Ambos Tempos",
+        "both_halves_score": "⚽ Gol em Ambos Tempos",
+        "result_total": "📊 Resultado & Total",
+    };
+    const _SEL_LABELS = {
+        "home": "Casa", "draw": "Empate", "away": "Fora",
+        "home/draw": "1X (Casa ou Empate)", "draw/away": "X2 (Fora ou Empate)", "home/away": "12 (Casa ou Fora)",
+        "yes": "Sim", "no": "Nao", "odd": "Impar", "even": "Par",
+    };
+    const probs = m.model_probs || {};
+    const markets = m.all_markets || {};
+    // Also include legacy odds
+    if (!markets["1x2"]) markets["1x2"] = {home: m.odds_home, draw: m.odds_draw, away: m.odds_away};
+    if (!markets["goals_ou"]) markets["goals_ou"] = {over_2_5: m.odds_over25, under_2_5: m.odds_under25};
+    if (!markets["btts"]) markets["btts"] = {yes: m.odds_btts_yes, no: m.odds_btts_no};
+
+    let html = '';
+    const orderedKeys = ["1x2","double_chance","goals_ou","btts","home_goals_ou","away_goals_ou",
+        "ht_result","ht_goals_ou","h2_goals_ou","cs_home","cs_away","wtn_home","wtn_away","odd_even",
+        "corners_ou","cards_ou","exact_score","asian_handicap","ht_ft","win_both_halves","both_halves_score","result_total"];
+    const allKeys = new Set([...orderedKeys, ...Object.keys(markets)]);
+    for (const mk of allKeys) {
+        const mkt = markets[mk];
+        if (!mkt || typeof mkt !== 'object') continue;
+        const entries = Object.entries(mkt).filter(([k,v]) => v && v > 1.0);
+        if (!entries.length) continue;
+        const label = _MARKET_LABELS[mk] || mk.replace(/_/g,' ').toUpperCase();
+        html += `<div style="margin-top:12px"><div style="font-size:12px;font-weight:700;color:var(--accent-cyan);margin-bottom:6px">${label}</div><div class="odds-grid">`;
+        for (const [sk, odd] of entries) {
+            const selLabel = _SEL_LABELS[sk] || sk.replace(/_/g,' ').replace(/over /i,'O').replace(/under /i,'U');
+            const probKey = `${mk}__${sk}`;
+            const modelP = probs[probKey];
+            const probStr = modelP ? `<div class="odds-card-prob">Modelo: ${(modelP*100).toFixed(1)}%</div>` : '';
+            const fairStr = modelP ? `<div class="odds-card-prob" style="color:var(--accent-yellow)">Fair: ${(1/modelP).toFixed(2)}</div>` : '';
+            const isEV = modelP && (modelP * odd - 1) > 0.03;
+            const evStyle = isEV ? 'border:1px solid var(--accent-green);background:rgba(46,213,115,0.08)' : '';
+            html += `<div class="odds-card" style="${evStyle}">
+                <div class="odds-card-label">${selLabel}</div>
+                <div class="odds-card-value">${odd}</div>
+                ${probStr}${fairStr}
+                ${isEV ? '<div style="font-size:9px;color:var(--accent-green);font-weight:700;margin-top:2px">✓ EV+</div>' : ''}
+            </div>`;
+        }
+        html += '</div></div>';
+    }
+    return html || '<div style="color:var(--text-muted);padding:16px">Nenhuma odd disponível para este jogo</div>';
+}
 
 // ═══════════════════════════════════════════
 // BOOKMAKER URLs + DEEP LINK BUILDER
@@ -1161,7 +1270,7 @@ function renderOpportunities(data) {
     tbody.innerHTML = opps.map((o, i) => {
         const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
         const edgeClass = o.edge > 15 ? "edge-high" : "edge-med";
-        const marketClass = o.market === "1x2" ? "market-1x2" : o.market === "Dupla Chance" ? "market-dc" : o.market === "O/U 2.5" ? "market-ou" : o.market === "BTTS" ? "market-btts" : o.market === "Corners" ? "market-corners" : "market-cards";
+        const marketClass = getMarketClass(o.market);
         const probWidth = Math.min(100, o.model_prob);
         const probColor = o.model_prob > 50 ? "var(--accent-green)" : o.model_prob > 30 ? "var(--accent-blue)" : "var(--accent-yellow)";
         
@@ -1449,7 +1558,7 @@ function showOppDetail(idx) {
     document.getElementById("modal-subtitle").textContent = `${o.league_name} — ${o.league_country} | ${o.match_date} ${o.match_time}`;
     
     const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
-    const marketClass = o.market === '1x2' ? 'market-1x2' : o.market === 'Dupla Chance' ? 'market-dc' : o.market === 'O/U 2.5' ? 'market-ou' : o.market === 'BTTS' ? 'market-btts' : o.market === 'Corners' ? 'market-corners' : 'market-cards';
+    const marketClass = getMarketClass(o.market);
     // Helper: valor seguro (trata null/undefined mas mantém 0 como válido)
     const v = (val, fallback = 'N/D') => (val !== null && val !== undefined) ? val : fallback;
     const dq = o.data_quality ?? 0;
@@ -1687,49 +1796,8 @@ function showOppDetail(idx) {
             </div>
 
             ${m ? `
-            <div class="m-section">📋 Todas as Odds do Jogo (${m.bookmaker})</div>
-            <div class="odds-grid">
-                <div class="odds-card">
-                    <div class="odds-card-label">Vitória Casa</div>
-                    <div class="odds-card-value">${m.odds_home}</div>
-                    <div class="odds-card-prob">Prob: ${m.prob_home}%</div>
-                </div>
-                <div class="odds-card">
-                    <div class="odds-card-label">Empate</div>
-                    <div class="odds-card-value">${m.odds_draw}</div>
-                    <div class="odds-card-prob">Prob: ${m.prob_draw}%</div>
-                </div>
-                <div class="odds-card">
-                    <div class="odds-card-label">Vitória Fora</div>
-                    <div class="odds-card-value">${m.odds_away}</div>
-                    <div class="odds-card-prob">Prob: ${m.prob_away}%</div>
-                </div>
-                ${m.odds_1x ? `<div class="odds-card"><div class="odds-card-label">Casa ou Empate (1X)</div><div class="odds-card-value">${m.odds_1x}</div></div>` : ''}
-                ${m.odds_x2 ? `<div class="odds-card"><div class="odds-card-label">Fora ou Empate (X2)</div><div class="odds-card-value">${m.odds_x2}</div></div>` : ''}
-                <div class="odds-card">
-                    <div class="odds-card-label">Over 2.5</div>
-                    <div class="odds-card-value">${m.odds_over25}</div>
-                    <div class="odds-card-prob">Prob: ${m.prob_over25}%</div>
-                </div>
-                <div class="odds-card">
-                    <div class="odds-card-label">Under 2.5</div>
-                    <div class="odds-card-value">${m.odds_under25}</div>
-                </div>
-                <div class="odds-card">
-                    <div class="odds-card-label">BTTS Sim</div>
-                    <div class="odds-card-value">${m.odds_btts_yes}</div>
-                    <div class="odds-card-prob">Prob: ${m.prob_btts}%</div>
-                </div>
-                <div class="odds-card">
-                    <div class="odds-card-label">BTTS Não</div>
-                    <div class="odds-card-value">${m.odds_btts_no}</div>
-                </div>
-                ${m.odds_corners_over ? `<div class="odds-card"><div class="odds-card-label">Escanteios Over 9.5</div><div class="odds-card-value">${m.odds_corners_over}</div></div>` : ''}
-                ${m.odds_corners_under ? `<div class="odds-card"><div class="odds-card-label">Escanteios Under 9.5</div><div class="odds-card-value">${m.odds_corners_under}</div></div>` : ''}
-                ${m.odds_cards_over ? `<div class="odds-card"><div class="odds-card-label">Cartões Over 3.5</div><div class="odds-card-value">${m.odds_cards_over}</div></div>` : ''}
-                ${m.odds_cards_under ? `<div class="odds-card"><div class="odds-card-label">Cartões Under 3.5</div><div class="odds-card-value">${m.odds_cards_under}</div></div>` : ''}
-                ${m.odds_ah_line !== undefined ? `<div class="odds-card"><div class="odds-card-label">Asian Hcap (${m.odds_ah_line})</div><div class="odds-card-value">${m.odds_ah_home} / ${m.odds_ah_away}</div></div>` : ''}
-            </div>
+            <div class="m-section">📋 Todas as Odds & Probabilidades do Modelo (${m.bookmaker})</div>
+            ${buildAllMarketsOdds(m)}
             ` : ''}
 
             <div style="margin-top:16px;padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm)">
@@ -2442,11 +2510,17 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
         const _th = thStyle;
         const _td = tdStyle;
 
-        // ═══ TAB 1: GOLS & BTTS ═══
+        // ═══ TAB 1: GOLS & BTTS (COMPLETO) ═══
         const goalsPanel = (() => {
             let teamG = 0, oppG = 0, btts = 0, cs = 0, fts = 0;
-            const lines = [0.5, 1.5, 2.5, 3.5, 4.5];
+            const lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5];
             const oc = lines.map(() => 0);
+            // Gols do Time O/U
+            const teamLines = [0.5, 1.5, 2.5, 3.5];
+            const teamOC = teamLines.map(() => 0);
+            const oppLines = [0.5, 1.5, 2.5];
+            const oppOC = oppLines.map(() => 0);
+
             ms.forEach(m => {
                 const my = m.is_home ? m.score_home : m.score_away;
                 const op = m.is_home ? m.score_away : m.score_home;
@@ -2455,6 +2529,8 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
                 if (op === 0) cs++;
                 if (my === 0) fts++;
                 lines.forEach((l, i) => { if (m.total_goals > l) oc[i]++; });
+                teamLines.forEach((l, i) => { if (my > l) teamOC[i]++; });
+                oppLines.forEach((l, i) => { if (op > l) oppOC[i]++; });
             });
             let h = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
                 ${kpi('Media Gols/J', ((teamG + oppG) / n).toFixed(1), 'var(--text-primary)')}
@@ -2464,8 +2540,20 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
                 ${kpi('Clean Sheet', ((cs / n) * 100).toFixed(0) + '%', 'var(--accent-blue)')}
                 ${kpi('Falhou Marcar', ((fts / n) * 100).toFixed(0) + '%', 'var(--accent-red)')}
             </div>`;
-            h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase">Over/Under Gols</div>';
-            lines.forEach((l, i) => { h += pctBar('O ' + l, oc[i], n, 'var(--accent-green)'); });
+
+            h += '<div style="font-size:10px;font-weight:700;color:var(--accent-green);margin-bottom:4px;text-transform:uppercase">⚡ EV+ Over/Under Gols Totais</div>';
+            h += '<div style="font-size:9px;color:var(--text-muted);margin-bottom:6px">Se a casa oferece odd MAIOR que a "Fair", historicamente e EV+</div>';
+            lines.forEach((l, i) => { h += evBar('O ' + l, oc[i], n, 'var(--accent-green)'); });
+
+            h += '<div style="font-size:10px;font-weight:700;color:var(--accent-blue);margin:12px 0 4px;text-transform:uppercase">⚡ EV+ Gols do Time (Over/Under)</div>';
+            teamLines.forEach((l, i) => { h += evBar('O ' + l, teamOC[i], n, 'var(--accent-blue)'); });
+
+            h += '<div style="font-size:10px;font-weight:700;color:var(--accent-red);margin:12px 0 4px;text-transform:uppercase">⚡ EV+ Gols Adversario (Over/Under)</div>';
+            oppLines.forEach((l, i) => { h += evBar('O ' + l, oppOC[i], n, 'var(--accent-red)'); });
+
+            h += '<div style="font-size:10px;font-weight:700;color:var(--accent-yellow);margin:12px 0 4px;text-transform:uppercase">⚡ EV+ BTTS (Ambas Marcam)</div>';
+            h += evBar('BTTS Sim', btts, n, 'var(--accent-yellow)');
+            h += evBar('BTTS Nao', n - btts, n, 'var(--accent-cyan)');
 
             h += detailOpen + `<table style="width:100%;border-collapse:collapse;font-size:11px">
             <thead><tr>
@@ -2936,14 +3024,91 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
             return html;
         })();
 
+        // ═══ TAB 6: 1° TEMPO + CLEAN SHEET + ESPECIAIS ═══
+        const specialsPanel = (() => {
+            // ── HT (1° Tempo) ──
+            const htValid = ms.filter(m => m.ht_total != null);
+            let h = '';
+            if (htValid.length) {
+                const hn = htValid.length;
+                let htWin = 0, htDraw = 0, htLoss = 0;
+                const htLines = [0.5, 1.5, 2.5];
+                const htOvc = htLines.map(() => 0);
+                htValid.forEach(m => {
+                    const myHT = m.is_home ? m.ht_home : m.ht_away;
+                    const opHT = m.is_home ? m.ht_away : m.ht_home;
+                    if (myHT > opHT) htWin++; else if (myHT === opHT) htDraw++; else htLoss++;
+                    htLines.forEach((l, i) => { if (m.ht_total > l) htOvc[i]++; });
+                });
+                h += `<div style="font-size:10px;font-weight:700;color:var(--accent-cyan);margin-bottom:6px;text-transform:uppercase">⏱️ Resultado no 1° Tempo</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+                    ${kpi('Vencendo HT', ((htWin/hn)*100).toFixed(0)+'%', 'var(--accent-green)')}
+                    ${kpi('Empatando HT', ((htDraw/hn)*100).toFixed(0)+'%', 'var(--accent-yellow)')}
+                    ${kpi('Perdendo HT', ((htLoss/hn)*100).toFixed(0)+'%', 'var(--accent-red)')}
+                    ${kpi('Amostra', hn+'j', 'var(--text-muted)')}
+                </div>`;
+                h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase">Over/Under Gols 1° Tempo</div>';
+                htLines.forEach((l, i) => { h += evBar('O '+l, htOvc[i], hn, 'var(--accent-cyan)'); });
+                h += detailOpen + `<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr>
+                    <th style="${_th}">Data</th><th style="${_th}">Adversario</th>
+                    <th style="${_th};text-align:center">HT Time</th><th style="${_th};text-align:center">HT Adv.</th>
+                    <th style="${_th};text-align:center">HT Total</th><th style="${_th};text-align:center">FT</th>
+                </tr></thead><tbody>`;
+                htValid.forEach(m => {
+                    const myHT = m.is_home ? m.ht_home : m.ht_away;
+                    const opHT = m.is_home ? m.ht_away : m.ht_home;
+                    const myFT = m.is_home ? m.score_home : m.score_away;
+                    const opFT = m.is_home ? m.score_away : m.score_home;
+                    h += `<tr><td style="${_td};color:var(--text-muted)">${m.date}</td><td style="${_td}">${m.opponent}</td>
+                        <td style="${_td};text-align:center">${myHT}</td><td style="${_td};text-align:center">${opHT}</td>
+                        <td style="${_td};text-align:center;font-weight:700">${m.ht_total}</td>
+                        <td style="${_td};text-align:center;font-weight:700">${myFT}-${opFT}</td></tr>`;
+                });
+                h += '</tbody></table>' + detailClose;
+            } else {
+                h += '<div style="color:var(--text-muted);font-size:11px;margin-bottom:16px">Dados de 1° Tempo indisponiveis</div>';
+            }
+
+            // ── Clean Sheet & Win to Nil & Especiais ──
+            const nn = ms.length;
+            if (nn) {
+                let cs = 0, fts = 0, wtn = 0, oddG = 0;
+                ms.forEach(m => {
+                    const my = m.is_home ? m.score_home : m.score_away;
+                    const op = m.is_home ? m.score_away : m.score_home;
+                    if (op === 0) cs++;
+                    if (my === 0) fts++;
+                    if (my > 0 && op === 0) wtn++;
+                    if (m.total_goals % 2 === 1) oddG++;
+                });
+                h += `<div style="font-size:10px;font-weight:700;color:var(--accent-cyan);margin:16px 0 6px;text-transform:uppercase">🧤 Clean Sheet & Especiais</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+                    ${kpi('Clean Sheet', ((cs/nn)*100).toFixed(0)+'%', 'var(--accent-green)')}
+                    ${kpi('Falhou Marcar', ((fts/nn)*100).toFixed(0)+'%', 'var(--accent-red)')}
+                    ${kpi('Vit s/ Sofrer', ((wtn/nn)*100).toFixed(0)+'%', 'var(--accent-green)')}
+                    ${kpi('Gols Impar', ((oddG/nn)*100).toFixed(0)+'%', 'var(--accent-yellow)')}
+                    ${kpi('Gols Par', (((nn-oddG)/nn)*100).toFixed(0)+'%', 'var(--accent-blue)')}
+                </div>`;
+                h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase">EV+ Especiais</div>';
+                h += evBar('CS Sim', cs, nn, 'var(--accent-green)');
+                h += evBar('CS Nao', nn-cs, nn, 'var(--accent-red)');
+                h += evBar('V s/Sofrer', wtn, nn, 'var(--accent-green)');
+                h += evBar('Gols Impar', oddG, nn, 'var(--accent-yellow)');
+                h += evBar('Gols Par', nn-oddG, nn, 'var(--accent-blue)');
+            }
+            if (!h) h = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:16px">Dados especiais indisponiveis</div>';
+            return h;
+        })();
+
         // ═══ Montar tabs ═══
         const tabs = [
-            { id: 'goals',   label: '⚽ Gols & BTTS',     content: goalsPanel },
-            { id: 'corners', label: '🏁 Escanteios',      content: cornersPanel },
-            { id: 'cards',   label: '🟨 Cartoes',         content: cardsPanel },
-            { id: 'shots',   label: '🎯 Fin. Time',       content: shotsPanel },
-            { id: 'players', label: '⚡ EV+ Jogadores',   content: playersPanel },
-            { id: 'other',   label: '📊 Posse/xG/Gerais', content: otherPanel },
+            { id: 'goals',    label: '⚽ Gols & BTTS',      content: goalsPanel },
+            { id: 'specials', label: '⏱️ HT/CS/Especiais',  content: specialsPanel },
+            { id: 'corners',  label: '🏁 Escanteios',       content: cornersPanel },
+            { id: 'cards',    label: '🟨 Cartoes',          content: cardsPanel },
+            { id: 'shots',    label: '🎯 Fin. Time',        content: shotsPanel },
+            { id: 'players',  label: '⚡ EV+ Jogadores',    content: playersPanel },
+            { id: 'other',    label: '📊 Posse/xG/Gerais',  content: otherPanel },
         ];
 
         const btnStyle = 'padding:6px 14px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,0.08);transition:all .2s';

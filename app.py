@@ -471,6 +471,10 @@ def serialize_match(m: MatchAnalysis) -> dict:
         "odds_ah_away": m.odds.asian_handicap_away,
         "odds_1x": m.odds.double_chance_1x,
         "odds_x2": m.odds.double_chance_x2,
+        # TODOS os mercados de odds da API
+        "all_markets": getattr(m.odds, 'all_markets', {}) or {},
+        # Probabilidades do modelo para TODOS os mercados
+        "model_probs": getattr(m, 'model_probs', {}) or {},
         # Qualidade dos dados
         "data_quality": m.data_quality_score,
         "has_real_odds": m.has_real_odds,

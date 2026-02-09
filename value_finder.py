@@ -27,18 +27,143 @@ from models import predict_corners, predict_cards
 # ═══════════════════════════════════════════════════════
 
 _ODDS_LIMITS = {
-    "1x2":          (config.ODDS_MIN_VALID, config.ODDS_MAX_1X2),
-    "Dupla Chance": (config.ODDS_MIN_VALID, config.ODDS_MAX_DC),
-    "O/U 2.5":      (config.ODDS_MIN_VALID, config.ODDS_MAX_OU),
-    "BTTS":         (config.ODDS_MIN_VALID, config.ODDS_MAX_BTTS),
-    "Corners":      (config.ODDS_MIN_VALID, config.ODDS_MAX_CORNERS),
-    "Cartões":      (config.ODDS_MIN_VALID, config.ODDS_MAX_CARDS),
+    "1x2":              (config.ODDS_MIN_VALID, config.ODDS_MAX_1X2),
+    "Dupla Chance":     (config.ODDS_MIN_VALID, config.ODDS_MAX_DC),
+    "Gols O/U":         (config.ODDS_MIN_VALID, config.ODDS_MAX_OU),
+    "BTTS":             (config.ODDS_MIN_VALID, config.ODDS_MAX_BTTS),
+    "Escanteios O/U":   (config.ODDS_MIN_VALID, config.ODDS_MAX_CORNERS),
+    "Cartoes O/U":      (config.ODDS_MIN_VALID, config.ODDS_MAX_CARDS),
+    "Clean Sheet":      (config.ODDS_MIN_VALID, config.ODDS_MAX_CS),
+    "Vit. s/ Sofrer":   (config.ODDS_MIN_VALID, config.ODDS_MAX_WTN),
+    "Par/Impar":        (config.ODDS_MIN_VALID, config.ODDS_MAX_OE),
+    "1o Tempo":         (config.ODDS_MIN_VALID, config.ODDS_MAX_HT),
+    "Gols 1o Tempo":    (config.ODDS_MIN_VALID, config.ODDS_MAX_HT),
+    "Gols Casa O/U":    (config.ODDS_MIN_VALID, config.ODDS_MAX_HOME_AWAY_OU),
+    "Gols Fora O/U":    (config.ODDS_MIN_VALID, config.ODDS_MAX_HOME_AWAY_OU),
+    "Placar Exato":     (config.ODDS_MIN_VALID, config.ODDS_MAX_EXACT),
+    # Backward compatibility
+    "O/U 2.5":          (config.ODDS_MIN_VALID, config.ODDS_MAX_OU),
+    "Corners":          (config.ODDS_MIN_VALID, config.ODDS_MAX_CORNERS),
+    "Cartões":          (config.ODDS_MIN_VALID, config.ODDS_MAX_CARDS),
+}
+
+# ═══════════════════════════════════════════════════════
+# MAPEAMENTO COMPLETO DE MERCADOS (model_probs key → all_markets key → labels)
+# ═══════════════════════════════════════════════════════
+_ALL_MARKETS = {
+    "goals_ou": {
+        "label": "Gols O/U", "selections": {
+            "over_0.5": "Over 0.5 Gols", "under_0.5": "Under 0.5 Gols",
+            "over_1.5": "Over 1.5 Gols", "under_1.5": "Under 1.5 Gols",
+            "over_2.5": "Over 2.5 Gols", "under_2.5": "Under 2.5 Gols",
+            "over_3.5": "Over 3.5 Gols", "under_3.5": "Under 3.5 Gols",
+            "over_4.5": "Over 4.5 Gols", "under_4.5": "Under 4.5 Gols",
+            "over_5.5": "Over 5.5 Gols", "under_5.5": "Under 5.5 Gols",
+        }
+    },
+    "btts": {
+        "label": "BTTS", "selections": {
+            "yes": "Ambas Marcam Sim", "no": "Ambas Marcam Nao"
+        }
+    },
+    "home_goals_ou": {
+        "label": "Gols Casa O/U", "selections": {
+            "over_0.5": "Casa Over 0.5 Gols", "under_0.5": "Casa Under 0.5 Gols",
+            "over_1.5": "Casa Over 1.5 Gols", "under_1.5": "Casa Under 1.5 Gols",
+            "over_2.5": "Casa Over 2.5 Gols", "under_2.5": "Casa Under 2.5 Gols",
+            "over_3.5": "Casa Over 3.5 Gols", "under_3.5": "Casa Under 3.5 Gols",
+        }
+    },
+    "away_goals_ou": {
+        "label": "Gols Fora O/U", "selections": {
+            "over_0.5": "Fora Over 0.5 Gols", "under_0.5": "Fora Under 0.5 Gols",
+            "over_1.5": "Fora Over 1.5 Gols", "under_1.5": "Fora Under 1.5 Gols",
+            "over_2.5": "Fora Over 2.5 Gols", "under_2.5": "Fora Under 2.5 Gols",
+            "over_3.5": "Fora Over 3.5 Gols", "under_3.5": "Fora Under 3.5 Gols",
+        }
+    },
+    "cs_home": {
+        "label": "Clean Sheet", "selections": {
+            "yes": "Clean Sheet Casa Sim", "no": "Clean Sheet Casa Nao"
+        }
+    },
+    "cs_away": {
+        "label": "Clean Sheet", "selections": {
+            "yes": "Clean Sheet Fora Sim", "no": "Clean Sheet Fora Nao"
+        }
+    },
+    "wtn_home": {
+        "label": "Vit. s/ Sofrer", "selections": {
+            "yes": "Vit. s/ Sofrer Casa", "no": "Nao Vit. s/ Sofrer Casa"
+        }
+    },
+    "wtn_away": {
+        "label": "Vit. s/ Sofrer", "selections": {
+            "yes": "Vit. s/ Sofrer Fora", "no": "Nao Vit. s/ Sofrer Fora"
+        }
+    },
+    "odd_even": {
+        "label": "Par/Impar", "selections": {
+            "odd": "Gols Impar", "even": "Gols Par"
+        }
+    },
+    "ht_result": {
+        "label": "1o Tempo", "selections": {
+            "home": "Casa 1o Tempo", "draw": "Empate 1o Tempo", "away": "Fora 1o Tempo"
+        }
+    },
+    "ht_goals_ou": {
+        "label": "Gols 1o Tempo", "selections": {
+            "over_0.5": "Over 0.5 1T", "under_0.5": "Under 0.5 1T",
+            "over_1.5": "Over 1.5 1T", "under_1.5": "Under 1.5 1T",
+            "over_2.5": "Over 2.5 1T", "under_2.5": "Under 2.5 1T",
+        }
+    },
+    "corners_ou": {
+        "label": "Escanteios O/U", "selections": {
+            "over_7.5": "Over 7.5 Esc.", "under_7.5": "Under 7.5 Esc.",
+            "over_8.5": "Over 8.5 Esc.", "under_8.5": "Under 8.5 Esc.",
+            "over_9.5": "Over 9.5 Esc.", "under_9.5": "Under 9.5 Esc.",
+            "over_10.5": "Over 10.5 Esc.", "under_10.5": "Under 10.5 Esc.",
+            "over_11.5": "Over 11.5 Esc.", "under_11.5": "Under 11.5 Esc.",
+            "over_12.5": "Over 12.5 Esc.", "under_12.5": "Under 12.5 Esc.",
+        }
+    },
+    "cards_ou": {
+        "label": "Cartoes O/U", "selections": {
+            "over_2.5": "Over 2.5 Cart.", "under_2.5": "Under 2.5 Cart.",
+            "over_3.5": "Over 3.5 Cart.", "under_3.5": "Under 3.5 Cart.",
+            "over_4.5": "Over 4.5 Cart.", "under_4.5": "Under 4.5 Cart.",
+            "over_5.5": "Over 5.5 Cart.", "under_5.5": "Under 5.5 Cart.",
+            "over_6.5": "Over 6.5 Cart.", "under_6.5": "Under 6.5 Cart.",
+        }
+    },
+    "exact_score": {
+        "label": "Placar Exato", "selections": {
+            "1-0": "Exato 1-0", "0-0": "Exato 0-0", "1-1": "Exato 1-1",
+            "2-0": "Exato 2-0", "2-1": "Exato 2-1", "0-1": "Exato 0-1",
+            "0-2": "Exato 0-2", "1-2": "Exato 1-2", "2-2": "Exato 2-2",
+            "3-0": "Exato 3-0", "3-1": "Exato 3-1", "0-3": "Exato 0-3",
+            "1-3": "Exato 1-3", "3-2": "Exato 3-2", "2-3": "Exato 2-3",
+        }
+    },
+    "1x2": {
+        "label": "1x2", "selections": {
+            "home": "Vitoria Casa", "away": "Vitoria Fora"
+        }
+    },
+    "double_chance": {
+        "label": "Dupla Chance", "selections": {
+            "home/draw": "Casa ou Empate (1X)", "draw/away": "Fora ou Empate (X2)",
+            "home/away": "Casa ou Fora (12)"
+        }
+    },
 }
 
 
 def _is_odd_valid(odd: float, market: str) -> bool:
-    """Verifica se uma odd está dentro dos limites razoáveis para o mercado."""
-    min_v, max_v = _ODDS_LIMITS.get(market, (1.05, 25.0))
+    """Verifica se uma odd esta dentro dos limites razoaveis para o mercado."""
+    min_v, max_v = _ODDS_LIMITS.get(market, (1.05, config.ODDS_MAX_GENERIC))
     return min_v <= odd <= max_v
 
 
@@ -453,7 +578,11 @@ def _is_model_sane(model_prob: float, total_xg: float, market: str) -> bool:
 
     # xG total muito baixo ou muito alto (modelo sem dados)
     # Aplicar apenas para mercados baseados em gols
-    if market in ("1x2", "Dupla Chance", "O/U 2.5", "BTTS"):
+    goal_markets = ("1x2", "Dupla Chance", "O/U 2.5", "BTTS",
+                    "Gols O/U", "Gols Casa O/U", "Gols Fora O/U",
+                    "Clean Sheet", "Vit. s/ Sofrer", "Par/Impar",
+                    "1o Tempo", "Gols 1o Tempo", "Placar Exato")
+    if market in goal_markets:
         if total_xg < config.MIN_XG_TOTAL:
             return False
         if total_xg > config.MAX_XG_TOTAL:
@@ -761,115 +890,76 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 data_quality=match.data_quality_score,
             ))
 
-    # ── MERCADO ESCANTEIOS ──
-    corners_mu, corners_alpha, corners_probs = predict_corners(match)
-    corners_odds_list = [odds.over_95_corners, odds.under_95_corners]
-    corners_fair = devig_odds(corners_odds_list)
+    # ═══════════════════════════════════════════════════════════
+    # SCANNER GENÉRICO — TODOS OS MERCADOS (model_probs vs all_markets)
+    # ═══════════════════════════════════════════════════════════
+    model_probs = getattr(match, 'model_probs', {}) or {}
+    all_markets_odds = getattr(match.odds, 'all_markets', {}) or {}
 
-    model_over_corners = corners_probs.get("over_9.5", 0.5)
-    model_under_corners = corners_probs.get("under_9.5", 0.5)
+    if model_probs and all_markets_odds:
+        for market_key, market_cfg in _ALL_MARKETS.items():
+            # Pular 1x2 e double_chance (já tratados acima)
+            if market_key in ("1x2", "double_chance"):
+                continue
 
-    for label, model_p, market_o, implied_p in [
-        ("Over 9.5 Escanteios", model_over_corners, odds.over_95_corners, corners_fair[0]),
-        ("Under 9.5 Escanteios", model_under_corners, odds.under_95_corners, corners_fair[1]),
-    ]:
-        if not _is_odd_valid(market_o, "Corners"):
-            continue
-        if not _is_model_sane(model_p, total_xg, "Corners"):
-            continue
-        edge = calculate_edge(model_p, market_o)
-        if edge >= config.MAX_EDGE_SANE:
-            continue
-        if edge >= config.MIN_EDGE_THRESHOLD:
-            fair_odd = round(1.0 / max(0.01, model_p), 2)
-            kelly = fractional_kelly(model_p, market_o)
-            conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
+            market_label = market_cfg["label"]
+            market_odds_dict = all_markets_odds.get(market_key, {})
 
-            opportunities.append(ValueOpportunity(
-                match_id=match.match_id,
-                league_name=match.league_name,
-                league_country=match.league_country,
-                match_date=match.match_date,
-                match_time=match.match_time,
-                home_team=match.home_team.team_name,
-                away_team=match.away_team.team_name,
-                market="Corners",
-                selection=label,
-                market_odd=market_o,
-                fair_odd=fair_odd,
-                model_prob=round(model_p, 4),
-                implied_prob=round(implied_p, 4),
-                edge=round(edge, 4),
-                edge_pct=f"+{edge*100:.1f}%",
-                kelly_fraction=round(kelly, 4),
-                kelly_bet_pct=f"{kelly*100:.2f}%",
-                confidence=conf,
-                reasoning=f"Escanteios esperados: {corners_mu:.1f} (NB α={corners_alpha:.2f})",
-                home_xg=match.model_home_xg,
-                away_xg=match.model_away_xg,
-                weather_note=match.weather.description,
-                fatigue_note="",
-                urgency_home=match.league_urgency_home,
-                urgency_away=match.league_urgency_away,
-                bookmaker=match.odds.bookmaker,
-                data_quality=match.data_quality_score,
-            ))
+            for sel_key, sel_label in market_cfg["selections"].items():
+                # Probabilidade do modelo
+                prob_key = f"{market_key}__{sel_key}"
+                model_p = model_probs.get(prob_key, 0)
+                if model_p <= 0.005 or model_p >= 0.995:
+                    continue
 
-    # ── MERCADO CARTÕES ──
-    cards_mu, cards_alpha, cards_probs = predict_cards(match)
-    cards_odds_list = [odds.over_35_cards, odds.under_35_cards]
-    cards_fair = devig_odds(cards_odds_list)
+                # Odd do mercado
+                market_o = market_odds_dict.get(sel_key, 0)
+                if market_o <= 1.0:
+                    continue
+                if not _is_odd_valid(market_o, market_label):
+                    continue
+                if not _is_model_sane(model_p, total_xg, market_label):
+                    continue
 
-    model_over_cards = cards_probs.get("over_3.5", 0.5)
-    model_under_cards = cards_probs.get("under_3.5", 0.5)
+                edge = calculate_edge(model_p, market_o)
+                if edge >= config.MAX_EDGE_SANE:
+                    continue
+                if edge >= config.MIN_EDGE_THRESHOLD:
+                    fair_odd = round(1.0 / max(0.01, model_p), 2)
+                    implied_p = 1.0 / market_o
+                    kelly = fractional_kelly(model_p, market_o)
+                    conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
+                    reasoning = generate_reasoning(match, f"{market_label} - {sel_label}", edge, model_p)
 
-    for label, model_p, market_o, implied_p in [
-        ("Over 3.5 Cartões", model_over_cards, odds.over_35_cards, cards_fair[0]),
-        ("Under 3.5 Cartões", model_under_cards, odds.under_35_cards, cards_fair[1]),
-    ]:
-        if not _is_odd_valid(market_o, "Cartões"):
-            continue
-        if not _is_model_sane(model_p, total_xg, "Cartões"):
-            continue
-        edge = calculate_edge(model_p, market_o)
-        if edge >= config.MAX_EDGE_SANE:
-            continue
-        if edge >= config.MIN_EDGE_THRESHOLD:
-            fair_odd = round(1.0 / max(0.01, model_p), 2)
-            kelly = fractional_kelly(model_p, market_o)
-            conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
-
-            opportunities.append(ValueOpportunity(
-                match_id=match.match_id,
-                league_name=match.league_name,
-                league_country=match.league_country,
-                match_date=match.match_date,
-                match_time=match.match_time,
-                home_team=match.home_team.team_name,
-                away_team=match.away_team.team_name,
-                market="Cartões",
-                selection=label,
-                market_odd=market_o,
-                fair_odd=fair_odd,
-                model_prob=round(model_p, 4),
-                implied_prob=round(implied_p, 4),
-                edge=round(edge, 4),
-                edge_pct=f"+{edge*100:.1f}%",
-                kelly_fraction=round(kelly, 4),
-                kelly_bet_pct=f"{kelly*100:.2f}%",
-                confidence=conf,
-                reasoning=(f"Cartões esperados: {cards_mu:.1f} | "
-                           f"Árbitro: {match.referee.name} "
-                           f"({match.referee.cards_per_game_avg:.1f} cartões/jogo)"),
-                home_xg=match.model_home_xg,
-                away_xg=match.model_away_xg,
-                weather_note=match.weather.description,
-                fatigue_note="",
-                urgency_home=match.league_urgency_home,
-                urgency_away=match.league_urgency_away,
-                bookmaker=match.odds.bookmaker,
-                data_quality=match.data_quality_score,
-            ))
+                    opportunities.append(ValueOpportunity(
+                        match_id=match.match_id,
+                        league_name=match.league_name,
+                        league_country=match.league_country,
+                        match_date=match.match_date,
+                        match_time=match.match_time,
+                        home_team=match.home_team.team_name,
+                        away_team=match.away_team.team_name,
+                        market=market_label,
+                        selection=sel_label,
+                        market_odd=market_o,
+                        fair_odd=fair_odd,
+                        model_prob=round(model_p, 4),
+                        implied_prob=round(implied_p, 4),
+                        edge=round(edge, 4),
+                        edge_pct=f"+{edge*100:.1f}%",
+                        kelly_fraction=round(kelly, 4),
+                        kelly_bet_pct=f"{kelly*100:.2f}%",
+                        confidence=conf,
+                        reasoning=reasoning,
+                        home_xg=match.model_home_xg,
+                        away_xg=match.model_away_xg,
+                        weather_note=match.weather.description,
+                        fatigue_note="",
+                        urgency_home=match.league_urgency_home,
+                        urgency_away=match.league_urgency_away,
+                        bookmaker=match.odds.bookmaker,
+                        data_quality=match.data_quality_score,
+                    ))
 
     return opportunities
 

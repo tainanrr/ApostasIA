@@ -52,11 +52,18 @@ MAX_XG_TOTAL = 15.0                # Ampliado para não filtrar nada
 # ═══════════════════════════════════════════════════════
 ODDS_MIN_VALID = 1.05              # Odd mínima válida (abaixo = suspeita)
 ODDS_MAX_1X2 = 25.0               # Odd máxima válida para 1x2
-ODDS_MAX_DC = 5.0                  # Odd máxima válida para Dupla Chance (1X, X2)
-ODDS_MAX_OU = 6.0                  # Odd máxima válida para Over/Under 2.5
+ODDS_MAX_DC = 5.0                  # Odd máxima válida para Dupla Chance
+ODDS_MAX_OU = 15.0                 # Odd máxima válida para Over/Under Gols
 ODDS_MAX_BTTS = 4.0                # Odd máxima válida para BTTS
-ODDS_MAX_CORNERS = 5.0             # Odd máxima válida para Corners
-ODDS_MAX_CARDS = 5.0               # Odd máxima válida para Cards
+ODDS_MAX_CORNERS = 8.0             # Odd máxima válida para Corners
+ODDS_MAX_CARDS = 8.0               # Odd máxima válida para Cards
+ODDS_MAX_CS = 6.0                  # Odd máxima Clean Sheet
+ODDS_MAX_WTN = 15.0                # Odd máxima Win to Nil
+ODDS_MAX_OE = 3.0                  # Odd máxima Odd/Even
+ODDS_MAX_HT = 15.0                 # Odd máxima mercados HT
+ODDS_MAX_HOME_AWAY_OU = 12.0       # Odd máxima Gols Time O/U
+ODDS_MAX_EXACT = 200.0             # Odd máxima Exact Score
+ODDS_MAX_GENERIC = 25.0            # Odd máxima genérica
 
 # ═══════════════════════════════════════════════════════
 # AJUSTES CONTEXTUAIS

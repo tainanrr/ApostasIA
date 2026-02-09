@@ -210,6 +210,8 @@ class MarketOdds:
     asian_handicap_home: float = 1.90
     asian_handicap_away: float = 1.90
     bookmaker: str = "N/D"
+    # ── Todos os mercados da API (dict flexível) ──
+    all_markets: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -244,6 +246,8 @@ class MatchAnalysis:
     model_corners_expected: float = 0.0
     model_cards_expected: float = 0.0
     score_matrix: Optional[np.ndarray] = None
+    # ── Probabilidades expandidas (TODOS os mercados) ──
+    model_probs: dict = field(default_factory=dict)
     # ── Qualidade dos dados ──
     has_real_odds: bool = False             # True = odds vieram de bookmaker real (API)
     has_real_standings: bool = False        # True = pelo menos 1 time tem standings reais
@@ -620,6 +624,7 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
     odds = MarketOdds(bookmaker=bk_name)
 
     for bet in bets:
+        bet_id = bet.get("id", 0)
         bet_name = bet.get("name", "").lower()
         values = bet.get("values", [])
 
@@ -627,30 +632,122 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
         for v in values:
             val_map[str(v.get("value", "")).lower()] = float(v.get("odd", 0))
 
-        # Match Winner / 1x2
-        if bet.get("id") == 1 or "match winner" in bet_name:
+        # ═══ 1X2 — Match Winner (bet id 1) ═══
+        if bet_id == 1 or "match winner" in bet_name:
             odds.home_win = val_map.get("home", odds.home_win)
             odds.draw = val_map.get("draw", odds.draw)
             odds.away_win = val_map.get("away", odds.away_win)
+            odds.all_markets["1x2"] = {
+                "home": val_map.get("home", 0), "draw": val_map.get("draw", 0),
+                "away": val_map.get("away", 0)
+            }
 
-        # Over/Under 2.5
-        elif bet.get("id") == 5 or "goals over" in bet_name or "over/under" in bet_name:
+        # ═══ Goals Over/Under — TODAS as linhas (bet id 5) ═══
+        elif bet_id == 5 or ("goals" in bet_name and "over" in bet_name) or \
+             ("over/under" in bet_name and "half" not in bet_name and "team" not in bet_name):
             odds.over_25 = val_map.get("over 2.5", odds.over_25)
             odds.under_25 = val_map.get("under 2.5", odds.under_25)
+            g_ou = {}
+            for k, v in val_map.items():
+                g_ou[k.replace(" ", "_")] = v
+            odds.all_markets["goals_ou"] = g_ou
 
-        # Both Teams Score
-        elif bet.get("id") == 8 or "both teams" in bet_name:
+        # ═══ First Half Goals O/U (bet id 6 / 25) ═══
+        elif bet_id in (6, 25) or ("first half" in bet_name and "over" in bet_name) or \
+             ("1st half" in bet_name and "over" in bet_name):
+            ht_ou = {}
+            for k, v in val_map.items():
+                ht_ou[k.replace(" ", "_")] = v
+            odds.all_markets["ht_goals_ou"] = ht_ou
+
+        # ═══ Second Half Goals O/U (bet id 7 / 26) ═══
+        elif bet_id in (7, 26) or ("second half" in bet_name and "over" in bet_name) or \
+             ("2nd half" in bet_name and "over" in bet_name):
+            h2_ou = {}
+            for k, v in val_map.items():
+                h2_ou[k.replace(" ", "_")] = v
+            odds.all_markets["h2_goals_ou"] = h2_ou
+
+        # ═══ BTTS — Both Teams Score (bet id 8) ═══
+        elif bet_id == 8 or "both teams" in bet_name:
             odds.btts_yes = val_map.get("yes", odds.btts_yes)
             odds.btts_no = val_map.get("no", odds.btts_no)
+            odds.all_markets["btts"] = {"yes": val_map.get("yes", 0), "no": val_map.get("no", 0)}
 
-        # Double Chance (1X, X2, 12)
-        elif bet.get("id") == 12 or "double chance" in bet_name:
+        # ═══ Exact Score (bet id 9) ═══
+        elif bet_id == 9 or "exact score" in bet_name:
+            odds.all_markets["exact_score"] = dict(val_map)
+
+        # ═══ HT/FT (bet id 11) ═══
+        elif bet_id == 11 or ("half time" in bet_name and "full time" in bet_name):
+            odds.all_markets["ht_ft"] = dict(val_map)
+
+        # ═══ Double Chance (bet id 12) ═══
+        elif bet_id == 12 or "double chance" in bet_name:
             odds.double_chance_1x = val_map.get("home/draw", odds.double_chance_1x)
             odds.double_chance_x2 = val_map.get("draw/away", odds.double_chance_x2)
             odds.double_chance_12 = val_map.get("home/away", odds.double_chance_12)
+            odds.all_markets["double_chance"] = dict(val_map)
 
-        # Asian Handicap
-        elif "asian" in bet_name or "handicap" in bet_name:
+        # ═══ First Half Winner (bet id 13) ═══
+        elif bet_id == 13 or "first half winner" in bet_name or "1st half" in bet_name:
+            odds.all_markets["ht_result"] = {
+                "home": val_map.get("home", 0), "draw": val_map.get("draw", 0),
+                "away": val_map.get("away", 0)
+            }
+
+        # ═══ Home Team Goals O/U (bet id 14 / 63) ═══
+        elif bet_id in (14, 63) or ("home" in bet_name and "goal" in bet_name and "over" in bet_name):
+            hg_ou = {}
+            for k, v in val_map.items():
+                hg_ou[k.replace(" ", "_")] = v
+            odds.all_markets["home_goals_ou"] = hg_ou
+
+        # ═══ Away Team Goals O/U (bet id 15 / 64) ═══
+        elif bet_id in (15, 64) or ("away" in bet_name and "goal" in bet_name and "over" in bet_name):
+            ag_ou = {}
+            for k, v in val_map.items():
+                ag_ou[k.replace(" ", "_")] = v
+            odds.all_markets["away_goals_ou"] = ag_ou
+
+        # ═══ Odd/Even (bet id 16) ═══
+        elif bet_id == 16 or "odd/even" in bet_name:
+            odds.all_markets["odd_even"] = {"odd": val_map.get("odd", 0), "even": val_map.get("even", 0)}
+
+        # ═══ Clean Sheet Home (bet id 17) ═══
+        elif bet_id == 17 or ("clean sheet" in bet_name and "home" in bet_name):
+            odds.all_markets["cs_home"] = {"yes": val_map.get("yes", 0), "no": val_map.get("no", 0)}
+
+        # ═══ Clean Sheet Away (bet id 18) ═══
+        elif bet_id == 18 or ("clean sheet" in bet_name and "away" in bet_name):
+            odds.all_markets["cs_away"] = {"yes": val_map.get("yes", 0), "no": val_map.get("no", 0)}
+
+        # ═══ Win to Nil Home (bet id 19) ═══
+        elif bet_id == 19 or ("win to nil" in bet_name and "home" in bet_name):
+            odds.all_markets["wtn_home"] = {"yes": val_map.get("yes", 0), "no": val_map.get("no", 0)}
+
+        # ═══ Win to Nil Away (bet id 20) ═══
+        elif bet_id == 20 or ("win to nil" in bet_name and "away" in bet_name):
+            odds.all_markets["wtn_away"] = {"yes": val_map.get("yes", 0), "no": val_map.get("no", 0)}
+
+        # ═══ Win Both Halves (bet id 22) ═══
+        elif bet_id == 22 or "win both halves" in bet_name:
+            odds.all_markets["win_both_halves"] = dict(val_map)
+
+        # ═══ Double Chance First Half (bet id 23) ═══
+        elif bet_id == 23 or ("double chance" in bet_name and "half" in bet_name):
+            odds.all_markets["ht_double_chance"] = dict(val_map)
+
+        # ═══ Both Halves Over (bet id 27) / To Score In Both Halves ═══
+        elif bet_id == 27 or "both halves" in bet_name:
+            odds.all_markets["both_halves_score"] = dict(val_map)
+
+        # ═══ Result / Total Goals (bet id 28) ═══
+        elif bet_id == 28 or ("result" in bet_name and "total" in bet_name):
+            odds.all_markets["result_total"] = dict(val_map)
+
+        # ═══ Asian Handicap (bet id 4) ═══
+        elif bet_id == 4 or "asian" in bet_name or "handicap" in bet_name:
             for v in values:
                 val_str = str(v.get("value", ""))
                 odd_v = float(v.get("odd", 0))
@@ -658,6 +755,32 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
                     odds.asian_handicap_home = odd_v
                 elif "away" in val_str.lower():
                     odds.asian_handicap_away = odd_v
+            odds.all_markets["asian_handicap"] = dict(val_map)
+
+        # ═══ Corners (varios bet ids) ═══
+        elif "corner" in bet_name:
+            c_ou = {}
+            for k, v in val_map.items():
+                c_ou[k.replace(" ", "_")] = v
+            odds.all_markets["corners_ou"] = c_ou
+            # Compatibilidade
+            odds.over_95_corners = val_map.get("over 9.5", odds.over_95_corners)
+            odds.under_95_corners = val_map.get("under 9.5", odds.under_95_corners)
+
+        # ═══ Cards (varios bet ids) ═══
+        elif "card" in bet_name:
+            k_ou = {}
+            for k, v in val_map.items():
+                k_ou[k.replace(" ", "_")] = v
+            odds.all_markets["cards_ou"] = k_ou
+            odds.over_35_cards = val_map.get("over 3.5", odds.over_35_cards)
+            odds.under_35_cards = val_map.get("under 3.5", odds.under_35_cards)
+
+        # ═══ Catch-all: qualquer outro mercado ═══
+        else:
+            if val_map and bet_name:
+                key = bet_name.replace(" ", "_").replace("/", "_")[:40]
+                odds.all_markets[key] = dict(val_map)
 
     return odds
 
@@ -1069,7 +1192,82 @@ def _compute_ev_analysis(all_matches: list, league_matches: list) -> dict:
             "total": _ou_lines(k_total, [2.5, 3.5, 4.5, 5.5, 6.5]),
         }
 
-        return {"sample": n, "goals": goals, "shots": shots, "corners": corners, "cards": cards}
+        # ── HT (1o Tempo) ──
+        ht_total = [m["ht_total"] for m in matches if m.get("ht_total") is not None]
+        ht_team = [(m["ht_home"] if m.get("is_home") else m["ht_away"])
+                    for m in matches if m.get("ht_home") is not None]
+        ht_opp = [(m["ht_away"] if m.get("is_home") else m["ht_home"])
+                   for m in matches if m.get("ht_away") is not None]
+
+        ht = {
+            "total": _ou_lines(ht_total, [0.5, 1.5, 2.5]),
+            "team": _ou_lines(ht_team, [0.5, 1.5]),
+            "opp": _ou_lines(ht_opp, [0.5, 1.5]),
+        }
+        # HT Result
+        ht_home_wins = sum(1 for m in matches if m.get("ht_home") is not None
+                          and ((m["is_home"] and m["ht_home"] > m["ht_away"]) or
+                               (not m["is_home"] and m["ht_away"] > m["ht_home"])))
+        ht_draws = sum(1 for m in matches if m.get("ht_home") is not None
+                       and m["ht_home"] == m["ht_away"])
+        ht_with_data = sum(1 for m in matches if m.get("ht_home") is not None)
+        if ht_with_data > 0:
+            ht["ht_win_pct"] = round(ht_home_wins / ht_with_data * 100, 1)
+            ht["ht_draw_pct"] = round(ht_draws / ht_with_data * 100, 1)
+            ht["ht_loss_pct"] = round((ht_with_data - ht_home_wins - ht_draws) / ht_with_data * 100, 1)
+            ht["ht_sample"] = ht_with_data
+
+        # ── Clean Sheet & Win to Nil ──
+        cs_pct = round(cs_n / n * 100, 1) if n else 0
+        cs_fair = round(n / cs_n, 2) if cs_n > 0 else 99.99
+        fts_fair = round(n / fts_n, 2) if fts_n > 0 else 99.99
+        wtn_n = sum(1 for t, o in zip(team_goals, opp_goals) if t > 0 and o == 0)
+        wtn_pct = round(wtn_n / n * 100, 1) if n else 0
+        wtn_fair = round(n / wtn_n, 2) if wtn_n > 0 else 99.99
+
+        specials = {
+            "cs_pct": cs_pct, "cs_fair": cs_fair, "cs_count": cs_n,
+            "fts_pct": round(fts_n / n * 100, 1) if n else 0, "fts_fair": fts_fair,
+            "wtn_pct": wtn_pct, "wtn_fair": wtn_fair, "wtn_count": wtn_n,
+            "btts_pct": goals["btts_pct"], "btts_fair": goals["btts_fair"],
+        }
+
+        # ── Odd/Even ──
+        odd_n = sum(1 for tg in total_goals if tg % 2 == 1)
+        even_n = n - odd_n
+        specials["odd_pct"] = round(odd_n / n * 100, 1) if n else 0
+        specials["even_pct"] = round(even_n / n * 100, 1) if n else 0
+        specials["odd_fair"] = round(n / odd_n, 2) if odd_n > 0 else 99.99
+        specials["even_fair"] = round(n / even_n, 2) if even_n > 0 else 99.99
+
+        # ── Posse, xG, Passes ──
+        poss_vals = [float(m["stats"]["possession"]) for m in matches
+                     if m.get("stats", {}).get("possession") is not None]
+        xg_vals = [float(m["stats"]["expected_goals"]) for m in matches
+                   if m.get("stats", {}).get("expected_goals") is not None]
+        pass_pct = [float(m["stats"]["passes_pct"]) for m in matches
+                    if m.get("stats", {}).get("passes_pct") is not None]
+        offsides = [int(m["stats"]["offsides"]) for m in matches
+                    if m.get("stats", {}).get("offsides") is not None]
+        fouls_team = [int(m["stats"]["fouls"]) for m in matches
+                      if m.get("stats", {}).get("fouls") is not None]
+        gk_saves = [int(m["stats"]["gk_saves"]) for m in matches
+                    if m.get("stats", {}).get("gk_saves") is not None]
+
+        advanced = {
+            "possession_avg": round(sum(poss_vals) / len(poss_vals), 1) if poss_vals else None,
+            "xg_avg": round(sum(xg_vals) / len(xg_vals), 2) if xg_vals else None,
+            "pass_pct_avg": round(sum(pass_pct) / len(pass_pct), 1) if pass_pct else None,
+            "offsides_avg": round(sum(offsides) / len(offsides), 1) if offsides else None,
+            "fouls_avg": round(sum(fouls_team) / len(fouls_team), 1) if fouls_team else None,
+            "gk_saves_avg": round(sum(gk_saves) / len(gk_saves), 1) if gk_saves else None,
+        }
+
+        return {
+            "sample": n, "goals": goals, "shots": shots,
+            "corners": corners, "cards": cards, "ht": ht,
+            "specials": specials, "advanced": advanced
+        }
 
     # ── Analise de Jogadores ──
     player_map = {}
@@ -1262,6 +1460,11 @@ def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> d
         score_home = goals.get("home", 0) or 0
         score_away = goals.get("away", 0) or 0
 
+        # HT scores
+        ht = score.get("halftime", {}) or {}
+        ht_home = ht.get("home")
+        ht_away = ht.get("away")
+
         # Resultado do time
         my_goals = score_home if is_home else score_away
         opp_goals = score_away if is_home else score_home
@@ -1290,6 +1493,9 @@ def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> d
             "opponent": opponent_name,
             "opponent_id": opponent_id,
             "total_goals": score_home + score_away,
+            "ht_home": ht_home,
+            "ht_away": ht_away,
+            "ht_total": (ht_home or 0) + (ht_away or 0) if ht_home is not None else None,
             # Odds e lineup serão preenchidos abaixo
             "odds_home": None,
             "odds_draw": None,

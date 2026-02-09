@@ -491,13 +491,110 @@ def run_full_model(match: MatchAnalysis) -> MatchAnalysis:
         match.model_prob_away /= total_1x2
 
     # 5. Escanteios (Binomial Negativa)
-    corners_mu, _, _ = predict_corners(match)
+    corners_mu, corners_alpha, corners_probs = predict_corners(match)
     match.model_corners_expected = round(corners_mu, 2)
 
     # 6. Cartões (Binomial Negativa)
-    cards_mu, _, _ = predict_cards(match)
+    cards_mu, cards_alpha, cards_probs = predict_cards(match)
     match.model_cards_expected = round(cards_mu, 2)
 
+    # ═══════════════════════════════════════════════════════
+    # 7. PROBABILIDADES EXPANDIDAS — TODOS OS MERCADOS
+    # ═══════════════════════════════════════════════════════
+    M = matrix
+    max_g = M.shape[0]
+    probs = {}
+
+    # ── Total Goals Over/Under (TODAS as linhas) ──
+    for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
+        p_over = float(sum(M[i][j] for i in range(max_g) for j in range(max_g) if i + j > line))
+        probs[f"goals_ou__over_{line}"] = round(p_over, 4)
+        probs[f"goals_ou__under_{line}"] = round(1 - p_over, 4)
+
+    # ── BTTS ──
+    p_btts_y = float(sum(M[i][j] for i in range(1, max_g) for j in range(1, max_g)))
+    probs["btts__yes"] = round(p_btts_y, 4)
+    probs["btts__no"] = round(1 - p_btts_y, 4)
+
+    # ── Home Goals Over/Under ──
+    for line in [0.5, 1.5, 2.5, 3.5]:
+        p_over = float(sum(M[i][j] for i in range(int(line) + 1, max_g) for j in range(max_g)))
+        probs[f"home_goals_ou__over_{line}"] = round(p_over, 4)
+        probs[f"home_goals_ou__under_{line}"] = round(1 - p_over, 4)
+
+    # ── Away Goals Over/Under ──
+    for line in [0.5, 1.5, 2.5, 3.5]:
+        p_over = float(sum(M[i][j] for i in range(max_g) for j in range(int(line) + 1, max_g)))
+        probs[f"away_goals_ou__over_{line}"] = round(p_over, 4)
+        probs[f"away_goals_ou__under_{line}"] = round(1 - p_over, 4)
+
+    # ── Clean Sheet (adversario marca 0) ──
+    probs["cs_home__yes"] = round(float(sum(M[i][0] for i in range(max_g))), 4)
+    probs["cs_home__no"] = round(1 - probs["cs_home__yes"], 4)
+    probs["cs_away__yes"] = round(float(sum(M[0][j] for j in range(max_g))), 4)
+    probs["cs_away__no"] = round(1 - probs["cs_away__yes"], 4)
+
+    # ── Win to Nil (vencer sem sofrer gols) ──
+    probs["wtn_home__yes"] = round(float(sum(M[i][0] for i in range(1, max_g))), 4)
+    probs["wtn_home__no"] = round(1 - probs["wtn_home__yes"], 4)
+    probs["wtn_away__yes"] = round(float(sum(M[0][j] for j in range(1, max_g))), 4)
+    probs["wtn_away__no"] = round(1 - probs["wtn_away__yes"], 4)
+
+    # ── Odd/Even Goals ──
+    p_odd = float(sum(M[i][j] for i in range(max_g) for j in range(max_g) if (i + j) % 2 == 1))
+    probs["odd_even__odd"] = round(p_odd, 4)
+    probs["odd_even__even"] = round(1 - p_odd, 4)
+
+    # ── 1X2 (para all_markets compatibility) ──
+    probs["1x2__home"] = match.model_prob_home
+    probs["1x2__draw"] = match.model_prob_draw
+    probs["1x2__away"] = match.model_prob_away
+
+    # ── Double Chance ──
+    probs["double_chance__home/draw"] = round(match.model_prob_home + match.model_prob_draw, 4)
+    probs["double_chance__draw/away"] = round(match.model_prob_away + match.model_prob_draw, 4)
+    probs["double_chance__home/away"] = round(match.model_prob_home + match.model_prob_away, 4)
+
+    # ── Exact Score (top 15) ──
+    exact = []
+    for i in range(min(6, max_g)):
+        for j in range(min(6, max_g)):
+            exact.append((f"{i}-{j}", round(float(M[i][j]), 4)))
+    exact.sort(key=lambda x: x[1], reverse=True)
+    for s, p in exact[:15]:
+        probs[f"exact_score__{s}"] = p
+
+    # ── HT Model (empirical: ~42% of FT goals at halftime) ──
+    from scipy.stats import poisson as poisson_rv
+    ht_factor = 0.42
+    ht_hxg = max(0.01, lambda_ * ht_factor)
+    ht_axg = max(0.01, mu * ht_factor)
+    ht_max = 5
+    ht_M = np.zeros((ht_max + 1, ht_max + 1))
+    for i in range(ht_max + 1):
+        for j in range(ht_max + 1):
+            ht_M[i][j] = poisson_rv.pmf(i, ht_hxg) * poisson_rv.pmf(j, ht_axg)
+
+    # HT Result
+    probs["ht_result__home"] = round(float(sum(ht_M[i][j] for i in range(ht_max + 1) for j in range(ht_max + 1) if i > j)), 4)
+    probs["ht_result__draw"] = round(float(sum(ht_M[i][j] for i in range(ht_max + 1) for j in range(ht_max + 1) if i == j)), 4)
+    probs["ht_result__away"] = round(float(sum(ht_M[i][j] for i in range(ht_max + 1) for j in range(ht_max + 1) if i < j)), 4)
+
+    # HT Goals O/U
+    for line in [0.5, 1.5, 2.5]:
+        p_over = float(sum(ht_M[i][j] for i in range(ht_max + 1) for j in range(ht_max + 1) if i + j > line))
+        probs[f"ht_goals_ou__over_{line}"] = round(p_over, 4)
+        probs[f"ht_goals_ou__under_{line}"] = round(1 - p_over, 4)
+
+    # ── Corners O/U (Binomial Negativa — todas as linhas) ──
+    for k, v in corners_probs.items():
+        probs[f"corners_ou__{k}"] = v
+
+    # ── Cards O/U (Binomial Negativa — todas as linhas) ──
+    for k, v in cards_probs.items():
+        probs[f"cards_ou__{k}"] = v
+
+    match.model_probs = probs
     return match
 
 
