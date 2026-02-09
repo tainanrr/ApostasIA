@@ -383,11 +383,14 @@ def serialize_match(m: MatchAnalysis) -> dict:
     a = m.away_team
     return {
         "match_id": m.match_id,
+        "league_id": m.league_id,
         "league_name": m.league_name,
         "league_country": m.league_country,
         "match_date": m.match_date,
         "match_time": m.match_time,
         "home_team": h.team_name,
+        "home_team_id": h.team_id,
+        "away_team_id": a.team_id,
         "away_team": a.team_name,
         "home_xg": round(m.model_home_xg, 2),
         "away_xg": round(m.model_away_xg, 2),
@@ -562,6 +565,28 @@ def api_leagues():
     if not _cache["matches"]:
         return jsonify([])
     return jsonify(_build_leagues_list())
+
+
+@app.route("/api/team-history/<int:team_id>")
+def api_team_history(team_id):
+    """Busca histórico completo de um time (sob demanda).
+    Usa cache local para não gastar créditos desnecessariamente.
+    Query params: league_id (opcional), last (default 10)"""
+    from flask import request as flask_request
+    from data_ingestion import fetch_team_history
+
+    league_id = flask_request.args.get("league_id", None, type=int)
+    last = flask_request.args.get("last", 10, type=int)
+    last = min(last, 15)  # Limitar a 15 para economia
+
+    try:
+        history = fetch_team_history(team_id, league_id=league_id, last=last)
+        return jsonify(history)
+    except Exception as e:
+        print(f"[API] Erro ao buscar historico do time {team_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e), "team_id": team_id, "all_matches": [], "league_matches": []}), 500
 
 
 @app.route("/api/history")

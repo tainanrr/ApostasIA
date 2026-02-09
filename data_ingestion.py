@@ -6,12 +6,16 @@ Engine de Análise Preditiva - Camada Sensorial
 Suporta:
   - Modo Real: API-Football (v3) + OpenWeatherMap
   - Modo Demo: Dados sintéticos realistas (fallback)
+  - Cache local de respostas da API (evita gastar créditos em re-execuções)
 ═══════════════════════════════════════════════════════════════════════
 """
 
 import random
 import math
 import time
+import json
+import os
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
@@ -20,6 +24,90 @@ import numpy as np
 import requests
 
 import config
+
+
+# ═══════════════════════════════════════════════════════
+# CACHE LOCAL DE RESPOSTAS DA API
+# Salva TODAS as respostas para não gastar créditos em
+# re-execuções. TTL por tipo de endpoint.
+# ═══════════════════════════════════════════════════════
+
+_API_CACHE_DIR = os.path.join(os.path.dirname(__file__), "_api_cache")
+os.makedirs(_API_CACHE_DIR, exist_ok=True)
+
+# TTL em horas por tipo de endpoint
+_CACHE_TTL_HOURS = {
+    "fixtures":    3,     # fixtures mudam com frequência
+    "standings":   12,    # standings mudam 1x por dia
+    "odds":        4,     # odds mudam moderadamente
+    "injuries":    6,     # lesões mudam moderadamente
+    "lineups":     720,   # dados históricos, não mudam (30 dias)
+    "statistics":  720,   # dados históricos, não mudam (30 dias)
+    "status":      1,     # status da conta, check rápido
+}
+
+
+def _cache_key(endpoint: str, params: dict) -> str:
+    """Gera chave única para cache baseada em endpoint + params."""
+    params_str = json.dumps(params, sort_keys=True)
+    h = hashlib.md5(f"{endpoint}_{params_str}".encode()).hexdigest()[:12]
+    return f"{endpoint}_{h}"
+
+
+def _get_cached_response(endpoint: str, params: dict) -> dict | None:
+    """Retorna resposta cacheada se existir e estiver dentro do TTL."""
+    key = _cache_key(endpoint, params)
+    filepath = os.path.join(_API_CACHE_DIR, f"{key}.json")
+
+    if not os.path.exists(filepath):
+        return None
+
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            cached = json.load(f)
+
+        # Verificar TTL
+        cached_at = datetime.fromisoformat(cached.get("_cached_at", "2000-01-01"))
+        ttl_hours = _CACHE_TTL_HOURS.get(endpoint, 4)
+        age_hours = (datetime.now() - cached_at).total_seconds() / 3600
+
+        if age_hours < ttl_hours:
+            return cached.get("data", {})
+        else:
+            # Cache expirado
+            return None
+    except Exception:
+        return None
+
+
+def _save_to_cache(endpoint: str, params: dict, data: dict):
+    """Salva resposta da API no cache local."""
+    key = _cache_key(endpoint, params)
+    filepath = os.path.join(_API_CACHE_DIR, f"{key}.json")
+
+    try:
+        cached = {
+            "_cached_at": datetime.now().isoformat(),
+            "_endpoint": endpoint,
+            "_params": params,
+            "data": data,
+        }
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(cached, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"    [CACHE] Erro ao salvar: {e}")
+
+
+def get_api_cache_stats() -> dict:
+    """Retorna estatísticas do cache local."""
+    if not os.path.exists(_API_CACHE_DIR):
+        return {"total_files": 0, "total_size_mb": 0}
+    files = [f for f in os.listdir(_API_CACHE_DIR) if f.endswith(".json")]
+    total_size = sum(os.path.getsize(os.path.join(_API_CACHE_DIR, f)) for f in files)
+    return {
+        "total_files": len(files),
+        "total_size_mb": round(total_size / (1024 * 1024), 2),
+    }
 
 
 # ═══════════════════════════════════════════════════════
@@ -141,9 +229,29 @@ class MatchAnalysis:
 _api_call_count = 0
 
 
+_api_cache_hits = 0
+_api_cache_misses = 0
+
+
 def _api_football_request(endpoint: str, params: dict) -> dict:
-    """Chamada genérica com rate-limiting à API-Football v3."""
-    global _api_call_count
+    """Chamada genérica com rate-limiting e CACHE à API-Football v3.
+    Verifica cache local antes de fazer chamada real."""
+    global _api_call_count, _api_cache_hits, _api_cache_misses
+
+    # ── VERIFICAR CACHE PRIMEIRO ──
+    # (não cachear "status" pois é sempre necessário em tempo real)
+    use_cache = endpoint != "status"
+    if use_cache:
+        cached = _get_cached_response(endpoint, params)
+        if cached is not None:
+            _api_cache_hits += 1
+            # Log a cada 50 hits de cache para não poluir
+            if _api_cache_hits % 50 == 1 or _api_cache_hits <= 5:
+                print(f"    [CACHE] {endpoint}({params}) -> HIT (economia de 1 request)")
+            return cached
+
+    _api_cache_misses += 1
+    # ── CHAMADA REAL À API ──
     url = f"https://{config.API_FOOTBALL_HOST}/{endpoint}"
     headers = {"x-apisports-key": config.API_FOOTBALL_KEY}
 
@@ -154,10 +262,10 @@ def _api_football_request(endpoint: str, params: dict) -> dict:
         try:
             resp = requests.get(url, headers=headers, params=params, timeout=30)
             remaining = resp.headers.get("x-ratelimit-requests-remaining", "?")
-            print(f"    [API] {endpoint}({params}) → {resp.status_code} | restantes={remaining}")
+            print(f"    [API] {endpoint}({params}) -> {resp.status_code} | restantes={remaining}")
 
             if resp.status_code == 429:
-                print("    [API] ⚠️  Rate limit HTTP 429! Aguardando 65s...")
+                print("    [API] Rate limit HTTP 429! Aguardando 65s...")
                 time.sleep(65)
                 continue
 
@@ -166,21 +274,23 @@ def _api_football_request(endpoint: str, params: dict) -> dict:
 
             errors = data.get("errors", {})
             if errors:
-                # Rate limit retornado no body (não como HTTP 429)
                 if "rateLimit" in errors:
-                    print(f"    [API] ⚠️  Rate limit no body! Aguardando 65s...")
+                    print(f"    [API] Rate limit no body! Aguardando 65s...")
                     time.sleep(65)
                     continue
                 elif "plan" in errors:
-                    # Plano não suporta — não faz sentido tentar de novo
                     return {}
                 else:
-                    print(f"    [API] ⚠️  Erros: {errors}")
+                    print(f"    [API] Erros: {errors}")
                     return {}
+
+            # ── SALVAR NO CACHE ──
+            if use_cache and data:
+                _save_to_cache(endpoint, params, data)
 
             return data
         except Exception as e:
-            print(f"    [API] ❌ Falha em {endpoint}: {e}")
+            print(f"    [API] Falha em {endpoint}: {e}")
             return {}
 
     return {}
@@ -802,18 +912,263 @@ def _ingest_real_data() -> list[MatchAnalysis]:
     n_standings = sum(1 for m in all_matches if m.home_team.league_position > 0)
     n_real_odds = sum(1 for m in all_matches if m.odds.bookmaker not in ("N/D", "Modelo (Estimado)"))
     n_injuries = sum(1 for m in all_matches if m.injuries_home or m.injuries_away)
+    cache_stats = get_api_cache_stats()
 
-    print(f"\n[ETL] ═══════════════════════════════════════")
-    print(f"[ETL]   INGESTÃO CONCLUÍDA — PLANO {plan_name.upper()}")
-    print(f"[ETL] ═══════════════════════════════════════")
-    print(f"[ETL] API-Football calls: {_api_call_count} de {api_available}")
+    print(f"\n[ETL] =======================================")
+    print(f"[ETL]   INGESTAO CONCLUIDA - PLANO {plan_name.upper()}")
+    print(f"[ETL] =======================================")
+    print(f"[ETL] API-Football calls REAIS: {_api_call_count} de {api_available}")
+    print(f"[ETL] Cache HITS (economia): {_api_cache_hits} requests salvos!")
+    print(f"[ETL] Cache MISSES (novos):  {_api_cache_misses}")
+    print(f"[ETL] Cache local: {cache_stats['total_files']} arquivos | {cache_stats['total_size_mb']}MB")
     print(f"[ETL] Partidas: {len(all_matches)} | Ligas: {n_leagues}")
     print(f"[ETL] Com standings: {n_standings}")
     print(f"[ETL] Com odds REAIS: {n_real_odds}")
-    print(f"[ETL] Com lesões: {n_injuries}")
-    print(f"[ETL] ═══════════════════════════════════════")
+    print(f"[ETL] Com lesoes: {n_injuries}")
+    print(f"[ETL] =======================================")
 
     return all_matches
+
+
+# ═══════════════════════════════════════════════════════════════
+#  HISTÓRICO DE TIMES — Dados detalhados para análise comparativa
+# ═══════════════════════════════════════════════════════════════
+
+def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> dict:
+    """
+    Busca histórico completo de um time:
+      - Últimos N jogos (todos os campeonatos)
+      - Últimos N jogos no campeonato específico (se league_id fornecido)
+      - Lineups de cada jogo (para classificar titular/misto/reserva)
+      - Estatísticas detalhadas de cada jogo
+
+    Retorna dict com:
+      {
+        "team_id": int,
+        "all_matches": [...],        # todos os campeonatos
+        "league_matches": [...],     # só o campeonato especificado
+      }
+
+    Cada match contém:
+      {
+        "fixture_id", "date", "league_name", "league_country",
+        "home_team", "away_team", "home_id", "away_id",
+        "score_home", "score_away", "result" (W/D/L),
+        "is_home", "opponent", "opponent_id",
+        "odds_home", "odds_draw", "odds_away",
+        "was_favorite" (bool),
+        "lineup_type" (titular/misto/reserva/N/D),
+        "lineup_count" (número de titulares habituais),
+        "stats": { goals, shots, shots_on_target, corners, cards, fouls, possession, ... }
+      }
+    """
+    result = {"team_id": team_id, "all_matches": [], "league_matches": []}
+
+    # ── 1. Buscar últimos jogos (todos os campeonatos) ──
+    all_data = _api_football_request("fixtures", {
+        "team": team_id, "last": last, "status": "FT-AET-PEN"
+    })
+    all_fixtures = all_data.get("response", [])
+
+    # ── 2. Buscar últimos jogos no campeonato específico ──
+    league_fixtures = []
+    if league_id:
+        lg_data = _api_football_request("fixtures", {
+            "team": team_id, "league": league_id, "last": last, "status": "FT-AET-PEN"
+        })
+        league_fixtures = lg_data.get("response", [])
+
+    # ── 3. Processar cada fixture ──
+    def _process_fixture(fix_raw: dict, team_id: int) -> dict:
+        """Extrai dados relevantes de um fixture passado."""
+        fixture = fix_raw.get("fixture", {})
+        league = fix_raw.get("league", {})
+        teams = fix_raw.get("teams", {})
+        goals = fix_raw.get("goals", {})
+        score = fix_raw.get("score", {})
+
+        fix_id = fixture.get("id", 0)
+        date_str = fixture.get("date", "")
+        try:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            match_date = dt.strftime("%Y-%m-%d")
+            match_time = dt.strftime("%H:%M")
+        except (ValueError, TypeError):
+            match_date = "N/D"
+            match_time = "N/D"
+
+        home_info = teams.get("home", {})
+        away_info = teams.get("away", {})
+        home_id = home_info.get("id", 0)
+        away_id = away_info.get("id", 0)
+
+        is_home = (home_id == team_id)
+        opponent_id = away_id if is_home else home_id
+        opponent_name = away_info.get("name", "?") if is_home else home_info.get("name", "?")
+
+        score_home = goals.get("home", 0) or 0
+        score_away = goals.get("away", 0) or 0
+
+        # Resultado do time
+        my_goals = score_home if is_home else score_away
+        opp_goals = score_away if is_home else score_home
+        if my_goals > opp_goals:
+            result_letter = "W"
+        elif my_goals < opp_goals:
+            result_letter = "L"
+        else:
+            result_letter = "D"
+
+        return {
+            "fixture_id": fix_id,
+            "date": match_date,
+            "time": match_time,
+            "league_name": league.get("name", "?"),
+            "league_country": league.get("country", "?"),
+            "league_id": league.get("id", 0),
+            "home_team": home_info.get("name", "?"),
+            "away_team": away_info.get("name", "?"),
+            "home_id": home_id,
+            "away_id": away_id,
+            "score_home": score_home,
+            "score_away": score_away,
+            "result": result_letter,
+            "is_home": is_home,
+            "opponent": opponent_name,
+            "opponent_id": opponent_id,
+            "total_goals": score_home + score_away,
+            # Odds e lineup serão preenchidos abaixo
+            "odds_home": None,
+            "odds_draw": None,
+            "odds_away": None,
+            "was_favorite": None,
+            "lineup_type": "N/D",
+            "lineup_count": None,
+            "stats": {},
+        }
+
+    # Processar todos os fixtures
+    all_processed = [_process_fixture(f, team_id) for f in all_fixtures]
+    league_processed = [_process_fixture(f, team_id) for f in league_fixtures]
+
+    # ── 4. Buscar dados extras para cada fixture (odds, lineups, stats) ──
+    all_fix_ids = set()
+    for m in all_processed + league_processed:
+        all_fix_ids.add(m["fixture_id"])
+
+    for fix_id in all_fix_ids:
+        # Buscar estatísticas do jogo
+        stats_data = _api_football_request("fixtures/statistics", {"fixture": fix_id})
+        stats_response = stats_data.get("response", [])
+
+        # Buscar lineups do jogo
+        lineups_data = _api_football_request("fixtures/lineups", {"fixture": fix_id})
+        lineups_response = lineups_data.get("response", [])
+
+        # Buscar odds do jogo (pré-jogo)
+        odds_data = _api_football_request("odds", {"fixture": fix_id})
+        odds_response = odds_data.get("response", [])
+
+        # Processar e atribuir aos matches
+        for match_list in [all_processed, league_processed]:
+            for m in match_list:
+                if m["fixture_id"] != fix_id:
+                    continue
+
+                # ── Stats ──
+                for team_stats in stats_response:
+                    sid = team_stats.get("team", {}).get("id", 0)
+                    is_my_team = (sid == team_id)
+                    prefix = "team" if is_my_team else "opp"
+
+                    stat_list = team_stats.get("statistics", [])
+                    stat_dict = {}
+                    for s in stat_list:
+                        stype = s.get("type", "")
+                        sval = s.get("value")
+                        stat_dict[stype] = sval
+
+                    m["stats"][f"{prefix}_shots"] = stat_dict.get("Total Shots")
+                    m["stats"][f"{prefix}_shots_on_target"] = stat_dict.get("Shots on Goal")
+                    m["stats"][f"{prefix}_corners"] = stat_dict.get("Corner Kicks")
+                    m["stats"][f"{prefix}_fouls"] = stat_dict.get("Fouls")
+                    m["stats"][f"{prefix}_cards_yellow"] = stat_dict.get("Yellow Cards")
+                    m["stats"][f"{prefix}_cards_red"] = stat_dict.get("Red Cards")
+                    m["stats"][f"{prefix}_possession"] = stat_dict.get("Ball Possession")
+                    m["stats"][f"{prefix}_offsides"] = stat_dict.get("Offsides")
+                    m["stats"][f"{prefix}_saves"] = stat_dict.get("Goalkeeper Saves")
+                    m["stats"][f"{prefix}_passes"] = stat_dict.get("Total passes")
+                    m["stats"][f"{prefix}_passes_pct"] = stat_dict.get("Passes %")
+                    m["stats"][f"{prefix}_expected_goals"] = stat_dict.get("expected_goals")
+
+                # Total de cartões no jogo
+                ty = _safe_int(m["stats"].get("team_cards_yellow"))
+                tr = _safe_int(m["stats"].get("team_cards_red"))
+                oy = _safe_int(m["stats"].get("opp_cards_yellow"))
+                or_ = _safe_int(m["stats"].get("opp_cards_red"))
+                if ty is not None and oy is not None:
+                    m["stats"]["total_cards"] = (ty or 0) + (tr or 0) + (oy or 0) + (or_ or 0)
+                # Total de escanteios
+                tc = _safe_int(m["stats"].get("team_corners"))
+                oc = _safe_int(m["stats"].get("opp_corners"))
+                if tc is not None and oc is not None:
+                    m["stats"]["total_corners"] = (tc or 0) + (oc or 0)
+
+                # ── Lineups ──
+                for lineup in lineups_response:
+                    lid = lineup.get("team", {}).get("id", 0)
+                    if lid == team_id:
+                        start_xi = lineup.get("startXI", [])
+                        subs = lineup.get("substitutes", [])
+                        m["lineup_count"] = len(start_xi)
+                        # Classificar lineup (heurística simples)
+                        # Se tiver 11 titulares, é titular
+                        # Na realidade precisaríamos de dados da temporada
+                        # Por ora, marcamos apenas que temos dados
+                        m["lineup_type"] = "disponivel"
+                        m["stats"]["formation"] = lineup.get("formation", "N/D")
+                        m["stats"]["coach"] = lineup.get("coach", {}).get("name", "N/D")
+                        break
+
+                # ── Odds ──
+                if odds_response:
+                    bookmakers = odds_response[0].get("bookmakers", [])
+                    for bm in bookmakers:
+                        bm_name = bm.get("name", "")
+                        if bm_name in config.PREFERRED_BOOKMAKERS:
+                            for bet in bm.get("bets", []):
+                                if bet.get("name") == "Match Winner":
+                                    for v in bet.get("values", []):
+                                        if v.get("value") == "Home":
+                                            m["odds_home"] = float(v.get("odd", 0))
+                                        elif v.get("value") == "Draw":
+                                            m["odds_draw"] = float(v.get("odd", 0))
+                                        elif v.get("value") == "Away":
+                                            m["odds_away"] = float(v.get("odd", 0))
+                            break  # Usar primeiro bookmaker preferido encontrado
+
+                    # Determinar se era favorito
+                    if m["odds_home"] and m["odds_away"]:
+                        if m["is_home"]:
+                            m["was_favorite"] = m["odds_home"] < m["odds_away"]
+                        else:
+                            m["was_favorite"] = m["odds_away"] < m["odds_home"]
+
+    result["all_matches"] = all_processed
+    result["league_matches"] = league_processed
+    return result
+
+
+def _safe_int(val) -> int | None:
+    """Converte valor para int, retorna None se impossível."""
+    if val is None:
+        return None
+    try:
+        if isinstance(val, str):
+            val = val.replace("%", "")
+        return int(float(val))
+    except (ValueError, TypeError):
+        return None
 
 
 def _generate_estimated_odds(match: MatchAnalysis):

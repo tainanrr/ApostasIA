@@ -1582,6 +1582,21 @@ function showOppDetail(idx) {
                 </div>
             </div>
             ` : ''}
+
+            <!-- ══ HISTÓRICO DE JOGOS (carregado sob demanda) ══ -->
+            ${m ? `
+            <div class="m-section" style="margin-top:20px">📋 Histórico de Jogos Recentes</div>
+            <div id="history-container" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:16px 20px">
+                <div style="display:flex;gap:8px;margin-bottom:16px">
+                    <button id="btn-load-history" onclick="loadTeamHistory(${m.home_team_id ?? 0}, ${m.away_team_id ?? 0}, ${m.league_id ?? 0}, '${(o.home_team||'').replace(/'/g,"\\'")}', '${(o.away_team||'').replace(/'/g,"\\'")}', '${(o.league_name||'').replace(/'/g,"\\'")}' )" style="flex:1;padding:10px 16px;background:var(--accent-green-dim);color:var(--accent-green);border:1px solid var(--accent-green)40;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px">
+                        Carregar Historico Detalhado
+                    </button>
+                </div>
+                <div id="history-content" style="color:var(--text-muted);font-size:12px;text-align:center">
+                    Clique acima para carregar dados históricos dos times (usa cache — não gasta créditos se já buscou antes)
+                </div>
+            </div>
+            ` : ''}
         </div>
 
         <!-- ══ TAB 2: ESTATÍSTICAS DETALHADAS ══ -->
@@ -2247,6 +2262,156 @@ function closeModal(e) {
     document.getElementById("modal-overlay").classList.remove("show");
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+// ═══════════════════════════════════════════════════════
+// HISTÓRICO DE TIMES — Carregamento sob demanda
+// ═══════════════════════════════════════════════════════
+
+async function loadTeamHistory(homeId, awayId, leagueId, homeName, awayName, leagueName) {
+    const btn = document.getElementById('btn-load-history');
+    const container = document.getElementById('history-content');
+    if (!btn || !container) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Carregando...';
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Buscando dados historicos... (usa cache se disponivel)</div>';
+
+    try {
+        const [homeRes, awayRes] = await Promise.all([
+            fetch(`/api/team-history/${homeId}?league_id=${leagueId}&last=10`).then(r => r.json()),
+            fetch(`/api/team-history/${awayId}?league_id=${leagueId}&last=10`).then(r => r.json()),
+        ]);
+
+        btn.style.display = 'none';
+        container.innerHTML = renderTeamHistory(homeRes, awayRes, leagueId, homeName, awayName, leagueName);
+    } catch (err) {
+        container.innerHTML = `<div style="color:var(--accent-red);padding:12px">Erro ao carregar: ${err.message}</div>`;
+        btn.disabled = false;
+        btn.textContent = 'Tentar Novamente';
+    }
+}
+
+function renderTeamHistory(homeData, awayData, leagueId, homeName, awayName, leagueName) {
+    const renderMatchRow = (match) => {
+        const resColor = match.result === 'W' ? 'var(--accent-green)' : match.result === 'L' ? 'var(--accent-red)' : 'var(--accent-yellow)';
+        const resLabel = match.result === 'W' ? 'V' : match.result === 'L' ? 'D' : 'E';
+        const favIcon = match.was_favorite === true ? '<span title="Favorito" style="color:var(--accent-yellow);font-size:10px">★</span>' : match.was_favorite === false ? '<span title="Underdog" style="color:var(--text-muted);font-size:10px">☆</span>' : '';
+        const homeAway = match.is_home ? 'C' : 'F';
+        const homeAwayColor = match.is_home ? 'var(--accent-green)' : 'var(--accent-blue)';
+        const score = `${match.score_home}-${match.score_away}`;
+        const totalGoals = match.total_goals;
+        const overUnder = totalGoals > 2.5 ? '<span style="color:var(--accent-green);font-size:10px">O2.5</span>' : '<span style="color:var(--accent-red);font-size:10px">U2.5</span>';
+
+        // Estatísticas do jogo
+        const s = match.stats || {};
+        const corners = s.total_corners != null ? s.total_corners : '-';
+        const cards = s.total_cards != null ? s.total_cards : '-';
+        const lineupBadge = match.lineup_type === 'disponivel' ? '<span title="Escalacao disponivel" style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(0,255,136,0.1);color:var(--accent-green)">XI</span>' : '';
+
+        return `<tr style="border-bottom:1px solid var(--border)20;font-size:11px">
+            <td style="padding:5px 4px;color:var(--text-muted)">${match.date}</td>
+            <td style="padding:5px 4px"><span style="color:${homeAwayColor};font-weight:700;font-size:10px">${homeAway}</span></td>
+            <td style="padding:5px 4px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis" title="${match.opponent}">${match.opponent} ${favIcon}</td>
+            <td style="padding:5px 4px;font-weight:800;font-family:'JetBrains Mono';text-align:center"><span style="color:${resColor}">${score}</span></td>
+            <td style="padding:5px 4px;text-align:center"><span style="background:${resColor}20;color:${resColor};padding:2px 6px;border-radius:4px;font-weight:800;font-size:10px">${resLabel}</span></td>
+            <td style="padding:5px 4px;text-align:center">${overUnder}</td>
+            <td style="padding:5px 4px;text-align:center;color:var(--text-muted)">${corners}</td>
+            <td style="padding:5px 4px;text-align:center;color:var(--text-muted)">${cards}</td>
+            <td style="padding:5px 4px;text-align:center">${lineupBadge}</td>
+        </tr>`;
+    };
+
+    const renderTeamSection = (data, teamLabel, teamColor) => {
+        const allM = data.all_matches || [];
+        const lgM = data.league_matches || [];
+
+        // Calcular resumos
+        const calcSummary = (matches) => {
+            if (!matches.length) return null;
+            const w = matches.filter(m => m.result === 'W').length;
+            const d = matches.filter(m => m.result === 'D').length;
+            const l = matches.filter(m => m.result === 'L').length;
+            const goalsFor = matches.reduce((s, m) => s + (m.is_home ? m.score_home : m.score_away), 0);
+            const goalsAgainst = matches.reduce((s, m) => s + (m.is_home ? m.score_away : m.score_home), 0);
+            const over25 = matches.filter(m => m.total_goals > 2.5).length;
+            const totalCorners = matches.filter(m => m.stats?.total_corners != null).reduce((s, m) => s + (m.stats.total_corners || 0), 0);
+            const cornersCount = matches.filter(m => m.stats?.total_corners != null).length;
+            const totalCards = matches.filter(m => m.stats?.total_cards != null).reduce((s, m) => s + (m.stats.total_cards || 0), 0);
+            const cardsCount = matches.filter(m => m.stats?.total_cards != null).length;
+            const favWins = matches.filter(m => m.was_favorite && m.result === 'W').length;
+            const favTotal = matches.filter(m => m.was_favorite === true).length;
+            return { w, d, l, goalsFor, goalsAgainst, over25, totalCorners, cornersCount, totalCards, cardsCount, favWins, favTotal, total: matches.length };
+        };
+
+        const lgSummary = calcSummary(lgM);
+        const allSummary = calcSummary(allM);
+
+        const summaryHtml = (s, label) => {
+            if (!s) return '';
+            const avgGoals = ((s.goalsFor + s.goalsAgainst) / s.total).toFixed(1);
+            const avgCorners = s.cornersCount > 0 ? (s.totalCorners / s.cornersCount).toFixed(1) : '-';
+            const avgCards = s.cardsCount > 0 ? (s.totalCards / s.cardsCount).toFixed(1) : '-';
+            const over25Pct = ((s.over25 / s.total) * 100).toFixed(0);
+            const favWinPct = s.favTotal > 0 ? ((s.favWins / s.favTotal) * 100).toFixed(0) : '-';
+            return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+                <span style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;background:var(--accent-green)15;color:var(--accent-green)">${s.w}V</span>
+                <span style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;background:var(--accent-yellow)15;color:var(--accent-yellow)">${s.d}E</span>
+                <span style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;background:var(--accent-red)15;color:var(--accent-red)">${s.l}D</span>
+                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">${s.goalsFor}GP ${s.goalsAgainst}GC</span>
+                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">Avg ${avgGoals}g/j</span>
+                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">O2.5: ${over25Pct}%</span>
+                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">Esc: ${avgCorners}/j</span>
+                <span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--text-secondary)">Cart: ${avgCards}/j</span>
+                ${s.favTotal > 0 ? `<span style="padding:3px 8px;border-radius:4px;font-size:10px;background:rgba(255,255,255,0.05);color:var(--accent-yellow)">★Fav: ${favWinPct}%</span>` : ''}
+            </div>`;
+        };
+
+        const tableHeader = `<table style="width:100%;border-collapse:collapse">
+            <thead><tr style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">
+                <th style="text-align:left;padding:4px">Data</th>
+                <th style="padding:4px">C/F</th>
+                <th style="text-align:left;padding:4px">Adversario</th>
+                <th style="text-align:center;padding:4px">Placar</th>
+                <th style="text-align:center;padding:4px">Res</th>
+                <th style="text-align:center;padding:4px">O/U</th>
+                <th style="text-align:center;padding:4px">Esc</th>
+                <th style="text-align:center;padding:4px">Cart</th>
+                <th style="text-align:center;padding:4px">XI</th>
+            </tr></thead><tbody>`;
+
+        let html = `<div style="margin-bottom:20px">
+            <div style="font-size:14px;font-weight:800;color:${teamColor};margin-bottom:12px">${teamLabel}</div>`;
+
+        // Jogos no campeonato
+        if (lgM.length > 0) {
+            html += `<div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">No Campeonato Atual (${lgM[0]?.league_name || ''})</div>`;
+            html += summaryHtml(lgSummary, 'campeonato');
+            html += tableHeader + lgM.map(renderMatchRow).join('') + '</tbody></table>';
+        }
+
+        // Todos os jogos
+        if (allM.length > 0) {
+            html += `<div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;margin-top:16px;text-transform:uppercase;letter-spacing:1px">Todas as Competicoes (ultimos ${allM.length})</div>`;
+            html += summaryHtml(allSummary, 'geral');
+            html += tableHeader + allM.map(renderMatchRow).join('') + '</tbody></table>';
+        }
+
+        if (!lgM.length && !allM.length) {
+            html += '<div style="color:var(--text-muted);padding:8px">Sem dados historicos disponiveis</div>';
+        }
+
+        html += '</div>';
+        return html;
+    };
+
+    return `<div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:300px">${renderTeamSection(homeData, homeName || 'Casa', 'var(--accent-green)')}</div>
+        <div style="flex:1;min-width:300px">${renderTeamSection(awayData, awayName || 'Fora', 'var(--accent-blue)')}</div>
+    </div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:8px;text-align:center">
+        ★ = Favorito pelas odds | ☆ = Underdog | C = Casa | F = Fora | XI = Escalacao disponivel | O2.5/U2.5 = Over/Under 2.5 gols | Esc = Escanteios | Cart = Cartoes
+    </div>`;
+}
 
 // START — só carrega status, NÃO roda pipeline
 init();
