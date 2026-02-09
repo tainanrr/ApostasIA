@@ -27,64 +27,84 @@ import config
 
 
 # ═══════════════════════════════════════════════════════
-# CACHE LOCAL DE RESPOSTAS DA API
-# Salva TODAS as respostas para não gastar créditos em
-# re-execuções. TTL por tipo de endpoint.
+# CACHE DE RESPOSTAS DA API — LOCAL + SUPABASE
+# Fluxo: 1) Cache local  2) Supabase  3) API real
+# Salva em AMBOS para nunca perder dados.
 # ═══════════════════════════════════════════════════════
+
+import supabase_client
 
 _API_CACHE_DIR = os.path.join(os.path.dirname(__file__), "_api_cache")
 os.makedirs(_API_CACHE_DIR, exist_ok=True)
 
 # TTL em horas por tipo de endpoint
 _CACHE_TTL_HOURS = {
-    "fixtures":    3,     # fixtures mudam com frequência
-    "standings":   12,    # standings mudam 1x por dia
-    "odds":        4,     # odds mudam moderadamente
-    "injuries":    6,     # lesões mudam moderadamente
-    "lineups":     720,   # dados históricos, não mudam (30 dias)
-    "statistics":  720,   # dados históricos, não mudam (30 dias)
-    "status":      1,     # status da conta, check rápido
+    "fixtures":             3,
+    "standings":           12,
+    "odds":                 4,
+    "injuries":             6,
+    "fixtures/lineups":   720,
+    "fixtures/statistics": 720,
+    "weather":              3,
+    "status":               1,
 }
 
 
 def _cache_key(endpoint: str, params: dict) -> str:
-    """Gera chave única para cache baseada em endpoint + params."""
+    """Gera chave unica para cache baseada em endpoint + params."""
     params_str = json.dumps(params, sort_keys=True)
     h = hashlib.md5(f"{endpoint}_{params_str}".encode()).hexdigest()[:12]
-    return f"{endpoint}_{h}"
+    return f"{endpoint.replace('/', '_')}_{h}"
 
 
 def _get_cached_response(endpoint: str, params: dict) -> dict | None:
-    """Retorna resposta cacheada se existir e estiver dentro do TTL."""
+    """Busca resposta em cache: 1) local  2) Supabase.
+    Retorna None se nao encontrada ou expirada."""
     key = _cache_key(endpoint, params)
     filepath = os.path.join(_API_CACHE_DIR, f"{key}.json")
+    ttl_hours = _CACHE_TTL_HOURS.get(endpoint, 4)
 
-    if not os.path.exists(filepath):
-        return None
+    # ── 1. CACHE LOCAL (mais rapido) ──
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+            cached_at = datetime.fromisoformat(cached.get("_cached_at", "2000-01-01"))
+            age_hours = (datetime.now() - cached_at).total_seconds() / 3600
+            if age_hours < ttl_hours:
+                return cached.get("data", {})
+        except Exception:
+            pass
 
+    # ── 2. SUPABASE (backup na nuvem) ──
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            cached = json.load(f)
-
-        # Verificar TTL
-        cached_at = datetime.fromisoformat(cached.get("_cached_at", "2000-01-01"))
-        ttl_hours = _CACHE_TTL_HOURS.get(endpoint, 4)
-        age_hours = (datetime.now() - cached_at).total_seconds() / 3600
-
-        if age_hours < ttl_hours:
-            return cached.get("data", {})
-        else:
-            # Cache expirado
-            return None
+        sb_data = supabase_client.get_api_response(endpoint, params)
+        if sb_data is not None:
+            # Salvar localmente para proxima vez ser mais rapido
+            _save_to_local_cache(endpoint, params, sb_data)
+            return sb_data
     except Exception:
-        return None
+        pass
+
+    return None
 
 
 def _save_to_cache(endpoint: str, params: dict, data: dict):
-    """Salva resposta da API no cache local."""
+    """Salva resposta da API em AMBOS: cache local E Supabase."""
+    # ── 1. CACHE LOCAL ──
+    _save_to_local_cache(endpoint, params, data)
+
+    # ── 2. SUPABASE (obrigatorio) ──
+    try:
+        supabase_client.save_api_response(endpoint, params, data)
+    except Exception:
+        pass  # Nao bloquear pipeline se Supabase falhar
+
+
+def _save_to_local_cache(endpoint: str, params: dict, data: dict):
+    """Salva resposta APENAS no cache local (disco)."""
     key = _cache_key(endpoint, params)
     filepath = os.path.join(_API_CACHE_DIR, f"{key}.json")
-
     try:
         cached = {
             "_cached_at": datetime.now().isoformat(),
@@ -95,18 +115,25 @@ def _save_to_cache(endpoint: str, params: dict, data: dict):
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(cached, f, ensure_ascii=False)
     except Exception as e:
-        print(f"    [CACHE] Erro ao salvar: {e}")
+        print(f"    [CACHE] Erro ao salvar localmente: {e}")
 
 
 def get_api_cache_stats() -> dict:
-    """Retorna estatísticas do cache local."""
-    if not os.path.exists(_API_CACHE_DIR):
-        return {"total_files": 0, "total_size_mb": 0}
-    files = [f for f in os.listdir(_API_CACHE_DIR) if f.endswith(".json")]
-    total_size = sum(os.path.getsize(os.path.join(_API_CACHE_DIR, f)) for f in files)
+    """Retorna estatisticas do cache local + Supabase."""
+    local_files = 0
+    local_size = 0
+    if os.path.exists(_API_CACHE_DIR):
+        files = [f for f in os.listdir(_API_CACHE_DIR) if f.endswith(".json")]
+        local_files = len(files)
+        local_size = sum(os.path.getsize(os.path.join(_API_CACHE_DIR, f)) for f in files)
+
+    sb_stats = supabase_client.get_api_cache_stats_supabase()
+
     return {
-        "total_files": len(files),
-        "total_size_mb": round(total_size / (1024 * 1024), 2),
+        "local_files": local_files,
+        "local_size_mb": round(local_size / (1024 * 1024), 2),
+        "supabase_total": sb_stats.get("total", 0),
+        "supabase_endpoints": sb_stats.get("endpoints", {}),
     }
 
 
@@ -371,26 +398,45 @@ def _fetch_injuries_for_fixture(fixture_id: int) -> dict:
 
 
 def _fetch_weather_by_city(city: str, country_code: str = "") -> WeatherData:
-    """Busca clima via OpenWeatherMap usando nome da cidade."""
+    """Busca clima via OpenWeatherMap usando nome da cidade.
+    Usa cache local + Supabase para nao repetir chamadas."""
     if not config.OPENWEATHER_KEY or not city:
         return WeatherData()
+
+    q = f"{city},{country_code}" if country_code else city
+    weather_params = {"q": q, "units": "metric"}
+
+    # ── Verificar cache (local + Supabase) ──
+    cached = _get_cached_response("weather", weather_params)
+    if cached is not None:
+        return _parse_weather_response(cached)
+
+    # ── Chamada real à API ──
     try:
-        q = f"{city},{country_code}" if country_code else city
         url = "https://api.openweathermap.org/data/2.5/weather"
         params = {"q": q, "appid": config.OPENWEATHER_KEY, "units": "metric", "lang": "pt_br"}
         resp = requests.get(url, params=params, timeout=10)
         if resp.status_code != 200:
             return WeatherData()
         d = resp.json()
-        return WeatherData(
-            temperature_c=round(d.get("main", {}).get("temp", 20.0), 1),
-            wind_speed_kmh=round(d.get("wind", {}).get("speed", 0) * 3.6, 1),
-            rain_mm=round(d.get("rain", {}).get("1h", 0.0), 1),
-            humidity_pct=d.get("main", {}).get("humidity", 50),
-            description=d.get("weather", [{}])[0].get("description", "N/D"),
-        )
+
+        # ── Salvar no cache (local + Supabase) ──
+        _save_to_cache("weather", weather_params, d)
+
+        return _parse_weather_response(d)
     except Exception:
         return WeatherData()
+
+
+def _parse_weather_response(d: dict) -> WeatherData:
+    """Converte resposta JSON do OpenWeatherMap em WeatherData."""
+    return WeatherData(
+        temperature_c=round(d.get("main", {}).get("temp", 20.0), 1),
+        wind_speed_kmh=round(d.get("wind", {}).get("speed", 0) * 3.6, 1),
+        rain_mm=round(d.get("rain", {}).get("1h", 0.0), 1),
+        humidity_pct=d.get("main", {}).get("humidity", 50),
+        description=d.get("weather", [{}])[0].get("description", "N/D"),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -920,7 +966,8 @@ def _ingest_real_data() -> list[MatchAnalysis]:
     print(f"[ETL] API-Football calls REAIS: {_api_call_count} de {api_available}")
     print(f"[ETL] Cache HITS (economia): {_api_cache_hits} requests salvos!")
     print(f"[ETL] Cache MISSES (novos):  {_api_cache_misses}")
-    print(f"[ETL] Cache local: {cache_stats['total_files']} arquivos | {cache_stats['total_size_mb']}MB")
+    print(f"[ETL] Cache local: {cache_stats['local_files']} arquivos | {cache_stats['local_size_mb']}MB")
+    print(f"[ETL] Supabase: {cache_stats['supabase_total']} respostas armazenadas na nuvem")
     print(f"[ETL] Partidas: {len(all_matches)} | Ligas: {n_leagues}")
     print(f"[ETL] Com standings: {n_standings}")
     print(f"[ETL] Com odds REAIS: {n_real_odds}")

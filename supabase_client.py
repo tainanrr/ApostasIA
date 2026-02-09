@@ -1,13 +1,18 @@
 """
 ═══════════════════════════════════════════════════════════════════════
-  SUPABASE CLIENT — Persistência na Nuvem para ApostasIA
-  Salva execuções, oportunidades e partidas no banco Supabase.
+  SUPABASE CLIENT — Persistencia na Nuvem para ApostasIA
+  Salva execucoes, oportunidades, partidas E respostas brutas da API.
+  Garante que NENHUM dado consultado seja perdido.
 ═══════════════════════════════════════════════════════════════════════
 """
 
+import json
+import hashlib
+from datetime import datetime, timedelta
+
 import config
 
-# Tentar importar supabase; se não instalado, desativar
+# Tentar importar supabase; se nao instalado, desativar
 try:
     from supabase import create_client, Client
     SUPABASE_AVAILABLE = True
@@ -15,18 +20,22 @@ except ImportError:
     SUPABASE_AVAILABLE = False
 
 _client: "Client | None" = None
+_client_checked = False  # Evitar logs duplicados
 
 
 def get_client() -> "Client | None":
-    """Retorna instância singleton do Supabase client."""
-    global _client
+    """Retorna instancia singleton do Supabase client."""
+    global _client, _client_checked
     if _client is not None:
         return _client
+    if _client_checked:
+        return None  # Ja tentou e falhou, nao logar de novo
+    _client_checked = True
     if not SUPABASE_AVAILABLE:
-        print("[SUPABASE] SDK não instalado (pip install supabase)")
+        print("[SUPABASE] SDK nao instalado (pip install supabase)")
         return None
     if not config.SUPABASE_URL or not config.SUPABASE_SERVICE_KEY:
-        print("[SUPABASE] Chaves não configuradas no .env")
+        print("[SUPABASE] Chaves nao configuradas no .env")
         return None
     try:
         _client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
@@ -38,8 +47,196 @@ def get_client() -> "Client | None":
 
 
 def is_configured() -> bool:
-    """Verifica se o Supabase está configurado e acessível."""
+    """Verifica se o Supabase esta configurado e acessivel."""
     return get_client() is not None
+
+
+# ═══════════════════════════════════════════════════════════════
+#  CACHE DE RESPOSTAS BRUTAS DA API — Persistencia permanente
+#  Tabela: api_responses
+#  Garante que TODA resposta da API seja salva na nuvem
+# ═══════════════════════════════════════════════════════════════
+
+# TTL em horas por tipo de endpoint (para decidir se busca do cache)
+_CACHE_TTL_HOURS = {
+    "fixtures":             3,     # fixtures mudam com frequencia
+    "standings":           12,     # standings mudam 1x por dia
+    "odds":                 4,     # odds mudam moderadamente
+    "injuries":             6,     # lesoes mudam moderadamente
+    "fixtures/lineups":   720,     # dados historicos, nao mudam (30 dias)
+    "fixtures/statistics": 720,    # dados historicos, nao mudam (30 dias)
+    "weather":             3,      # clima muda rapido
+    "status":              1,      # status da conta
+}
+
+
+def _make_cache_key(endpoint: str, params: dict) -> str:
+    """Gera chave unica para cache: endpoint + hash dos params."""
+    params_str = json.dumps(params, sort_keys=True)
+    h = hashlib.md5(f"{endpoint}_{params_str}".encode()).hexdigest()[:16]
+    return f"{endpoint.replace('/', '_')}_{h}"
+
+
+def save_api_response(endpoint: str, params: dict, response_data: dict) -> bool:
+    """
+    Salva resposta bruta da API no Supabase (tabela api_responses).
+    Usa upsert para atualizar se a mesma chave ja existir.
+    """
+    sb = get_client()
+    if not sb:
+        return False
+
+    cache_key = _make_cache_key(endpoint, params)
+    ttl = _CACHE_TTL_HOURS.get(endpoint, 4)
+
+    try:
+        row = {
+            "cache_key": cache_key,
+            "endpoint": endpoint,
+            "params": params,
+            "response_data": response_data,
+            "ttl_hours": ttl,
+            "fetched_at": datetime.now().isoformat(),
+        }
+        sb.table("api_responses").upsert(row, on_conflict="cache_key").execute()
+        return True
+    except Exception as e:
+        # Nao logar erro para cada request (seria muito verbose)
+        # Apenas na primeira vez
+        if not hasattr(save_api_response, '_error_logged'):
+            print(f"[SUPABASE] Erro ao salvar api_response ({endpoint}): {e}")
+            print(f"[SUPABASE] DICA: Crie a tabela 'api_responses' no Supabase. Veja instrucoes no console.")
+            _print_create_table_sql()
+            save_api_response._error_logged = True
+        return False
+
+
+def get_api_response(endpoint: str, params: dict) -> dict | None:
+    """
+    Busca resposta cacheada no Supabase.
+    Retorna None se nao encontrada ou se expirada pelo TTL.
+    """
+    sb = get_client()
+    if not sb:
+        return None
+
+    cache_key = _make_cache_key(endpoint, params)
+
+    try:
+        result = (
+            sb.table("api_responses")
+            .select("response_data, fetched_at, ttl_hours")
+            .eq("cache_key", cache_key)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return None
+
+        row = result.data[0]
+        fetched_at = datetime.fromisoformat(row["fetched_at"].replace("Z", "+00:00").replace("+00:00", ""))
+        ttl_hours = row.get("ttl_hours", 4)
+        age_hours = (datetime.now() - fetched_at).total_seconds() / 3600
+
+        if age_hours < ttl_hours:
+            return row["response_data"]
+        else:
+            return None  # Expirado
+    except Exception:
+        return None
+
+
+def get_api_response_ignore_ttl(endpoint: str, params: dict) -> dict | None:
+    """
+    Busca resposta cacheada no Supabase IGNORANDO TTL.
+    Util para dados historicos que queremos sempre ter disponivel.
+    """
+    sb = get_client()
+    if not sb:
+        return None
+
+    cache_key = _make_cache_key(endpoint, params)
+
+    try:
+        result = (
+            sb.table("api_responses")
+            .select("response_data, fetched_at")
+            .eq("cache_key", cache_key)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return None
+        return result.data[0]["response_data"]
+    except Exception:
+        return None
+
+
+def get_api_cache_stats_supabase() -> dict:
+    """Retorna estatisticas do cache no Supabase."""
+    sb = get_client()
+    if not sb:
+        return {"total": 0, "endpoints": {}}
+
+    try:
+        result = sb.table("api_responses").select("endpoint", count="exact").execute()
+        total = result.count if hasattr(result, 'count') else len(result.data or [])
+
+        # Contar por endpoint
+        endpoints = {}
+        if result.data:
+            for row in result.data:
+                ep = row.get("endpoint", "unknown")
+                endpoints[ep] = endpoints.get(ep, 0) + 1
+
+        return {"total": total, "endpoints": endpoints}
+    except Exception:
+        return {"total": 0, "endpoints": {}}
+
+
+def _print_create_table_sql():
+    """Imprime o SQL para criar a tabela api_responses no Supabase."""
+    print("""
+╔═══════════════════════════════════════════════════════════════╗
+║  CRIAR TABELA api_responses NO SUPABASE                      ║
+║  Execute este SQL no SQL Editor do Supabase Dashboard:        ║
+╠═══════════════════════════════════════════════════════════════╣
+
+CREATE TABLE IF NOT EXISTS api_responses (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    cache_key TEXT UNIQUE NOT NULL,
+    endpoint TEXT NOT NULL,
+    params JSONB NOT NULL DEFAULT '{}'::jsonb,
+    response_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ttl_hours INTEGER NOT NULL DEFAULT 4,
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Indice para buscas rapidas por cache_key
+CREATE INDEX IF NOT EXISTS idx_api_responses_cache_key
+    ON api_responses (cache_key);
+
+-- Indice para buscas por endpoint
+CREATE INDEX IF NOT EXISTS idx_api_responses_endpoint
+    ON api_responses (endpoint);
+
+-- Indice para limpeza por data
+CREATE INDEX IF NOT EXISTS idx_api_responses_fetched_at
+    ON api_responses (fetched_at);
+
+-- Habilitar RLS (Row Level Security) - necessario no Supabase
+ALTER TABLE api_responses ENABLE ROW LEVEL SECURITY;
+
+-- Politica para permitir acesso com service_key
+CREATE POLICY "Allow all for service role"
+    ON api_responses
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
+╚═══════════════════════════════════════════════════════════════╝
+""")
 
 
 def save_pipeline_run(stats: dict) -> str | None:
