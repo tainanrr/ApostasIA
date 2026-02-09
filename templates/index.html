@@ -367,20 +367,26 @@
         /* ── DETAIL MODAL ── */
         .modal-overlay {
             position: fixed; inset: 0; z-index: 1000;
-            background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
-            display: none; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
+            display: none; align-items: flex-start; justify-content: center;
+            padding: 20px 10px;
+            overflow-y: auto;
         }
         .modal-overlay.show { display: flex; }
         .modal {
             background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: var(--radius-lg); width: 95%; max-width: 680px;
-            max-height: 85vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            border-radius: var(--radius-lg); width: 98%; max-width: 1100px;
+            max-height: none; box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+            margin: auto;
         }
         .modal-header {
-            padding: 24px; border-bottom: 1px solid var(--border);
+            padding: 20px 24px; border-bottom: 1px solid var(--border);
             display: flex; justify-content: space-between; align-items: flex-start;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-card) 100%);
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         }
         .modal-header h2 { font-size: 18px; font-weight: 700; }
+        .modal-header .subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
         .modal-header .close {
             background: none; border: none; color: var(--text-muted);
             font-size: 24px; cursor: pointer; padding: 4px 8px; line-height: 1;
@@ -399,6 +405,114 @@
             font-size: 13px; line-height: 1.7; color: var(--text-secondary);
         }
         .detail-reasoning strong { color: var(--text-primary); }
+
+        /* ── MODAL TABS ── */
+        .modal-tabs {
+            display: flex; gap: 0; border-bottom: 2px solid var(--border);
+            margin-bottom: 20px; overflow-x: auto;
+        }
+        .modal-tab {
+            padding: 10px 18px; font-size: 12px; font-weight: 600;
+            color: var(--text-muted); cursor: pointer; border: none;
+            background: transparent; border-bottom: 2px solid transparent;
+            margin-bottom: -2px; white-space: nowrap; transition: all 0.2s;
+            font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .modal-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.02); }
+        .modal-tab.active { color: var(--accent-green); border-bottom-color: var(--accent-green); }
+        .modal-tab-content { display: none; }
+        .modal-tab-content.active { display: block; }
+
+        /* ── TEAM COMPARISON ── */
+        .team-compare {
+            display: grid; grid-template-columns: 1fr auto 1fr; gap: 0;
+            margin-bottom: 20px;
+        }
+        .team-col { padding: 16px; }
+        .team-col-home { text-align: right; }
+        .team-col-away { text-align: left; }
+        .team-col-vs {
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 700; color: var(--text-muted);
+            padding: 0 12px; min-width: 40px;
+        }
+        .team-name-lg {
+            font-size: 18px; font-weight: 800; margin-bottom: 4px;
+        }
+        .team-badge-info {
+            font-size: 11px; color: var(--text-muted); margin-bottom: 12px;
+        }
+
+        /* ── STAT ROW (H2H bar) ── */
+        .stat-row {
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0;
+            padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+            align-items: center;
+        }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-row-val { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; }
+        .stat-row-val.home { text-align: right; padding-right: 12px; }
+        .stat-row-val.away { text-align: left; padding-left: 12px; }
+        .stat-row-label {
+            text-align: center; font-size: 10px; text-transform: uppercase;
+            color: var(--text-muted); letter-spacing: 0.8px; font-weight: 600;
+        }
+        .stat-bar-wrap {
+            display: flex; height: 6px; border-radius: 3px; overflow: hidden;
+            background: var(--border); margin-top: 4px;
+        }
+        .stat-bar-home {
+            background: var(--accent-green); border-radius: 3px 0 0 3px; transition: width 0.6s ease;
+        }
+        .stat-bar-away {
+            background: var(--accent-blue); border-radius: 0 3px 3px 0; transition: width 0.6s ease;
+        }
+
+        /* ── ODDS GRID ── */
+        .odds-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px; margin-bottom: 16px;
+        }
+        .odds-card {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 10px; padding: 12px; text-align: center;
+        }
+        .odds-card-label {
+            font-size: 10px; text-transform: uppercase; color: var(--text-muted);
+            font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px;
+        }
+        .odds-card-value {
+            font-family: 'JetBrains Mono', monospace; font-size: 18px;
+            font-weight: 800; color: var(--accent-yellow);
+        }
+        .odds-card-prob {
+            font-size: 11px; color: var(--text-secondary); margin-top: 2px;
+        }
+
+        /* ── CONTEXT CARDS ── */
+        .ctx-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;
+        }
+        .ctx-card {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 10px; padding: 14px;
+        }
+        .ctx-card-title {
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 8px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .ctx-card-body { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+
+        /* ── SECTION TITLE inside modal ── */
+        .m-section {
+            font-size: 13px; font-weight: 700; color: var(--text-primary);
+            text-transform: uppercase; letter-spacing: 0.8px;
+            margin: 20px 0 12px; padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .m-section:first-child { margin-top: 0; }
 
         .form-dots { display: flex; gap: 3px; }
         .form-dot {
@@ -1329,117 +1443,420 @@ function filterMatches() {
 function showOppDetail(idx) {
     const o = allOpps[idx];
     if (!o) return;
+    const m = allMatches.find(x => x.match_id === o.match_id);
+    
     document.getElementById("modal-title").textContent = `${o.home_team} vs ${o.away_team}`;
     document.getElementById("modal-subtitle").textContent = `${o.league_name} — ${o.league_country} | ${o.match_date} ${o.match_time}`;
     
     const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
+    const marketClass = o.market === '1x2' ? 'market-1x2' : o.market === 'Dupla Chance' ? 'market-dc' : o.market === 'O/U 2.5' ? 'market-ou' : o.market === 'BTTS' ? 'market-btts' : o.market === 'Corners' ? 'market-corners' : 'market-cards';
+    const dq = o.data_quality || 0;
+    const dqPct = (dq * 100).toFixed(0);
+    const dqColor = dq >= 0.80 ? 'var(--accent-green)' : dq >= 0.60 ? 'var(--accent-blue)' : dq >= 0.40 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+    const dqLabel = dq >= 0.80 ? 'EXCELENTE' : dq >= 0.60 ? 'BOA' : dq >= 0.40 ? 'MODERADA' : 'BAIXA';
 
+    // Helper: stat comparison bar
+    function statBar(homeVal, awayVal, label, suffix = '', decimals = 1) {
+        const hv = parseFloat(homeVal) || 0;
+        const av = parseFloat(awayVal) || 0;
+        const total = hv + av || 1;
+        const hPct = ((hv / total) * 100).toFixed(0);
+        const aPct = ((av / total) * 100).toFixed(0);
+        const hColor = hv > av ? 'var(--accent-green)' : hv === av ? 'var(--text-secondary)' : 'var(--text-muted)';
+        const aColor = av > hv ? 'var(--accent-blue)' : av === hv ? 'var(--text-secondary)' : 'var(--text-muted)';
+        return `<div class="stat-row">
+            <div class="stat-row-val home" style="color:${hColor}">${typeof hv === 'number' ? hv.toFixed(decimals) : hv}${suffix}</div>
+            <div style="text-align:center">
+                <div class="stat-row-label">${label}</div>
+                <div class="stat-bar-wrap"><div class="stat-bar-home" style="width:${hPct}%"></div><div class="stat-bar-away" style="width:${aPct}%"></div></div>
+            </div>
+            <div class="stat-row-val away" style="color:${aColor}">${typeof av === 'number' ? av.toFixed(decimals) : av}${suffix}</div>
+        </div>`;
+    }
+
+    // Helper: form dots
+    function formHtml(form) {
+        if (!form || !form.length) return '<span style="color:var(--text-muted)">N/D</span>';
+        return form.map(f => `<div class="form-dot form-${f}">${f}</div>`).join("");
+    }
+    function formSummary(form) {
+        if (!form || !form.length) return '';
+        const w = form.filter(x=>x==='W').length, d = form.filter(x=>x==='D').length, l = form.filter(x=>x==='L').length;
+        return `${w}V ${d}E ${l}D`;
+    }
+
+    // Build match opps for this match
+    const matchOpps = allOpps.filter(op => op.match_id === o.match_id && op !== o);
+
+    // ── BUILD HTML ──
     document.getElementById("modal-body").innerHTML = `
-        <!-- SUGESTÃO PRINCIPAL — bem visível -->
-        <div style="background:linear-gradient(135deg,#1a2f1a,#0d1f0d);border:2px solid var(--accent-green);border-radius:12px;padding:20px;margin-bottom:20px;text-align:center">
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted);margin-bottom:6px">💰 SUGESTÃO DE APOSTA</div>
-            <div style="font-size:22px;font-weight:800;color:var(--accent-green);margin-bottom:4px">APOSTAR EM: ${o.selection}</div>
-            <div style="font-size:13px;color:var(--text-secondary)">Mercado: <strong>${o.market}</strong> — Odd: <strong style="color:var(--accent-yellow)">${o.market_odd.toFixed(2)}</strong></div>
+        <!-- ══ SUGGESTION BANNER ══ -->
+        <div style="background:linear-gradient(135deg,#0d2818,#0a1f12);border:2px solid var(--accent-green);border-radius:12px;padding:18px 24px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted);margin-bottom:4px">SUGESTÃO DE APOSTA</div>
+                <div style="font-size:20px;font-weight:800;color:var(--accent-green)">${o.selection}</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${o.market} — Odd <strong style="color:var(--accent-yellow)">${o.market_odd.toFixed(2)}</strong> (${o.bookmaker})</div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <span class="badge ${confClass}" style="font-size:12px;padding:5px 12px">${o.confidence}</span>
+                <span style="background:var(--accent-green-dim);color:var(--accent-green);padding:5px 14px;border-radius:6px;font-weight:800;font-size:16px;font-family:'JetBrains Mono'">${o.edge_pct}</span>
+                <span style="background:rgba(255,255,255,0.05);padding:5px 12px;border-radius:6px;font-size:12px;color:${dqColor};font-weight:700;border:1px solid ${dqColor}40">Dados: ${dqPct}%</span>
+            </div>
         </div>
 
-        <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-            <span class="badge ${confClass}" style="font-size:13px;padding:6px 14px">${o.confidence}</span>
-            <span class="market-tag ${o.market === '1x2' ? 'market-1x2' : o.market === 'Dupla Chance' ? 'market-dc' : o.market === 'O/U 2.5' ? 'market-ou' : o.market === 'BTTS' ? 'market-btts' : o.market === 'Corners' ? 'market-corners' : 'market-cards'}" style="font-size:12px;padding:6px 14px">${o.market}</span>
-            <span style="background:var(--accent-green-dim);color:var(--accent-green);padding:6px 14px;border-radius:6px;font-weight:800;font-size:14px">${o.edge_pct}</span>
-            ${(() => {
-                const dq = o.data_quality || 0;
-                const pct = (dq * 100).toFixed(0);
-                const dqColor = dq >= 0.80 ? 'var(--accent-green)' : dq >= 0.60 ? 'var(--accent-blue)' : dq >= 0.40 ? 'var(--accent-yellow)' : 'var(--accent-red)';
-                const dqBg = dq >= 0.80 ? 'rgba(16,185,129,0.1)' : dq >= 0.60 ? 'rgba(59,130,246,0.1)' : dq >= 0.40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)';
-                const dqLabel = dq >= 0.80 ? 'EXCELENTE' : dq >= 0.60 ? 'BONS' : dq >= 0.40 ? 'MODERADOS' : 'BAIXOS';
-                return '<span style="background:' + dqBg + ';color:' + dqColor + ';padding:6px 14px;border-radius:6px;font-weight:700;font-size:12px;border:1px solid ' + dqColor + '40">📊 Dados: ' + pct + '% ' + dqLabel + '</span>';
-            })()}
+        <!-- ══ TABS ══ -->
+        <div class="modal-tabs">
+            <button class="modal-tab active" onclick="switchModalTab(this, 'tab-teams')">⚔️ Comparativo</button>
+            <button class="modal-tab" onclick="switchModalTab(this, 'tab-stats')">📊 Estatísticas</button>
+            <button class="modal-tab" onclick="switchModalTab(this, 'tab-odds')">💰 Odds & Valor</button>
+            <button class="modal-tab" onclick="switchModalTab(this, 'tab-context')">🌍 Contexto</button>
+            <button class="modal-tab" onclick="switchModalTab(this, 'tab-analysis')">🧠 Análise Técnica</button>
         </div>
-        <div class="detail-grid">
-            <div class="detail-item">
-                <div class="detail-label">Seleção</div>
-                <div class="detail-value" style="font-weight:700;color:var(--accent-green)">${o.selection}</div>
-            </div>
-            <div class="detail-item">
-                <div class="detail-label">Odd de Mercado (${o.bookmaker})</div>
-                <div class="detail-value" style="font-family:'JetBrains Mono'">${o.market_odd.toFixed(2)}</div>
-            </div>
-            <div class="detail-item">
-                <div class="detail-label">Odd Justa (Modelo)</div>
-                <div class="detail-value" style="color:var(--accent-green);font-family:'JetBrains Mono'">${o.fair_odd.toFixed(2)}</div>
-            </div>
-            <div class="detail-item">
-                <div class="detail-label">Edge (Valor Esperado)</div>
-                <div class="detail-value" style="color:var(--accent-green)">${o.edge_pct}</div>
-            </div>
-            <div class="detail-item">
-                <div class="detail-label">Prob. do Modelo</div>
-                <div class="detail-value">${o.model_prob}%</div>
-            </div>
-            <div class="detail-item">
-                <div class="detail-label">Prob. Implícita (De-Vig)</div>
-                <div class="detail-value" style="color:var(--text-secondary)">${o.implied_prob}%</div>
-            </div>
-            <div class="detail-item">
-                <div class="detail-label">Kelly Sugerido</div>
-                <div class="detail-value">${o.kelly_bet_pct}</div>
-            </div>
-            <div class="detail-item">
-                <div class="detail-label">xG</div>
-                <div class="detail-value">🏠 ${o.home_xg.toFixed(2)} — ✈️ ${o.away_xg.toFixed(2)}</div>
-            </div>
-            <div class="detail-item">
-                <div class="detail-label">Urgência (Casa / Fora)</div>
-                <div class="detail-value">${o.urgency_home.toFixed(1)} / ${o.urgency_away.toFixed(1)}</div>
-            </div>
-            <div class="detail-item">
-                <div class="detail-label">Clima</div>
-                <div class="detail-value">${o.weather_note}</div>
-            </div>
-        </div>
-        <div style="margin-top:16px;padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm)">
-            <div class="detail-label" style="margin-bottom:8px">🏦 ONDE APOSTAR</div>
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-                ${bookmakerBadgeHtml(o.bookmaker, o.home_team, o.away_team, o.market, o.selection, false, o.league_country, o.league_name)}
-                ${(() => {
-                    const info = getBookmakerInfo(o.bookmaker);
-                    if (info.footballUrl) {
-                        return `<a href="${info.footballUrl}" target="_blank" rel="noopener" 
-                            style="font-size:12px;color:var(--accent-cyan);text-decoration:none"
-                            onmouseover="this.style.textDecoration='underline'" 
-                            onmouseout="this.style.textDecoration='none'">
-                            ⚽ Abrir ${info.name} Futebol →
-                        </a>`;
-                    }
-                    return '';
-                })()}
-            </div>
-            <div style="padding:10px 14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px;font-size:12px">
-                <div style="color:var(--accent-cyan);font-weight:700;margin-bottom:4px">📍 Como encontrar o jogo:</div>
-                <div style="color:var(--text-secondary);line-height:1.6">
-                    1. Abra a seção de <strong style="color:var(--text-primary)">Futebol</strong><br>
-                    2. Navegue: <strong style="color:var(--accent-yellow)">${o.league_country || '?'}</strong> → <strong style="color:var(--accent-yellow)">${o.league_name || '?'}</strong><br>
-                    3. Encontre: <strong style="color:var(--text-primary)">${o.home_team} vs ${o.away_team}</strong><br>
-                    4. Selecione mercado: <strong style="color:var(--accent-green)">${o.market}</strong> → <strong style="color:var(--accent-green)">${o.selection}</strong>
+
+        <!-- ══ TAB 1: COMPARATIVO ══ -->
+        <div id="tab-teams" class="modal-tab-content active">
+            <div class="team-compare">
+                <div class="team-col team-col-home">
+                    <div class="team-name-lg" style="color:var(--accent-green)">${o.home_team}</div>
+                    <div class="team-badge-info">${m ? (m.home_league_pos ? m.home_league_pos + '° lugar' : '') + (m.home_league_pts ? ' • ' + m.home_league_pts + ' pts' : '') + (m.home_games_played ? ' • ' + m.home_games_played + ' jogos' : '') : 'N/D'}</div>
+                    <div style="margin-bottom:6px"><span style="font-size:10px;color:var(--text-muted)">FORMA RECENTE</span></div>
+                    <div class="form-dots" style="justify-content:flex-end">${m ? formHtml(m.home_form) : 'N/D'}</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${m ? formSummary(m.home_form) : ''}</div>
+                </div>
+                <div class="team-col-vs">VS</div>
+                <div class="team-col team-col-away">
+                    <div class="team-name-lg" style="color:var(--accent-blue)">${o.away_team}</div>
+                    <div class="team-badge-info">${m ? (m.away_league_pos ? m.away_league_pos + '° lugar' : '') + (m.away_league_pts ? ' • ' + m.away_league_pts + ' pts' : '') + (m.away_games_played ? ' • ' + m.away_games_played + ' jogos' : '') : 'N/D'}</div>
+                    <div style="margin-bottom:6px"><span style="font-size:10px;color:var(--text-muted)">FORMA RECENTE</span></div>
+                    <div class="form-dots">${m ? formHtml(m.away_form) : 'N/D'}</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${m ? formSummary(m.away_form) : ''}</div>
                 </div>
             </div>
-            <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">
-                Odd esperada: <strong style="color:var(--text-primary)">${o.market_odd.toFixed(2)}</strong> | 
-                ⚠️ Confirme a odd antes de apostar — valores podem variar em tempo real
+
+            ${m ? `
+            <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:16px 20px">
+                ${statBar(m.home_attack, m.away_attack, 'Ataque (α)', '', 2)}
+                ${statBar(m.home_defense, m.away_defense, 'Defesa (β)', '', 2)}
+                ${statBar(m.home_goals_scored_avg, m.away_goals_scored_avg, 'Gols Marcados/Jogo', '')}
+                ${statBar(m.home_goals_conceded_avg, m.away_goals_conceded_avg, 'Gols Sofridos/Jogo', '')}
+                ${statBar(m.home_xg, m.away_xg, 'xG Esperado (Modelo)', '')}
+                ${statBar(m.home_shots_on_target_avg || 0, m.away_shots_on_target_avg || 0, 'Finalizações no Gol/Jogo', '')}
+                ${statBar(m.home_corners_avg || 0, m.away_corners_avg || 0, 'Escanteios/Jogo', '')}
+                ${statBar(m.home_cards_avg || 0, m.away_cards_avg || 0, 'Cartões/Jogo', '')}
+                ${statBar(m.home_fouls_avg || 0, m.away_fouls_avg || 0, 'Faltas/Jogo', '')}
+                ${statBar(m.home_possession || 0, m.away_possession || 0, 'Posse Terço Final', '')}
+                ${statBar(m.home_form_points || 0, m.away_form_points || 0, 'Pontos de Forma', '', 2)}
+            </div>
+            ` : '<div style="color:var(--text-muted);padding:16px;text-align:center">Dados da partida não disponíveis no cache</div>'}
+
+            ${m && (m.injuries_home?.length > 0 || m.injuries_away?.length > 0) ? `
+            <div class="m-section">🏥 Lesões & Desfalques</div>
+            <div class="ctx-grid">
+                <div class="ctx-card">
+                    <div class="ctx-card-title">${o.home_team}</div>
+                    <div class="ctx-card-body">${m.injuries_home?.length > 0 ? m.injuries_home.map(i => '<div style="color:var(--accent-red);margin-bottom:3px">• ' + i + '</div>').join('') : '<span style="color:var(--accent-green)">Sem desfalques reportados</span>'}</div>
+                </div>
+                <div class="ctx-card">
+                    <div class="ctx-card-title">${o.away_team}</div>
+                    <div class="ctx-card-body">${m.injuries_away?.length > 0 ? m.injuries_away.map(i => '<div style="color:var(--accent-red);margin-bottom:3px">• ' + i + '</div>').join('') : '<span style="color:var(--accent-green)">Sem desfalques reportados</span>'}</div>
+                </div>
+            </div>
+            ` : ''}
+        </div>
+
+        <!-- ══ TAB 2: ESTATÍSTICAS DETALHADAS ══ -->
+        <div id="tab-stats" class="modal-tab-content">
+            ${m ? `
+            <div class="m-section">📈 Estatísticas Detalhadas por Time</div>
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;min-width:auto">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;padding:8px 12px;font-size:11px;background:var(--bg-secondary);border-bottom:1px solid var(--border);color:var(--text-muted)">MÉTRICA</th>
+                            <th style="text-align:center;padding:8px 12px;font-size:11px;background:var(--bg-secondary);border-bottom:1px solid var(--border);color:var(--accent-green)">${o.home_team}</th>
+                            <th style="text-align:center;padding:8px 12px;font-size:11px;background:var(--bg-secondary);border-bottom:1px solid var(--border);color:var(--accent-blue)">${o.away_team}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${buildStatsTableRows(m)}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="m-section" style="margin-top:24px">📊 Probabilidades do Modelo</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+                <div style="text-align:center;padding:16px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border)">
+                    <div style="font-size:10px;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">Vitória Casa</div>
+                    <div style="font-size:24px;font-weight:800;color:var(--accent-green);font-family:'JetBrains Mono'">${m.prob_home}%</div>
+                </div>
+                <div style="text-align:center;padding:16px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border)">
+                    <div style="font-size:10px;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">Empate</div>
+                    <div style="font-size:24px;font-weight:800;color:var(--text-secondary);font-family:'JetBrains Mono'">${m.prob_draw}%</div>
+                </div>
+                <div style="text-align:center;padding:16px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border)">
+                    <div style="font-size:10px;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">Vitória Fora</div>
+                    <div style="font-size:24px;font-weight:800;color:var(--accent-blue);font-family:'JetBrains Mono'">${m.prob_away}%</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+                <div style="text-align:center;padding:12px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border)">
+                    <div style="font-size:9px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Over 2.5</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--accent-purple);font-family:'JetBrains Mono'">${m.prob_over25}%</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border)">
+                    <div style="font-size:9px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">BTTS</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--accent-cyan);font-family:'JetBrains Mono'">${m.prob_btts}%</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border)">
+                    <div style="font-size:9px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Escanteios Exp.</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--accent-yellow);font-family:'JetBrains Mono'">${m.corners_expected}</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border)">
+                    <div style="font-size:9px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Cartões Exp.</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--accent-red);font-family:'JetBrains Mono'">${m.cards_expected}</div>
+                </div>
+            </div>
+            ` : '<div style="color:var(--text-muted);padding:16px;text-align:center">Dados não disponíveis</div>'}
+        </div>
+
+        <!-- ══ TAB 3: ODDS & VALOR ══ -->
+        <div id="tab-odds" class="modal-tab-content">
+            <div class="m-section">💰 Análise de Valor</div>
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Odd de Mercado</div>
+                    <div class="detail-value" style="font-family:'JetBrains Mono';font-size:22px;color:var(--accent-yellow)">${o.market_odd.toFixed(2)}</div>
+                    <div style="font-size:11px;color:var(--text-muted)">${o.bookmaker}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Odd Justa (Modelo)</div>
+                    <div class="detail-value" style="font-family:'JetBrains Mono';font-size:22px;color:var(--accent-green)">${o.fair_odd.toFixed(2)}</div>
+                    <div style="font-size:11px;color:var(--text-muted)">Dixon-Coles + Monte Carlo</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Prob. do Modelo</div>
+                    <div class="detail-value" style="font-size:22px">${o.model_prob}%</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Prob. Implícita (De-Vig)</div>
+                    <div class="detail-value" style="font-size:22px;color:var(--text-secondary)">${o.implied_prob}%</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Edge</div>
+                    <div class="detail-value" style="font-family:'JetBrains Mono';font-size:22px;color:var(--accent-green)">${o.edge_pct}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Kelly Sugerido</div>
+                    <div class="detail-value" style="font-size:22px">${o.kelly_bet_pct}</div>
+                </div>
+            </div>
+
+            ${m ? `
+            <div class="m-section">📋 Todas as Odds do Jogo (${m.bookmaker})</div>
+            <div class="odds-grid">
+                <div class="odds-card">
+                    <div class="odds-card-label">Vitória Casa</div>
+                    <div class="odds-card-value">${m.odds_home}</div>
+                    <div class="odds-card-prob">Prob: ${m.prob_home}%</div>
+                </div>
+                <div class="odds-card">
+                    <div class="odds-card-label">Empate</div>
+                    <div class="odds-card-value">${m.odds_draw}</div>
+                    <div class="odds-card-prob">Prob: ${m.prob_draw}%</div>
+                </div>
+                <div class="odds-card">
+                    <div class="odds-card-label">Vitória Fora</div>
+                    <div class="odds-card-value">${m.odds_away}</div>
+                    <div class="odds-card-prob">Prob: ${m.prob_away}%</div>
+                </div>
+                ${m.odds_1x ? `<div class="odds-card"><div class="odds-card-label">Casa ou Empate (1X)</div><div class="odds-card-value">${m.odds_1x}</div></div>` : ''}
+                ${m.odds_x2 ? `<div class="odds-card"><div class="odds-card-label">Fora ou Empate (X2)</div><div class="odds-card-value">${m.odds_x2}</div></div>` : ''}
+                <div class="odds-card">
+                    <div class="odds-card-label">Over 2.5</div>
+                    <div class="odds-card-value">${m.odds_over25}</div>
+                    <div class="odds-card-prob">Prob: ${m.prob_over25}%</div>
+                </div>
+                <div class="odds-card">
+                    <div class="odds-card-label">Under 2.5</div>
+                    <div class="odds-card-value">${m.odds_under25}</div>
+                </div>
+                <div class="odds-card">
+                    <div class="odds-card-label">BTTS Sim</div>
+                    <div class="odds-card-value">${m.odds_btts_yes}</div>
+                    <div class="odds-card-prob">Prob: ${m.prob_btts}%</div>
+                </div>
+                <div class="odds-card">
+                    <div class="odds-card-label">BTTS Não</div>
+                    <div class="odds-card-value">${m.odds_btts_no}</div>
+                </div>
+                ${m.odds_corners_over ? `<div class="odds-card"><div class="odds-card-label">Escanteios Over 9.5</div><div class="odds-card-value">${m.odds_corners_over}</div></div>` : ''}
+                ${m.odds_corners_under ? `<div class="odds-card"><div class="odds-card-label">Escanteios Under 9.5</div><div class="odds-card-value">${m.odds_corners_under}</div></div>` : ''}
+                ${m.odds_cards_over ? `<div class="odds-card"><div class="odds-card-label">Cartões Over 3.5</div><div class="odds-card-value">${m.odds_cards_over}</div></div>` : ''}
+                ${m.odds_cards_under ? `<div class="odds-card"><div class="odds-card-label">Cartões Under 3.5</div><div class="odds-card-value">${m.odds_cards_under}</div></div>` : ''}
+                ${m.odds_ah_line !== undefined ? `<div class="odds-card"><div class="odds-card-label">Asian Hcap (${m.odds_ah_line})</div><div class="odds-card-value">${m.odds_ah_home} / ${m.odds_ah_away}</div></div>` : ''}
+            </div>
+            ` : ''}
+
+            <div style="margin-top:16px;padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm)">
+                <div class="detail-label" style="margin-bottom:8px">🏦 ONDE APOSTAR</div>
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+                    ${bookmakerBadgeHtml(o.bookmaker, o.home_team, o.away_team, o.market, o.selection, false, o.league_country, o.league_name)}
+                    ${(() => {
+                        const info = getBookmakerInfo(o.bookmaker);
+                        if (info.footballUrl) {
+                            return '<a href="' + info.footballUrl + '" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent-cyan);text-decoration:none" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">Abrir ' + info.name + ' →</a>';
+                        }
+                        return '';
+                    })()}
+                </div>
+                <div style="padding:10px 14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px;font-size:12px">
+                    <div style="color:var(--accent-cyan);font-weight:700;margin-bottom:4px">Como encontrar:</div>
+                    <div style="color:var(--text-secondary);line-height:1.6">
+                        Futebol → <strong style="color:var(--accent-yellow)">${o.league_country || '?'}</strong> → <strong style="color:var(--accent-yellow)">${o.league_name || '?'}</strong> → <strong style="color:var(--text-primary)">${o.home_team} vs ${o.away_team}</strong> → <strong style="color:var(--accent-green)">${o.market}: ${o.selection}</strong>
+                    </div>
+                </div>
+            </div>
+
+            ${matchOpps.length > 0 ? `
+            <div class="m-section" style="margin-top:20px">🎯 Outras Oportunidades neste Jogo</div>
+            ${matchOpps.map(op => {
+                const opConf = op.confidence === 'ALTO' ? 'badge-high' : op.confidence === 'MÉDIO' ? 'badge-med' : 'badge-low';
+                return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:8px"><span class="badge ' + opConf + '">' + op.confidence + '</span><span style="font-size:13px">' + op.market + ': <strong>' + op.selection + '</strong></span><span style="font-family:\'JetBrains Mono\';font-size:12px;color:var(--text-secondary)">@' + op.market_odd.toFixed(2) + '</span></div><span style="font-weight:800;color:var(--accent-green);font-family:\'JetBrains Mono\'">' + op.edge_pct + '</span></div>';
+            }).join('')}
+            ` : ''}
+        </div>
+
+        <!-- ══ TAB 4: CONTEXTO ══ -->
+        <div id="tab-context" class="modal-tab-content">
+            <div class="m-section">🏟️ Informações do Jogo</div>
+            <div class="ctx-grid">
+                <div class="ctx-card">
+                    <div class="ctx-card-title">📍 Estádio</div>
+                    <div class="ctx-card-body">${m?.venue || 'N/D'}</div>
+                </div>
+                <div class="ctx-card">
+                    <div class="ctx-card-title">👨‍⚖️ Árbitro</div>
+                    <div class="ctx-card-body">
+                        ${m && m.referee && m.referee !== 'Desconhecido' ? m.referee : '<span style="color:var(--text-muted)">Não identificado</span>'}
+                        ${m && m.referee_cards_avg ? '<br><span style="font-size:11px;color:var(--text-muted)">' + m.referee_cards_avg + ' cartões/jogo • ' + (m.referee_fouls_avg || '?') + ' faltas/jogo</span>' : ''}
+                    </div>
+                </div>
+                <div class="ctx-card">
+                    <div class="ctx-card-title">🌤️ Clima</div>
+                    <div class="ctx-card-body">
+                        ${m ? m.weather_desc + '<br>' + m.weather_temp + '°C • Vento: ' + (m.weather_wind ? m.weather_wind.toFixed(0) : '?') + ' km/h' + (m.weather_rain > 0 ? ' • Chuva: ' + m.weather_rain + 'mm' : '') : o.weather_note}
+                    </div>
+                </div>
+                <div class="ctx-card">
+                    <div class="ctx-card-title">⚡ Fadiga</div>
+                    <div class="ctx-card-body">
+                        ${m ? (m.home_fatigue ? '<span style="color:var(--accent-yellow)">' + o.home_team + ' — jogou nas últimas 72h</span><br>' : '') + (m.away_fatigue ? '<span style="color:var(--accent-yellow)">' + o.away_team + ' — jogou nas últimas 72h</span>' : '') + (!m.home_fatigue && !m.away_fatigue ? '<span style="color:var(--accent-green)">Nenhum time com fadiga</span>' : '') : 'N/D'}
+                    </div>
+                </div>
+            </div>
+
+            ${m ? `
+            <div class="m-section">🏆 Contexto Competitivo</div>
+            <div class="ctx-grid">
+                <div class="ctx-card">
+                    <div class="ctx-card-title" style="color:var(--accent-green)">${o.home_team}</div>
+                    <div class="ctx-card-body">
+                        <div style="margin-bottom:6px"><strong>${m.home_league_pos || '?'}° lugar</strong> — ${m.home_league_pts || '?'} pts</div>
+                        <div style="margin-bottom:4px">Jogos: ${m.home_games_played || '?'} disputados, ${m.home_games_remaining || '?'} restantes</div>
+                        <div style="margin-bottom:4px">Distância p/ título: <strong style="color:${m.home_points_to_title <= 10 ? 'var(--accent-green)' : 'var(--text-secondary)'}">${m.home_points_to_title !== 99 ? m.home_points_to_title + ' pts' : 'N/D'}</strong></div>
+                        <div>Distância p/ rebaixamento: <strong style="color:${m.home_points_to_relegation <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}">${m.home_points_to_relegation !== 99 ? m.home_points_to_relegation + ' pts' : 'N/D'}</strong></div>
+                        <div style="margin-top:6px">Urgência: <strong>${m.urgency_home?.toFixed(1) || '?'}</strong>/1.0</div>
+                    </div>
+                </div>
+                <div class="ctx-card">
+                    <div class="ctx-card-title" style="color:var(--accent-blue)">${o.away_team}</div>
+                    <div class="ctx-card-body">
+                        <div style="margin-bottom:6px"><strong>${m.away_league_pos || '?'}° lugar</strong> — ${m.away_league_pts || '?'} pts</div>
+                        <div style="margin-bottom:4px">Jogos: ${m.away_games_played || '?'} disputados, ${m.away_games_remaining || '?'} restantes</div>
+                        <div style="margin-bottom:4px">Distância p/ título: <strong style="color:${m.away_points_to_title <= 10 ? 'var(--accent-green)' : 'var(--text-secondary)'}">${m.away_points_to_title !== 99 ? m.away_points_to_title + ' pts' : 'N/D'}</strong></div>
+                        <div>Distância p/ rebaixamento: <strong style="color:${m.away_points_to_relegation <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}">${m.away_points_to_relegation !== 99 ? m.away_points_to_relegation + ' pts' : 'N/D'}</strong></div>
+                        <div style="margin-top:6px">Urgência: <strong>${m.urgency_away?.toFixed(1) || '?'}</strong>/1.0</div>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+
+            <div class="m-section">📊 Qualidade dos Dados</div>
+            <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:16px">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                    <div style="font-size:28px;font-weight:800;color:${dqColor};font-family:'JetBrains Mono'">${dqPct}%</div>
+                    <div>
+                        <div style="font-size:13px;font-weight:700;color:${dqColor}">${dqLabel}</div>
+                        <div style="font-size:11px;color:var(--text-muted)">Índice de confiança dos dados</div>
+                    </div>
+                </div>
+                ${m ? `
+                <div style="font-size:12px;color:var(--text-secondary);line-height:1.8">
+                    ${m.has_real_odds ? '✅' : '❌'} Odds Reais ${m.has_real_odds ? '(' + m.bookmaker + ')' : '— Estimadas'}<br>
+                    ${m.has_real_standings ? '✅' : '❌'} Standings Reais<br>
+                    ${m.home_has_real_data ? '✅' : '⚠️'} ${o.home_team}: ${m.home_has_real_data ? 'Dados reais da API' : 'Estimado'}<br>
+                    ${m.away_has_real_data ? '✅' : '⚠️'} ${o.away_team}: ${m.away_has_real_data ? 'Dados reais da API' : 'Estimado'}<br>
+                    ${m.has_real_weather ? '✅' : '❌'} Clima Real<br>
+                    ${m.referee && m.referee !== 'Desconhecido' ? '✅' : '❌'} Árbitro Identificado
+                </div>
+                ` : ''}
             </div>
         </div>
 
-        <div style="margin-top:16px">
-            <div style="padding:10px 14px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:8px;display:flex;align-items:center;gap:8px">
-                <span style="font-size:12px;color:var(--accent-blue)">▼</span>
-                <strong style="color:var(--accent-cyan);font-size:13px">🧠 Análise Completa — Cálculos, Estatísticas e Justificativa</strong>
-            </div>
-            <div style="margin-top:8px;padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;overflow-x:auto">
+        <!-- ══ TAB 5: ANÁLISE TÉCNICA ══ -->
+        <div id="tab-analysis" class="modal-tab-content">
+            <div style="padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;overflow-x:auto">
                 <pre style="font-family:'JetBrains Mono','Fira Code',monospace;font-size:11.5px;line-height:1.7;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word;margin:0">${buildDetailedAnalysis(o)}</pre>
             </div>
         </div>
     `;
     document.getElementById("modal-overlay").classList.add("show");
+}
+
+// ── MODAL TAB SWITCH ──
+function switchModalTab(btn, tabId) {
+    document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.modal-tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+}
+
+// ── BUILD STATS TABLE ROWS ──
+function buildStatsTableRows(m) {
+    const rows = [
+        ['Posição na Liga', m.home_league_pos ? m.home_league_pos + '°' : 'N/D', m.away_league_pos ? m.away_league_pos + '°' : 'N/D'],
+        ['Pontos', m.home_league_pts ?? 'N/D', m.away_league_pts ?? 'N/D'],
+        ['Jogos Disputados', m.home_games_played ?? 'N/D', m.away_games_played ?? 'N/D'],
+        ['Jogos Restantes', m.home_games_remaining ?? 'N/D', m.away_games_remaining ?? 'N/D'],
+        ['Força de Ataque (α)', m.home_attack ?? 'N/D', m.away_attack ?? 'N/D'],
+        ['Força de Defesa (β)', m.home_defense ?? 'N/D', m.away_defense ?? 'N/D'],
+        ['xG Esperado', m.home_xg ?? 'N/D', m.away_xg ?? 'N/D'],
+        ['Gols Marcados/Jogo', m.home_goals_scored_avg ?? 'N/D', m.away_goals_scored_avg ?? 'N/D'],
+        ['Gols Sofridos/Jogo', m.home_goals_conceded_avg ?? 'N/D', m.away_goals_conceded_avg ?? 'N/D'],
+        ['Finalizações no Gol/Jogo', m.home_shots_on_target_avg ?? 'N/D', m.away_shots_on_target_avg ?? 'N/D'],
+        ['Finalizações Bloqueadas/Jogo', m.home_shots_blocked_avg ?? 'N/D', m.away_shots_blocked_avg ?? 'N/D'],
+        ['Escanteios/Jogo', m.home_corners_avg ?? 'N/D', m.away_corners_avg ?? 'N/D'],
+        ['Cartões/Jogo', m.home_cards_avg ?? 'N/D', m.away_cards_avg ?? 'N/D'],
+        ['Faltas/Jogo', m.home_fouls_avg ?? 'N/D', m.away_fouls_avg ?? 'N/D'],
+        ['Posse Terço Final', m.home_possession ?? 'N/D', m.away_possession ?? 'N/D'],
+        ['Pontos de Forma', m.home_form_points ?? 'N/D', m.away_form_points ?? 'N/D'],
+        ['Urgência', m.urgency_home?.toFixed(1) ?? 'N/D', m.urgency_away?.toFixed(1) ?? 'N/D'],
+        ['Fadiga (72h)', m.home_fatigue ? 'SIM' : 'NÃO', m.away_fatigue ? 'SIM' : 'NÃO'],
+    ];
+    
+    return rows.map((r, i) => {
+        const bg = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
+        const hVal = parseFloat(r[1]);
+        const aVal = parseFloat(r[2]);
+        const hBold = !isNaN(hVal) && !isNaN(aVal) && hVal > aVal;
+        const aBold = !isNaN(hVal) && !isNaN(aVal) && aVal > hVal;
+        // Invert for "Gols Sofridos" and "Fadiga" (lower is better)
+        const invertMetrics = ['Gols Sofridos/Jogo', 'Fadiga (72h)'];
+        const inv = invertMetrics.includes(r[0]);
+        const hStyle = (inv ? aBold : hBold) ? 'color:var(--accent-green);font-weight:800' : '';
+        const aStyle = (inv ? hBold : aBold) ? 'color:var(--accent-blue);font-weight:800' : '';
+        return '<tr style="background:' + bg + '"><td style="padding:7px 12px;font-size:12px;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.04)">' + r[0] + '</td><td style="text-align:center;padding:7px 12px;font-family:\'JetBrains Mono\';font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);' + hStyle + '">' + r[1] + '</td><td style="text-align:center;padding:7px 12px;font-family:\'JetBrains Mono\';font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);' + aStyle + '">' + r[2] + '</td></tr>';
+    }).join('');
 }
 
 function buildDetailedAnalysis(o) {
