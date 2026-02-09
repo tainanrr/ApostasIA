@@ -516,42 +516,22 @@ def generate_reasoning(match: MatchAnalysis, market: str,
     # ── 4. CÁLCULO DE xG ──
     lines.append("⚽ CÁLCULO DE xG (Gols Esperados):")
     league_avg = getattr(match, 'league_avg_goals', 2.7) or 2.7
-    league_half = league_avg / 2.0
     suspect = getattr(match, 'odds_home_away_suspect', False)
     home_adv = 1.0 if suspect else 1.08
-
-    # Recalcular os MESMOS α/β usados em calculate_expected_goals
-    if suspect:
-        _h_sc = (home.home_goals_scored_avg + home.away_goals_scored_avg) / 2
-        _h_co = (home.home_goals_conceded_avg + home.away_goals_conceded_avg) / 2
-        _a_sc = (away.home_goals_scored_avg + away.away_goals_scored_avg) / 2
-        _a_co = (away.home_goals_conceded_avg + away.away_goals_conceded_avg) / 2
-    else:
-        _h_sc = home.home_goals_scored_avg
-        _h_co = home.home_goals_conceded_avg
-        _a_sc = away.away_goals_scored_avg
-        _a_co = away.away_goals_conceded_avg
-
-    # Regressão à média (mesmo que no modelo)
-    from models import _regress_to_mean
     home_gp = home.games_played or 1
     away_gp = away.games_played or 1
-    _h_sc = _regress_to_mean(_h_sc, league_half, home_gp)
-    _h_co = _regress_to_mean(_h_co, league_half, home_gp)
-    _a_sc = _regress_to_mean(_a_sc, league_half, away_gp)
-    _a_co = _regress_to_mean(_a_co, league_half, away_gp)
 
-    _half = league_avg / 2.0
-    _ah = max(0.3, _h_sc / _half) if _half > 0 else 1.0
-    _bh = max(0.3, _h_co / _half) if _half > 0 else 1.0
-    _aa = max(0.3, _a_sc / _half) if _half > 0 else 1.0
-    _ba = max(0.3, _a_co / _half) if _half > 0 else 1.0
+    # Usar os α/β REAIS salvos pelo modelo (idênticos aos usados no cálculo)
+    _ah = getattr(match, 'model_alpha_h', 1.0)
+    _bh = getattr(match, 'model_beta_h', 1.0)
+    _aa = getattr(match, 'model_alpha_a', 1.0)
+    _ba = getattr(match, 'model_beta_a', 1.0)
 
     home_form_factor = 0.85 + home.form_points * 0.30
     away_form_factor = 0.85 + away.form_points * 0.30
 
     lines.append(f"  Média de gols da liga: {league_avg:.2f} gols/jogo")
-    if home_gp < 8 or away_gp < 8:
+    if home_gp < 15 or away_gp < 15:
         lines.append(f"  ⚠️ Amostra pequena (Casa:{home_gp} jogos, Fora:{away_gp} jogos) — regressão à média aplicada")
     lines.append(f"  Fórmula (Dixon-Coles):")
     lines.append(f"    λ (Casa) = α_casa × β_fora × vantagem_mando({home_adv}) × fator_forma")

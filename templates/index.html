@@ -2353,30 +2353,42 @@ function buildDetailedAnalysis(o) {
         const homeHasReal = m.home_has_real_data !== false;
         const awayHasReal = m.away_has_real_data !== false;
         
+        // Usar α/β REAIS do modelo (não attack_strength/defense_strength genéricos)
+        const alphaH = (m.model_alpha_h ?? m.home_attack ?? 1.0).toFixed(2);
+        const betaH = (m.model_beta_h ?? m.home_defense ?? 1.0).toFixed(2);
+        const alphaA = (m.model_alpha_a ?? m.away_attack ?? 1.0).toFixed(2);
+        const betaA = (m.model_beta_a ?? m.away_defense ?? 1.0).toFixed(2);
+        L.push(`  Média de gols da liga: ${(m.league_avg_goals ?? 2.7).toFixed(2)} gols/jogo`);
+        const hGP = m.home_games_played ?? 0;
+        const aGP = m.away_games_played ?? 0;
+        if (hGP < 15 || aGP < 15) {
+            L.push(`  ⚠️ Amostra pequena (Casa:${hGP} jogos, Fora:${aGP} jogos) — regressão à média aplicada`);
+        }
+        L.push("");
         L.push(`  ${o.home_team} (CASA):`);
         if (homeHasReal) {
-            L.push(`    ├─ Ataque (α):     ${m.home_attack ?? 'N/D'}`);
-            L.push(`    ├─ Defesa (β):     ${m.home_defense ?? 'N/D'}`);
+            L.push(`    ├─ Ataque (α):     ${alphaH}`);
+            L.push(`    ├─ Defesa (β):     ${betaH}`);
             L.push(`    ├─ Gols/jogo (casa):  marcados ${m.home_goals_scored_avg ?? 'N/D'} | sofridos ${m.home_goals_conceded_avg ?? 'N/D'}`);
             L.push(`    ├─ Posição:        ${m.home_league_pos ?? 'N/D'}° (${m.home_league_pts ?? 'N/D'} pts)`);
             L.push(`    └─ Forma (pontos): ${m.home_form_points ?? 'N/D'}`);
         } else {
             L.push(`    ⚠️  DADOS ESTIMADOS (não reais da API) - análise não confiável`);
-            L.push(`    ├─ Ataque (α):     ${m.home_attack ?? 'N/D'} (estimado)`);
-            L.push(`    ├─ Defesa (β):     ${m.home_defense ?? 'N/D'} (estimado)`);
+            L.push(`    ├─ Ataque (α):     ${alphaH} (estimado)`);
+            L.push(`    ├─ Defesa (β):     ${betaH} (estimado)`);
         }
         L.push("");
         L.push(`  ${o.away_team} (FORA):`);
         if (awayHasReal) {
-            L.push(`    ├─ Ataque (α):     ${m.away_attack ?? 'N/D'}`);
-            L.push(`    ├─ Defesa (β):     ${m.away_defense ?? 'N/D'}`);
+            L.push(`    ├─ Ataque (α):     ${alphaA}`);
+            L.push(`    ├─ Defesa (β):     ${betaA}`);
             L.push(`    ├─ Gols/jogo (fora):  marcados ${m.away_goals_scored_avg ?? 'N/D'} | sofridos ${m.away_goals_conceded_avg ?? 'N/D'}`);
             L.push(`    ├─ Posição:        ${m.away_league_pos ?? 'N/D'}° (${m.away_league_pts ?? 'N/D'} pts)`);
             L.push(`    └─ Forma (pontos): ${m.away_form_points ?? 'N/D'}`);
         } else {
             L.push(`    ⚠️  DADOS ESTIMADOS (não reais da API) - análise não confiável`);
-            L.push(`    ├─ Ataque (α):     ${m.away_attack ?? 'N/D'} (estimado)`);
-            L.push(`    ├─ Defesa (β):     ${m.away_defense ?? 'N/D'} (estimado)`);
+            L.push(`    ├─ Ataque (α):     ${alphaA} (estimado)`);
+            L.push(`    ├─ Defesa (β):     ${betaA} (estimado)`);
         }
     } else {
         L.push(`  ⚠️ Dados da partida não encontrados no cache`);
@@ -2434,12 +2446,21 @@ function buildDetailedAnalysis(o) {
         const hmAdv = isSuspect ? '1.00' : '1.08';
         
         if (homeHasReal && awayHasReal) {
+            // Usar α/β REAIS do modelo (consistentes com o xG calculado)
+            const fAlphaH = (m.model_alpha_h ?? m.home_attack ?? 1.0).toFixed(2);
+            const fBetaA = (m.model_beta_a ?? m.away_defense ?? 1.0).toFixed(2);
+            const fAlphaA = (m.model_alpha_a ?? m.away_attack ?? 1.0).toFixed(2);
+            const fBetaH = (m.model_beta_h ?? m.home_defense ?? 1.0).toFixed(2);
+            const rawLambda = parseFloat(fAlphaH) * parseFloat(fBetaA) * parseFloat(hmAdv) * parseFloat(hFormFactor);
+            const rawMu = parseFloat(fAlphaA) * parseFloat(fBetaH) * parseFloat(aFormFactor);
             L.push(`  Cálculo λ (${o.home_team}):`);
-            L.push(`    = ${m.home_attack ?? 'N/D'} × ${m.away_defense ?? 'N/D'} × ${hmAdv} × ${hFormFactor}`);
+            L.push(`    = ${fAlphaH} × ${fBetaA} × ${hmAdv} × ${hFormFactor}`);
+            L.push(`    = ${rawLambda.toFixed(2)}${rawLambda > 3.5 ? ' → clamped 3.5' : ''}`);
             L.push(`    → xG Casa = ${o.home_xg.toFixed(2)}`);
             L.push("");
             L.push(`  Cálculo μ (${o.away_team}):`);
-            L.push(`    = ${m.away_attack ?? 'N/D'} × ${m.home_defense ?? 'N/D'} × ${aFormFactor}`);
+            L.push(`    = ${fAlphaA} × ${fBetaH} × ${aFormFactor}`);
+            L.push(`    = ${rawMu.toFixed(2)}${rawMu > 3.0 ? ' → clamped 3.0' : ''}`);
             L.push(`    → xG Fora = ${o.away_xg.toFixed(2)}`);
         } else {
             L.push(`  ⚠️  Cálculo de xG baseado em dados ESTIMADOS (não reais)`);

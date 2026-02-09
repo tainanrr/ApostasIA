@@ -239,6 +239,11 @@ class MatchAnalysis:
     injuries_away: list = field(default_factory=list)
     model_home_xg: float = 0.0
     model_away_xg: float = 0.0
+    # Parâmetros α/β REAIS usados no cálculo de xG (para exibição na UI)
+    model_alpha_h: float = 1.0
+    model_beta_h: float = 1.0
+    model_alpha_a: float = 1.0
+    model_beta_a: float = 1.0
     model_prob_home: float = 0.0
     model_prob_draw: float = 0.0
     model_prob_away: float = 0.0

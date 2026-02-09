@@ -126,7 +126,7 @@ def estimate_attack_defense_params(
 
 
 def _regress_to_mean(observed_avg: float, league_mean: float,
-                      games_played: int, min_games: int = 8) -> float:
+                      games_played: int, min_games: int = 15) -> float:
     """
     Regressão bayesiana simples à média da liga.
     Com poucas amostras, usa mais a média da liga.
@@ -194,6 +194,12 @@ def calculate_expected_goals(match: MatchAnalysis) -> tuple[float, float]:
         h_scored, h_conceded, a_scored, a_conceded,
         league_avg_goals=league_avg
     )
+
+    # Salvar α/β reais no match para exibição correta na UI
+    match.model_alpha_h = round(alpha_h, 4)
+    match.model_beta_h = round(beta_h, 4)
+    match.model_alpha_a = round(alpha_a, 4)
+    match.model_beta_a = round(beta_a, 4)
 
     # Força de ataque do time da casa vs defesa do visitante
     lambda_ = alpha_h * beta_a * home_advantage

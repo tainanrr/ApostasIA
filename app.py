@@ -464,6 +464,10 @@ def deserialize_match(d: dict) -> MatchAnalysis:
         data_quality_score=d.get("data_quality", 0.0),
         odds_home_away_suspect=d.get("odds_home_away_suspect", False),
         league_avg_goals=d.get("league_avg_goals", 2.7),
+        model_alpha_h=d.get("model_alpha_h", 1.0),
+        model_beta_h=d.get("model_beta_h", 1.0),
+        model_alpha_a=d.get("model_alpha_a", 1.0),
+        model_beta_a=d.get("model_beta_a", 1.0),
     )
     return match
 
@@ -676,6 +680,11 @@ def serialize_match(m: MatchAnalysis) -> dict:
         "home_defense": round(h.defense_strength, 2),
         "away_attack": round(a.attack_strength, 2),
         "away_defense": round(a.defense_strength, 2),
+        # α/β REAIS usados no cálculo de xG (podem diferir de attack/defense_strength)
+        "model_alpha_h": round(getattr(m, 'model_alpha_h', h.attack_strength), 4),
+        "model_beta_h": round(getattr(m, 'model_beta_h', h.defense_strength), 4),
+        "model_alpha_a": round(getattr(m, 'model_alpha_a', a.attack_strength), 4),
+        "model_beta_a": round(getattr(m, 'model_beta_a', a.defense_strength), 4),
         "home_goals_scored_avg": round(h.home_goals_scored_avg, 2),
         "home_goals_conceded_avg": round(h.home_goals_conceded_avg, 2),
         "away_goals_scored_avg": round(a.away_goals_scored_avg, 2),
