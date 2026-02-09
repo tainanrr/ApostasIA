@@ -284,6 +284,86 @@
         .market-corners { background: var(--accent-yellow-dim); color: var(--accent-yellow); }
         .market-cards { background: var(--accent-red-dim); color: var(--accent-red); }
 
+        /* ── SORTABLE TABLE HEADERS ── */
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            white-space: nowrap;
+            transition: background 0.15s;
+        }
+        th.sortable:hover {
+            background: rgba(0, 230, 118, 0.08);
+        }
+        th.sortable::after {
+            content: '⇅';
+            margin-left: 4px;
+            font-size: 10px;
+            opacity: 0.3;
+        }
+        th.sortable.sort-asc::after {
+            content: '▲';
+            opacity: 0.9;
+            color: var(--accent-green);
+        }
+        th.sortable.sort-desc::after {
+            content: '▼';
+            opacity: 0.9;
+            color: var(--accent-green);
+        }
+
+        /* ── COLUMN FILTERS ── */
+        .col-filter-row th {
+            padding: 4px 3px;
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--border);
+        }
+        .col-filter {
+            width: 100%;
+            box-sizing: border-box;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 10px;
+            padding: 3px 4px;
+            outline: none;
+        }
+        .col-filter:focus {
+            border-color: var(--accent-green);
+        }
+        .col-filter::placeholder {
+            color: var(--text-muted);
+            font-size: 9px;
+        }
+        select.col-filter {
+            font-size: 10px;
+            padding: 3px 2px;
+        }
+        .col-filter-num {
+            width: 100%;
+            display: flex;
+            gap: 2px;
+        }
+        .col-filter-num input {
+            width: 50%;
+            box-sizing: border-box;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 9px;
+            padding: 3px 3px;
+            outline: none;
+        }
+        .col-filter-num input:focus {
+            border-color: var(--accent-green);
+        }
+        .col-filter-num input::placeholder {
+            color: var(--text-muted);
+            font-size: 8px;
+        }
+
         /* ── DETAIL MODAL ── */
         .modal-overlay {
             position: fixed; inset: 0; z-index: 1000;
@@ -476,50 +556,59 @@
             <div class="section-title">
                 <span class="icon">🎯</span> Oportunidades de Valor (+EV)
                 <span class="section-count" id="opp-count">0</span>
-                <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:8px">Ordenadas por Edge (maior → menor)</span>
+                <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:8px">Clique nas colunas para ordenar | Use os filtros abaixo dos cabeçalhos</span>
             </div>
-            <div class="filter-bar">
-                <select class="filter-select" id="filter-confidence" onchange="filterOpps()">
-                    <option value="all">Todas Confianças</option>
-                    <option value="ALTO">🟢 ALTO</option>
-                    <option value="MÉDIO">🟡 MÉDIO</option>
-                    <option value="BAIXO">🔴 BAIXO</option>
-                </select>
-                <select class="filter-select" id="filter-market" onchange="filterOpps()">
-                    <option value="all">Todos os Mercados</option>
-                    <option value="1x2">1x2</option>
-                    <option value="Dupla Chance">Dupla Chance</option>
-                    <option value="O/U 2.5">O/U 2.5</option>
-                    <option value="BTTS">BTTS</option>
-                    <option value="Corners">Escanteios</option>
-                    <option value="Cartões">Cartões</option>
-                </select>
-                <select class="filter-select" id="filter-league" onchange="filterOpps()">
-                    <option value="all">Todas as Ligas</option>
-                </select>
-                <select class="filter-select" id="filter-date" onchange="filterOpps()">
-                    <option value="all">Todas as Datas</option>
-                </select>
-                <input class="filter-input" type="text" id="filter-search" placeholder="Buscar time..." oninput="filterOpps()">
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+                <button onclick="clearAllFilters()" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:11px">🔄 Limpar Filtros</button>
+                <span id="filter-status" style="font-size:11px;color:var(--text-muted)"></span>
             </div>
             <div class="table-wrap">
-                <table>
+                <table id="opp-table">
                     <thead>
                         <tr>
-                            <th>#</th>
-                            <th>Jogo</th>
-                            <th>Liga</th>
-                            <th>Data</th>
-                            <th>Mercado</th>
-                            <th>Seleção</th>
-                            <th>Casa</th>
-                            <th>Odd</th>
-                            <th>Justa</th>
-                            <th>Edge</th>
-                            <th>Kelly</th>
-                            <th>Prob.</th>
-                            <th>Nível</th>
-                            <th>Dados</th>
+                            <th class="sortable" data-sort="index" data-type="num" onclick="sortTable(this)">#</th>
+                            <th class="sortable" data-sort="team" data-type="str" onclick="sortTable(this)">Jogo</th>
+                            <th class="sortable" data-sort="league" data-type="str" onclick="sortTable(this)">Liga</th>
+                            <th class="sortable" data-sort="date" data-type="str" onclick="sortTable(this)">Data</th>
+                            <th class="sortable" data-sort="market" data-type="str" onclick="sortTable(this)">Mercado</th>
+                            <th class="sortable" data-sort="selection" data-type="str" onclick="sortTable(this)">Seleção</th>
+                            <th class="sortable" data-sort="bookmaker" data-type="str" onclick="sortTable(this)">Casa</th>
+                            <th class="sortable sort-desc" data-sort="odd" data-type="num" onclick="sortTable(this)">Odd</th>
+                            <th class="sortable" data-sort="fair_odd" data-type="num" onclick="sortTable(this)">Justa</th>
+                            <th class="sortable sort-desc" data-sort="edge" data-type="num" onclick="sortTable(this)">Edge</th>
+                            <th class="sortable" data-sort="kelly" data-type="num" onclick="sortTable(this)">Kelly</th>
+                            <th class="sortable" data-sort="prob" data-type="num" onclick="sortTable(this)">Prob.</th>
+                            <th class="sortable" data-sort="confidence" data-type="str" onclick="sortTable(this)">Nível</th>
+                            <th class="sortable" data-sort="dq" data-type="num" onclick="sortTable(this)">Dados</th>
+                        </tr>
+                        <tr class="col-filter-row">
+                            <th></th>
+                            <th><input class="col-filter" type="text" id="cf-team" placeholder="Time..." oninput="applyColumnFilters()"></th>
+                            <th><select class="col-filter" id="cf-league" onchange="applyColumnFilters()"><option value="">Todas</option></select></th>
+                            <th><select class="col-filter" id="cf-date" onchange="applyColumnFilters()"><option value="">Todas</option></select></th>
+                            <th><select class="col-filter" id="cf-market" onchange="applyColumnFilters()">
+                                <option value="">Todos</option>
+                                <option value="1x2">1x2</option>
+                                <option value="Dupla Chance">Dupla Chance</option>
+                                <option value="O/U 2.5">O/U 2.5</option>
+                                <option value="BTTS">BTTS</option>
+                                <option value="Corners">Escanteios</option>
+                                <option value="Cartões">Cartões</option>
+                            </select></th>
+                            <th><input class="col-filter" type="text" id="cf-selection" placeholder="Seleção..." oninput="applyColumnFilters()"></th>
+                            <th><input class="col-filter" type="text" id="cf-bookmaker" placeholder="Casa..." oninput="applyColumnFilters()"></th>
+                            <th><div class="col-filter-num"><input type="number" id="cf-odd-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-odd-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
+                            <th></th>
+                            <th><div class="col-filter-num"><input type="number" id="cf-edge-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-edge-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
+                            <th><div class="col-filter-num"><input type="number" id="cf-kelly-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-kelly-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
+                            <th><div class="col-filter-num"><input type="number" id="cf-prob-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-prob-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
+                            <th><select class="col-filter" id="cf-confidence" onchange="applyColumnFilters()">
+                                <option value="">Todos</option>
+                                <option value="ALTO">ALTO</option>
+                                <option value="MÉDIO">MÉDIO</option>
+                                <option value="BAIXO">BAIXO</option>
+                            </select></th>
+                            <th><div class="col-filter-num"><input type="number" id="cf-dq-min" placeholder="Min" step="10" oninput="applyColumnFilters()"><input type="number" id="cf-dq-max" placeholder="Max" step="10" oninput="applyColumnFilters()"></div></th>
                         </tr>
                     </thead>
                     <tbody id="opp-tbody"></tbody>
@@ -1046,47 +1135,173 @@ function renderLeagues() {
 }
 
 // ═══════════════════════════════════════════
-// FILTERS
+// SORTING
 // ═══════════════════════════════════════════
+let currentSort = { key: 'edge', dir: 'desc' };
+
+function sortTable(th) {
+    const key = th.dataset.sort;
+    const type = th.dataset.type;
+    
+    // Toggle direction
+    if (currentSort.key === key) {
+        currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.key = key;
+        currentSort.dir = type === 'num' ? 'desc' : 'asc';
+    }
+    
+    // Update header classes
+    document.querySelectorAll('#opp-table th.sortable').forEach(h => {
+        h.classList.remove('sort-asc', 'sort-desc');
+    });
+    th.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    
+    applyColumnFilters();
+}
+
+function getSortValue(o, key) {
+    switch(key) {
+        case 'index': return 0;
+        case 'team': return (o.home_team + ' ' + o.away_team).toLowerCase();
+        case 'league': return (o.league_name || '').toLowerCase();
+        case 'date': return o.match_date + ' ' + o.match_time;
+        case 'market': return o.market || '';
+        case 'selection': return o.selection || '';
+        case 'bookmaker': return (o.bookmaker || '').toLowerCase();
+        case 'odd': return o.market_odd || 0;
+        case 'fair_odd': return o.fair_odd || 0;
+        case 'edge': return o.edge || 0;
+        case 'kelly': return parseFloat((o.kelly_bet_pct || '0').replace('%', '')) || 0;
+        case 'prob': return o.model_prob || 0;
+        case 'confidence': return o.confidence === 'ALTO' ? 3 : o.confidence === 'MÉDIO' ? 2 : 1;
+        case 'dq': return (o.data_quality || 0) * 100;
+        default: return 0;
+    }
+}
+
+// ═══════════════════════════════════════════
+// COLUMN FILTERS
+// ═══════════════════════════════════════════
+function applyColumnFilters() {
+    const team = (document.getElementById('cf-team')?.value || '').toLowerCase();
+    const league = document.getElementById('cf-league')?.value || '';
+    const date = document.getElementById('cf-date')?.value || '';
+    const market = document.getElementById('cf-market')?.value || '';
+    const selection = (document.getElementById('cf-selection')?.value || '').toLowerCase();
+    const bookmaker = (document.getElementById('cf-bookmaker')?.value || '').toLowerCase();
+    const oddMin = parseFloat(document.getElementById('cf-odd-min')?.value) || null;
+    const oddMax = parseFloat(document.getElementById('cf-odd-max')?.value) || null;
+    const edgeMin = parseFloat(document.getElementById('cf-edge-min')?.value) || null;
+    const edgeMax = parseFloat(document.getElementById('cf-edge-max')?.value) || null;
+    const kellyMin = parseFloat(document.getElementById('cf-kelly-min')?.value) || null;
+    const kellyMax = parseFloat(document.getElementById('cf-kelly-max')?.value) || null;
+    const probMin = parseFloat(document.getElementById('cf-prob-min')?.value) || null;
+    const probMax = parseFloat(document.getElementById('cf-prob-max')?.value) || null;
+    const confidence = document.getElementById('cf-confidence')?.value || '';
+    const dqMin = parseFloat(document.getElementById('cf-dq-min')?.value) || null;
+    const dqMax = parseFloat(document.getElementById('cf-dq-max')?.value) || null;
+
+    let filtered = allOpps.filter(o => {
+        if (team && !(o.home_team.toLowerCase().includes(team) || o.away_team.toLowerCase().includes(team))) return false;
+        if (league && o.league_name !== league) return false;
+        if (date && o.match_date !== date) return false;
+        if (market && o.market !== market) return false;
+        if (selection && !o.selection.toLowerCase().includes(selection)) return false;
+        if (bookmaker && !(o.bookmaker || '').toLowerCase().includes(bookmaker)) return false;
+        if (oddMin !== null && o.market_odd < oddMin) return false;
+        if (oddMax !== null && o.market_odd > oddMax) return false;
+        if (edgeMin !== null && o.edge < edgeMin) return false;
+        if (edgeMax !== null && o.edge > edgeMax) return false;
+        const kellyVal = parseFloat((o.kelly_bet_pct || '0').replace('%', ''));
+        if (kellyMin !== null && kellyVal < kellyMin) return false;
+        if (kellyMax !== null && kellyVal > kellyMax) return false;
+        if (probMin !== null && o.model_prob < probMin) return false;
+        if (probMax !== null && o.model_prob > probMax) return false;
+        if (confidence && o.confidence !== confidence) return false;
+        const dqVal = (o.data_quality || 0) * 100;
+        if (dqMin !== null && dqVal < dqMin) return false;
+        if (dqMax !== null && dqVal > dqMax) return false;
+        return true;
+    });
+
+    // Sort
+    filtered.sort((a, b) => {
+        const va = getSortValue(a, currentSort.key);
+        const vb = getSortValue(b, currentSort.key);
+        let cmp = 0;
+        if (typeof va === 'number' && typeof vb === 'number') {
+            cmp = va - vb;
+        } else {
+            cmp = String(va).localeCompare(String(vb));
+        }
+        return currentSort.dir === 'asc' ? cmp : -cmp;
+    });
+
+    // Status
+    const statusEl = document.getElementById('filter-status');
+    if (statusEl) {
+        const total = allOpps.length;
+        const shown = filtered.length;
+        statusEl.textContent = shown < total ? `Exibindo ${shown} de ${total} oportunidades` : `${total} oportunidades`;
+    }
+
+    renderOpportunities(filtered);
+}
+
+function clearAllFilters() {
+    ['cf-team', 'cf-selection', 'cf-bookmaker', 'cf-odd-min', 'cf-odd-max',
+     'cf-edge-min', 'cf-edge-max', 'cf-kelly-min', 'cf-kelly-max',
+     'cf-prob-min', 'cf-prob-max', 'cf-dq-min', 'cf-dq-max'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    ['cf-league', 'cf-date', 'cf-market', 'cf-confidence'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    currentSort = { key: 'edge', dir: 'desc' };
+    document.querySelectorAll('#opp-table th.sortable').forEach(h => {
+        h.classList.remove('sort-asc', 'sort-desc');
+    });
+    applyColumnFilters();
+}
+
 function populateFilters() {
+    // Column filters - leagues
     const leagues = [...new Set(allOpps.map(o => o.league_name))].sort();
-    const leagueSelect = document.getElementById("filter-league");
-    leagueSelect.innerHTML = '<option value="all">Todas as Ligas</option>' +
-        leagues.map(l => `<option value="${l}">${l}</option>`).join("");
+    const cfLeague = document.getElementById("cf-league");
+    if (cfLeague) {
+        cfLeague.innerHTML = '<option value="">Todas</option>' +
+            leagues.map(l => `<option value="${l}">${l}</option>`).join("");
+    }
 
+    // Column filters - dates
     const dates = [...new Set(allOpps.map(o => o.match_date))].sort();
-    const dateSelect = document.getElementById("filter-date");
-    dateSelect.innerHTML = '<option value="all">Todas as Datas</option>' +
-        dates.map(d => `<option value="${d}">${d}</option>`).join("");
+    const cfDate = document.getElementById("cf-date");
+    if (cfDate) {
+        cfDate.innerHTML = '<option value="">Todas</option>' +
+            dates.map(d => `<option value="${d}">${d}</option>`).join("");
+    }
 
+    // Match filters
     const matchLeagues = [...new Set(allMatches.map(m => m.league_name))].sort();
     const matchLeagueSelect = document.getElementById("filter-match-league");
-    matchLeagueSelect.innerHTML = '<option value="all">Todas as Ligas</option>' +
-        matchLeagues.map(l => `<option value="${l}">${l}</option>`).join("");
+    if (matchLeagueSelect) {
+        matchLeagueSelect.innerHTML = '<option value="all">Todas as Ligas</option>' +
+            matchLeagues.map(l => `<option value="${l}">${l}</option>`).join("");
+    }
 
     const matchDates = [...new Set(allMatches.map(m => m.match_date))].sort();
     const matchDateSelect = document.getElementById("filter-match-date");
-    matchDateSelect.innerHTML = '<option value="all">Todas as Datas</option>' +
-        matchDates.map(d => `<option value="${d}">${d}</option>`).join("");
+    if (matchDateSelect) {
+        matchDateSelect.innerHTML = '<option value="all">Todas as Datas</option>' +
+            matchDates.map(d => `<option value="${d}">${d}</option>`).join("");
+    }
 }
 
 function filterOpps() {
-    const conf = document.getElementById("filter-confidence").value;
-    const market = document.getElementById("filter-market").value;
-    const league = document.getElementById("filter-league").value;
-    const date = document.getElementById("filter-date").value;
-    const search = document.getElementById("filter-search").value.toLowerCase();
-
-    let filtered = allOpps;
-    if (conf !== "all") filtered = filtered.filter(o => o.confidence === conf);
-    if (market !== "all") filtered = filtered.filter(o => o.market === market);
-    if (league !== "all") filtered = filtered.filter(o => o.league_name === league);
-    if (date !== "all") filtered = filtered.filter(o => o.match_date === date);
-    if (search) filtered = filtered.filter(o =>
-        o.home_team.toLowerCase().includes(search) ||
-        o.away_team.toLowerCase().includes(search)
-    );
-    renderOpportunities(filtered);
+    applyColumnFilters();
 }
 
 function filterMatches() {
