@@ -259,6 +259,7 @@
         .badge-high { background: var(--accent-green-dim); color: var(--accent-green); }
         .badge-med { background: var(--accent-yellow-dim); color: var(--accent-yellow); }
         .badge-low { background: var(--accent-red-dim); color: var(--accent-red); }
+        .badge-model { background: rgba(255,69,0,0.15); color: #ff4500; }
 
         .edge-cell { font-weight: 800; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
         .edge-high { color: var(--accent-green); }
@@ -288,6 +289,7 @@
         .market-ht { background: rgba(147,112,219,0.18); color: #9370db; }
         .market-oe { background: rgba(255,105,180,0.18); color: #ff69b4; }
         .market-exact { background: rgba(34,139,34,0.18); color: #228b22; }
+        .market-shots { background: rgba(255,69,0,0.18); color: #ff4500; }
         .market-team-ou { background: rgba(255,215,0,0.18); color: #daa520; }
 
         /* ── SORTABLE TABLE HEADERS ── */
@@ -722,6 +724,12 @@
                                 <option value="Escanteios O/U">Escanteios O/U</option>
                                 <option value="Cartoes O/U">Cartoes O/U</option>
                                 <option value="Placar Exato">Placar Exato</option>
+                                <option value="Finaliz. O/U">Finaliz. Totais O/U</option>
+                                <option value="Finaliz. Gol O/U">Finaliz. ao Gol O/U</option>
+                                <option value="Finaliz. Casa O/U">Finaliz. Casa O/U</option>
+                                <option value="Finaliz. Fora O/U">Finaliz. Fora O/U</option>
+                                <option value="SoT Casa O/U">SoT Casa O/U</option>
+                                <option value="SoT Fora O/U">SoT Fora O/U</option>
                                 <option value="O/U 2.5">O/U 2.5 (legado)</option>
                                 <option value="Corners">Escanteios (legado)</option>
                             </select></th>
@@ -737,6 +745,7 @@
                                 <option value="ALTO">ALTO</option>
                                 <option value="MÉDIO">MÉDIO</option>
                                 <option value="BAIXO">BAIXO</option>
+                                <option value="MODELO">MODELO (Fair Odds)</option>
                             </select></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-dq-min" placeholder="Min" step="10" oninput="applyColumnFilters()"><input type="number" id="cf-dq-max" placeholder="Max" step="10" oninput="applyColumnFilters()"></div></th>
                         </tr>
@@ -835,6 +844,7 @@ function getMarketClass(market) {
     if (m.includes('1o tempo') || m.includes('1° tempo')) return 'market-ht';
     if (m.includes('par/impar') || m.includes('par') || m.includes('impar')) return 'market-oe';
     if (m.includes('placar exato')) return 'market-exact';
+    if (m.includes('finaliz') || m.includes('sot')) return 'market-shots';
     if (m.includes('escanteio') || m.includes('corners')) return 'market-corners';
     if (m.includes('cart')) return 'market-cards';
     if (m.includes('gols casa') || m.includes('gols fora')) return 'market-team-ou';
@@ -1268,8 +1278,10 @@ function renderOpportunities(data) {
     const tbody = document.getElementById("opp-tbody");
 
     tbody.innerHTML = opps.map((o, i) => {
-        const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
+        const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : o.confidence === "MODELO" ? "badge-model" : "badge-low";
         const edgeClass = o.edge > 15 ? "edge-high" : "edge-med";
+        const isModelOnly = o.bookmaker && o.bookmaker.includes("Fair Odds");
+        const bookmakerDisplay = isModelOnly ? '<span style="color:#ff4500;font-weight:700" title="Odd justa do modelo — verifique a odd real no bookmaker (Bet365)">🎯 Fair Odds</span>' : o.bookmaker;
         const marketClass = getMarketClass(o.market);
         const probWidth = Math.min(100, o.model_prob);
         const probColor = o.model_prob > 50 ? "var(--accent-green)" : o.model_prob > 30 ? "var(--accent-blue)" : "var(--accent-yellow)";
@@ -1282,8 +1294,8 @@ function renderOpportunities(data) {
             <td style="font-size:11px;color:var(--text-secondary)">${o.match_date}<br>${o.match_time}</td>
             <td><span class="market-tag ${marketClass}">${o.market}</span></td>
             <td style="font-weight:700;font-size:12px;color:var(--accent-green)">▶ ${o.selection}</td>
-            <td>${bookmakerBadgeHtml(o.bookmaker, o.home_team, o.away_team, o.market, o.selection, true, o.league_country, o.league_name)}</td>
-            <td class="odd-cell">${o.market_odd.toFixed(2)}</td>
+            <td>${isModelOnly ? '<span style="font-size:10px;padding:3px 8px;background:rgba(255,69,0,0.15);color:#ff4500;border-radius:5px;white-space:nowrap;border:1px solid rgba(255,69,0,0.3)" title="Odd justa do modelo — verifique a odd real no bookmaker (Bet365)">🎯 Fair Odds</span>' : bookmakerBadgeHtml(o.bookmaker, o.home_team, o.away_team, o.market, o.selection, true, o.league_country, o.league_name)}</td>
+            <td class="odd-cell" ${isModelOnly ? 'title="Odd justa do modelo (sem margem bookmaker)" style="color:#ff4500"' : ''}>${o.market_odd.toFixed(2)}</td>
             <td class="odd-cell" style="color:var(--accent-green)">${o.fair_odd.toFixed(2)}</td>
             <td class="edge-cell ${edgeClass}">${o.edge_pct}</td>
             <td style="font-family:'JetBrains Mono';font-size:11px">${o.kelly_bet_pct}</td>
@@ -1558,7 +1570,7 @@ function showOppDetail(idx) {
     document.getElementById("modal-title").textContent = `${o.home_team} vs ${o.away_team}`;
     document.getElementById("modal-subtitle").textContent = `${o.league_name} — ${o.league_country} | ${o.match_date} ${o.match_time}`;
     
-    const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
+    const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : o.confidence === "MODELO" ? "badge-model" : "badge-low";
     const marketClass = getMarketClass(o.market);
     // Helper: valor seguro (trata null/undefined mas mantém 0 como válido)
     const v = (val, fallback = 'N/D') => (val !== null && val !== undefined) ? val : fallback;
@@ -1688,6 +1700,7 @@ function showOppDetail(idx) {
                 ${statBar(m.home_goals_scored_avg, m.away_goals_scored_avg, 'Gols Marcados/Jogo', '')}
                 ${statBar(m.home_goals_conceded_avg, m.away_goals_conceded_avg, 'Gols Sofridos/Jogo', '')}
                 ${statBar(m.home_xg, m.away_xg, 'xG Esperado (Modelo)', '')}
+                ${statBar(m.home_shots_total_avg ?? null, m.away_shots_total_avg ?? null, 'Finalizações Totais/Jogo', '')}
                 ${statBar(m.home_shots_on_target_avg, m.away_shots_on_target_avg, 'Finalizações no Gol/Jogo', '')}
                 ${statBar(m.home_corners_avg, m.away_corners_avg, 'Escanteios/Jogo', '')}
                 ${statBar(m.home_cards_avg, m.away_cards_avg, 'Cartões/Jogo', '')}
@@ -1842,7 +1855,7 @@ function showOppDetail(idx) {
             ${matchOpps.length > 0 ? `
             <div class="m-section" style="margin-top:20px">🎯 Outras Oportunidades neste Jogo</div>
             ${matchOpps.map(op => {
-                const opConf = op.confidence === 'ALTO' ? 'badge-high' : op.confidence === 'MÉDIO' ? 'badge-med' : 'badge-low';
+                const opConf = op.confidence === 'ALTO' ? 'badge-high' : op.confidence === 'MÉDIO' ? 'badge-med' : op.confidence === 'MODELO' ? 'badge-model' : 'badge-low';
                 return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:8px"><span class="badge ' + opConf + '">' + op.confidence + '</span><span style="font-size:13px">' + op.market + ': <strong>' + op.selection + '</strong></span><span style="font-family:\'JetBrains Mono\';font-size:12px;color:var(--text-secondary)">@' + op.market_odd.toFixed(2) + '</span></div><span style="font-weight:800;color:var(--accent-green);font-family:\'JetBrains Mono\'">' + op.edge_pct + '</span></div>';
             }).join('')}
             ` : ''}
@@ -1955,6 +1968,7 @@ function buildStatsTableRows(m) {
         ['xG Esperado', m.home_xg ?? 'N/D', m.away_xg ?? 'N/D'],
         ['Gols Marcados/Jogo', m.home_goals_scored_avg ?? 'N/D', m.away_goals_scored_avg ?? 'N/D'],
         ['Gols Sofridos/Jogo', m.home_goals_conceded_avg ?? 'N/D', m.away_goals_conceded_avg ?? 'N/D'],
+        ['Finalizações Totais/Jogo', m.home_shots_total_avg ?? 'N/D', m.away_shots_total_avg ?? 'N/D'],
         ['Finalizações no Gol/Jogo', m.home_shots_on_target_avg ?? 'N/D', m.away_shots_on_target_avg ?? 'N/D'],
         ['Finalizações Bloqueadas/Jogo', m.home_shots_blocked_avg ?? 'N/D', m.away_shots_blocked_avg ?? 'N/D'],
         ['Escanteios/Jogo', m.home_corners_avg ?? 'N/D', m.away_corners_avg ?? 'N/D'],
@@ -2154,6 +2168,10 @@ function buildDetailedAnalysis(o) {
         L.push(`  BTTS (Ambas):   ${m.prob_btts}%`);
         L.push(`  Escanteios:     ${m.corners_expected} esperados`);
         L.push(`  Cartões:        ${m.cards_expected} esperados`);
+        if (m.model_total_shots) {
+            L.push(`  Finalizações:   ${m.model_total_shots} esperadas (${m.home_team}: ${m.model_home_shots ?? '?'} | ${m.away_team}: ${m.model_away_shots ?? '?'})`);
+            L.push(`  Fin. ao Gol:    ${m.model_total_sot} esperadas (${m.home_team}: ${m.model_home_sot ?? '?'} | ${m.away_team}: ${m.model_away_sot ?? '?'})`);
+        }
     }
     L.push("");
 
@@ -2281,7 +2299,7 @@ function showMatchDetail(matchId) {
     const formHtml = (form) => form.map(f => `<div class="form-dot form-${f}">${f}</div>`).join("");
     const matchOpps = allOpps.filter(o => o.match_id === matchId);
     const oppsHtml = matchOpps.length > 0 ? matchOpps.map(o => {
-        const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
+        const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : o.confidence === "MODELO" ? "badge-model" : "badge-low";
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                 <span class="badge ${confClass}">${o.confidence}</span>

@@ -439,6 +439,109 @@ def predict_cards(match: MatchAnalysis) -> tuple[float, float, dict]:
 
 
 # ═══════════════════════════════════════════════════════
+# 4b. PREVISÃO DE FINALIZAÇÕES (Shots)
+#     Binomial Negativa — por time e total
+# ═══════════════════════════════════════════════════════
+
+def predict_shots(match: MatchAnalysis) -> tuple[float, float, float, float, dict]:
+    """
+    Prediz a distribuição de finalizações TOTAIS e NO GOL usando Binomial Negativa.
+
+    Baseado em:
+        - shots_total_avg (estimado pela força de ataque)
+        - shots_on_target_avg (estimado pela força de ataque)
+        - Força de ataque/defesa dos oponentes
+        - Forma recente
+
+    Returns:
+        (home_shots_mu, away_shots_mu, home_sot_mu, away_sot_mu, probability_dict)
+    """
+    home = match.home_team
+    away = match.away_team
+
+    # ── Finalizações Totais por time ──
+    # Média base de finalizações totais (tipicamente 10-14 por time)
+    h_shots_base = getattr(home, 'shots_total_avg', home.shots_on_target_avg * 2.8)
+    a_shots_base = getattr(away, 'shots_total_avg', away.shots_on_target_avg * 2.8)
+
+    # Ajustes: defesa adversária e forma recente
+    # Time com defesa forte → adversário finaliza menos
+    defense_factor_h = max(0.5, 1.3 - away.defense_strength * 0.3)  # defesa forte adversária = menos chutes
+    defense_factor_a = max(0.5, 1.3 - home.defense_strength * 0.3)
+
+    form_factor_h = 0.85 + home.form_points * 0.30
+    form_factor_a = 0.85 + away.form_points * 0.30
+
+    # Mando de campo: mandante finaliza ~8% a mais
+    home_adv = 1.08 if not getattr(match, 'odds_home_away_suspect', False) else 1.0
+
+    h_shots_mu = max(5.0, min(20.0, h_shots_base * defense_factor_h * form_factor_h * home_adv))
+    a_shots_mu = max(5.0, min(20.0, a_shots_base * defense_factor_a * form_factor_a))
+
+    # ── Finalizações No Gol (SoT) por time ──
+    # Tipicamente ~35-40% das finalizações totais são no gol
+    h_sot_base = home.shots_on_target_avg
+    a_sot_base = away.shots_on_target_avg
+
+    h_sot_mu = max(2.0, min(10.0, h_sot_base * defense_factor_h * form_factor_h * home_adv))
+    a_sot_mu = max(2.0, min(10.0, a_sot_base * defense_factor_a * form_factor_a))
+
+    # ── Totais do jogo ──
+    total_shots_mu = h_shots_mu + a_shots_mu
+    total_sot_mu = h_sot_mu + a_sot_mu
+
+    # Sobredispersão
+    alpha_shots = 0.20   # Shots têm dispersão moderada
+    alpha_sot = 0.25     # SoT tem dispersão um pouco maior
+
+    probs = {}
+
+    # ── Total Match Shots O/U ──
+    for line in [18.5, 20.5, 22.5, 24.5, 26.5, 28.5]:
+        p_over = sum(negative_binomial_pmf(k, total_shots_mu, alpha_shots)
+                     for k in range(int(line) + 1, 50))
+        probs[f"over_{line}"] = round(p_over, 4)
+        probs[f"under_{line}"] = round(1.0 - p_over, 4)
+
+    # ── Total Match SoT O/U ──
+    for line in [4.5, 5.5, 6.5, 7.5, 8.5, 9.5]:
+        p_over = sum(negative_binomial_pmf(k, total_sot_mu, alpha_sot)
+                     for k in range(int(line) + 1, 30))
+        probs[f"sot_over_{line}"] = round(p_over, 4)
+        probs[f"sot_under_{line}"] = round(1.0 - p_over, 4)
+
+    # ── Home Team Shots O/U ──
+    for line in [8.5, 10.5, 12.5, 14.5]:
+        p_over = sum(negative_binomial_pmf(k, h_shots_mu, alpha_shots)
+                     for k in range(int(line) + 1, 35))
+        probs[f"home_over_{line}"] = round(p_over, 4)
+        probs[f"home_under_{line}"] = round(1.0 - p_over, 4)
+
+    # ── Away Team Shots O/U ──
+    for line in [8.5, 10.5, 12.5, 14.5]:
+        p_over = sum(negative_binomial_pmf(k, a_shots_mu, alpha_shots)
+                     for k in range(int(line) + 1, 35))
+        probs[f"away_over_{line}"] = round(p_over, 4)
+        probs[f"away_under_{line}"] = round(1.0 - p_over, 4)
+
+    # ── Home SoT O/U ──
+    for line in [2.5, 3.5, 4.5, 5.5]:
+        p_over = sum(negative_binomial_pmf(k, h_sot_mu, alpha_sot)
+                     for k in range(int(line) + 1, 20))
+        probs[f"home_sot_over_{line}"] = round(p_over, 4)
+        probs[f"home_sot_under_{line}"] = round(1.0 - p_over, 4)
+
+    # ── Away SoT O/U ──
+    for line in [2.5, 3.5, 4.5, 5.5]:
+        p_over = sum(negative_binomial_pmf(k, a_sot_mu, alpha_sot)
+                     for k in range(int(line) + 1, 20))
+        probs[f"away_sot_over_{line}"] = round(p_over, 4)
+        probs[f"away_sot_under_{line}"] = round(1.0 - p_over, 4)
+
+    return h_shots_mu, a_shots_mu, h_sot_mu, a_sot_mu, probs
+
+
+# ═══════════════════════════════════════════════════════
 # 5. PIPELINE PRINCIPAL DE MODELAGEM
 # ═══════════════════════════════════════════════════════
 
@@ -519,8 +622,17 @@ def run_full_model(match: MatchAnalysis) -> MatchAnalysis:
     cards_mu, cards_alpha, cards_probs = predict_cards(match)
     match.model_cards_expected = round(cards_mu, 2)
 
+    # 7. Finalizações (Binomial Negativa)
+    h_shots_mu, a_shots_mu, h_sot_mu, a_sot_mu, shots_probs = predict_shots(match)
+    match.model_home_shots_expected = round(h_shots_mu, 1)
+    match.model_away_shots_expected = round(a_shots_mu, 1)
+    match.model_home_sot_expected = round(h_sot_mu, 1)
+    match.model_away_sot_expected = round(a_sot_mu, 1)
+    match.model_total_shots_expected = round(h_shots_mu + a_shots_mu, 1)
+    match.model_total_sot_expected = round(h_sot_mu + a_sot_mu, 1)
+
     # ═══════════════════════════════════════════════════════
-    # 7. PROBABILIDADES EXPANDIDAS — TODOS OS MERCADOS
+    # 8. PROBABILIDADES EXPANDIDAS — TODOS OS MERCADOS
     # ═══════════════════════════════════════════════════════
     M = matrix
     max_g = M.shape[0]
@@ -614,6 +726,27 @@ def run_full_model(match: MatchAnalysis) -> MatchAnalysis:
     # ── Cards O/U (Binomial Negativa — todas as linhas) ──
     for k, v in cards_probs.items():
         probs[f"cards_ou__{k}"] = v
+
+    # ── Shots O/U (Total Match) ──
+    for k, v in shots_probs.items():
+        if k.startswith("over_") or k.startswith("under_"):
+            # Total match shots: over_20.5, under_20.5, etc.
+            probs[f"shots_ou__{k}"] = v
+        elif k.startswith("sot_"):
+            # Total match SoT: sot_over_6.5, sot_under_6.5, etc.
+            probs[f"sot_ou__{k.replace('sot_', '')}"] = v
+        elif k.startswith("home_sot_"):
+            # Home SoT: home_sot_over_3.5, etc.
+            probs[f"home_sot_ou__{k.replace('home_sot_', '')}"] = v
+        elif k.startswith("away_sot_"):
+            # Away SoT: away_sot_over_3.5, etc.
+            probs[f"away_sot_ou__{k.replace('away_sot_', '')}"] = v
+        elif k.startswith("home_"):
+            # Home shots: home_over_10.5, etc.
+            probs[f"home_shots_ou__{k.replace('home_', '')}"] = v
+        elif k.startswith("away_"):
+            # Away shots: away_over_10.5, etc.
+            probs[f"away_shots_ou__{k.replace('away_', '')}"] = v
 
     match.model_probs = probs
     return match

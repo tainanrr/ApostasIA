@@ -154,6 +154,7 @@ class TeamStats:
     home_goals_conceded_avg: float = 0.0
     away_goals_scored_avg: float = 0.0
     away_goals_conceded_avg: float = 0.0
+    shots_total_avg: float = 0.0           # Total de finalizações por jogo
     shots_on_target_avg: float = 0.0
     shots_blocked_avg: float = 0.0
     corners_avg: float = 0.0
@@ -245,6 +246,12 @@ class MatchAnalysis:
     model_prob_btts: float = 0.0
     model_corners_expected: float = 0.0
     model_cards_expected: float = 0.0
+    model_home_shots_expected: float = 0.0
+    model_away_shots_expected: float = 0.0
+    model_home_sot_expected: float = 0.0
+    model_away_sot_expected: float = 0.0
+    model_total_shots_expected: float = 0.0
+    model_total_sot_expected: float = 0.0
     score_matrix: Optional[np.ndarray] = None
     # ── Probabilidades expandidas (TODOS os mercados) ──
     model_probs: dict = field(default_factory=dict)
@@ -516,7 +523,7 @@ def _build_team_from_standings(team_id: int, team_name: str,
             attack_strength=1.2, defense_strength=1.0,
             home_goals_scored_avg=1.3, home_goals_conceded_avg=1.1,
             away_goals_scored_avg=1.0, away_goals_conceded_avg=1.3,
-            shots_on_target_avg=4.0, shots_blocked_avg=3.0,
+            shots_total_avg=11.0, shots_on_target_avg=4.0, shots_blocked_avg=3.0,
             corners_avg=5.0, cards_avg=2.0, fouls_avg=12.0,
             possession_final_third=30.0,
             form_last10=[], form_points=0.0,       # ← sem dados reais de forma
@@ -583,6 +590,7 @@ def _build_team_from_standings(team_id: int, team_name: str,
         home_goals_conceded_avg=round(home_ga / home_played, 2),
         away_goals_scored_avg=round(away_gf / away_played, 2),
         away_goals_conceded_avg=round(away_ga / away_played, 2),
+        shots_total_avg=round(attack * 9.5, 1),       # ESTIMADO (~10-13 per team)
         shots_on_target_avg=round(attack * 3.5, 1),
         shots_blocked_avg=round(defense * 3.0, 1),
         corners_avg=round(attack * 3.8, 1),         # ESTIMADO (API não fornece corners)
@@ -777,6 +785,43 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
             odds.all_markets["cards_ou"] = k_ou
             odds.over_35_cards = val_map.get("over 3.5", odds.over_35_cards)
             odds.under_35_cards = val_map.get("under 3.5", odds.under_35_cards)
+
+        # ═══ Total Shots O/U (Player Props / Specials) ═══
+        elif "shot" in bet_name and "over" in bet_name and "player" not in bet_name:
+            s_ou = {}
+            for k, v in val_map.items():
+                s_ou[k.replace(" ", "_")] = v
+            odds.all_markets["shots_ou"] = s_ou
+
+        # ═══ Shots On Target O/U ═══
+        elif "shot" in bet_name and "target" in bet_name and "player" not in bet_name:
+            sot_ou = {}
+            for k, v in val_map.items():
+                sot_ou[k.replace(" ", "_")] = v
+            odds.all_markets["sot_ou"] = sot_ou
+
+        # ═══ Home Team Shots O/U ═══
+        elif "home" in bet_name and "shot" in bet_name:
+            hs_ou = {}
+            for k, v in val_map.items():
+                hs_ou[k.replace(" ", "_")] = v
+            odds.all_markets["home_shots_ou"] = hs_ou
+
+        # ═══ Away Team Shots O/U ═══
+        elif "away" in bet_name and "shot" in bet_name:
+            as_ou = {}
+            for k, v in val_map.items():
+                as_ou[k.replace(" ", "_")] = v
+            odds.all_markets["away_shots_ou"] = as_ou
+
+        # ═══ Player Shots O/U ═══
+        elif "player" in bet_name and "shot" in bet_name:
+            ps_ou = {}
+            for k, v in val_map.items():
+                ps_ou[k.replace(" ", "_")] = v
+            if "player_shots_ou" not in odds.all_markets:
+                odds.all_markets["player_shots_ou"] = {}
+            odds.all_markets["player_shots_ou"].update(ps_ou)
 
         # ═══ Catch-all: qualquer outro mercado ═══
         else:

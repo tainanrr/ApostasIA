@@ -41,6 +41,12 @@ _ODDS_LIMITS = {
     "Gols Casa O/U":    (config.ODDS_MIN_VALID, config.ODDS_MAX_HOME_AWAY_OU),
     "Gols Fora O/U":    (config.ODDS_MIN_VALID, config.ODDS_MAX_HOME_AWAY_OU),
     "Placar Exato":     (config.ODDS_MIN_VALID, config.ODDS_MAX_EXACT),
+    "Finaliz. O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Gol O/U": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Casa O/U": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Fora O/U": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "SoT Casa O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "SoT Fora O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
     # Backward compatibility
     "O/U 2.5":          (config.ODDS_MIN_VALID, config.ODDS_MAX_OU),
     "Corners":          (config.ODDS_MIN_VALID, config.ODDS_MAX_CORNERS),
@@ -136,6 +142,58 @@ _ALL_MARKETS = {
             "over_4.5": "Over 4.5 Cart.", "under_4.5": "Under 4.5 Cart.",
             "over_5.5": "Over 5.5 Cart.", "under_5.5": "Under 5.5 Cart.",
             "over_6.5": "Over 6.5 Cart.", "under_6.5": "Under 6.5 Cart.",
+        }
+    },
+    "shots_ou": {
+        "label": "Finaliz. O/U", "selections": {
+            "over_18.5": "Over 18.5 Finaliz.", "under_18.5": "Under 18.5 Finaliz.",
+            "over_20.5": "Over 20.5 Finaliz.", "under_20.5": "Under 20.5 Finaliz.",
+            "over_22.5": "Over 22.5 Finaliz.", "under_22.5": "Under 22.5 Finaliz.",
+            "over_24.5": "Over 24.5 Finaliz.", "under_24.5": "Under 24.5 Finaliz.",
+            "over_26.5": "Over 26.5 Finaliz.", "under_26.5": "Under 26.5 Finaliz.",
+            "over_28.5": "Over 28.5 Finaliz.", "under_28.5": "Under 28.5 Finaliz.",
+        }
+    },
+    "sot_ou": {
+        "label": "Finaliz. Gol O/U", "selections": {
+            "over_4.5": "Over 4.5 Fin. Gol", "under_4.5": "Under 4.5 Fin. Gol",
+            "over_5.5": "Over 5.5 Fin. Gol", "under_5.5": "Under 5.5 Fin. Gol",
+            "over_6.5": "Over 6.5 Fin. Gol", "under_6.5": "Under 6.5 Fin. Gol",
+            "over_7.5": "Over 7.5 Fin. Gol", "under_7.5": "Under 7.5 Fin. Gol",
+            "over_8.5": "Over 8.5 Fin. Gol", "under_8.5": "Under 8.5 Fin. Gol",
+            "over_9.5": "Over 9.5 Fin. Gol", "under_9.5": "Under 9.5 Fin. Gol",
+        }
+    },
+    "home_shots_ou": {
+        "label": "Finaliz. Casa O/U", "selections": {
+            "over_8.5": "Casa Over 8.5 Fin.", "under_8.5": "Casa Under 8.5 Fin.",
+            "over_10.5": "Casa Over 10.5 Fin.", "under_10.5": "Casa Under 10.5 Fin.",
+            "over_12.5": "Casa Over 12.5 Fin.", "under_12.5": "Casa Under 12.5 Fin.",
+            "over_14.5": "Casa Over 14.5 Fin.", "under_14.5": "Casa Under 14.5 Fin.",
+        }
+    },
+    "away_shots_ou": {
+        "label": "Finaliz. Fora O/U", "selections": {
+            "over_8.5": "Fora Over 8.5 Fin.", "under_8.5": "Fora Under 8.5 Fin.",
+            "over_10.5": "Fora Over 10.5 Fin.", "under_10.5": "Fora Under 10.5 Fin.",
+            "over_12.5": "Fora Over 12.5 Fin.", "under_12.5": "Fora Under 12.5 Fin.",
+            "over_14.5": "Fora Over 14.5 Fin.", "under_14.5": "Fora Under 14.5 Fin.",
+        }
+    },
+    "home_sot_ou": {
+        "label": "SoT Casa O/U", "selections": {
+            "over_2.5": "Casa Over 2.5 SoT", "under_2.5": "Casa Under 2.5 SoT",
+            "over_3.5": "Casa Over 3.5 SoT", "under_3.5": "Casa Under 3.5 SoT",
+            "over_4.5": "Casa Over 4.5 SoT", "under_4.5": "Casa Under 4.5 SoT",
+            "over_5.5": "Casa Over 5.5 SoT", "under_5.5": "Casa Under 5.5 SoT",
+        }
+    },
+    "away_sot_ou": {
+        "label": "SoT Fora O/U", "selections": {
+            "over_2.5": "Fora Over 2.5 SoT", "under_2.5": "Fora Under 2.5 SoT",
+            "over_3.5": "Fora Over 3.5 SoT", "under_3.5": "Fora Under 3.5 SoT",
+            "over_4.5": "Fora Over 4.5 SoT", "under_4.5": "Fora Under 4.5 SoT",
+            "over_5.5": "Fora Over 5.5 SoT", "under_5.5": "Fora Under 5.5 SoT",
         }
     },
     "exact_score": {
@@ -460,6 +518,14 @@ def generate_reasoning(match: MatchAnalysis, market: str,
     lines.append(f"  BTTS (Ambas): {match.model_prob_btts*100:.1f}%")
     lines.append(f"  Escanteios:   {match.model_corners_expected:.1f} esperados")
     lines.append(f"  Cartões:      {match.model_cards_expected:.1f} esperados")
+    # Finalizações
+    h_shots = getattr(match, 'model_home_shots_expected', 0)
+    a_shots = getattr(match, 'model_away_shots_expected', 0)
+    h_sot = getattr(match, 'model_home_sot_expected', 0)
+    a_sot = getattr(match, 'model_away_sot_expected', 0)
+    if h_shots > 0:
+        lines.append(f"  Finaliz.:     {h_shots + a_shots:.1f} esperadas ({home.team_name}: {h_shots:.1f} | {away.team_name}: {a_shots:.1f})")
+        lines.append(f"  Fin. no Gol:  {h_sot + a_sot:.1f} esperadas ({home.team_name}: {h_sot:.1f} | {away.team_name}: {a_sot:.1f})")
     lines.append("")
 
     # ── 6. ODDS E CÁLCULO DE VALOR ──
@@ -588,6 +654,9 @@ def _is_model_sane(model_prob: float, total_xg: float, market: str) -> bool:
             return False
         if total_xg > config.MAX_XG_TOTAL:
             return False
+
+    # Mercados de finalizações — sem filtro extra de xG
+    # (usam parâmetros de ataque/defesa, não xG diretamente)
 
     return True
 
@@ -901,14 +970,19 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     model_probs = getattr(match, 'model_probs', {}) or {}
     all_markets_odds = getattr(match.odds, 'all_markets', {}) or {}
 
-    if model_probs and all_markets_odds:
+    # Mercados de finalizações — gerar oportunidades MESMO sem odds da API
+    # (bookmakers como Bet365 oferecem esses mercados, mas a API de odds não os inclui)
+    _SHOTS_MARKET_KEYS = ("shots_ou", "sot_ou", "home_shots_ou", "away_shots_ou",
+                          "home_sot_ou", "away_sot_ou")
+
+    if model_probs:
         for market_key, market_cfg in _ALL_MARKETS.items():
             # Pular 1x2 e double_chance (já tratados acima)
             if market_key in ("1x2", "double_chance"):
                 continue
 
             market_label = market_cfg["label"]
-            market_odds_dict = all_markets_odds.get(market_key, {})
+            market_odds_dict = all_markets_odds.get(market_key, {}) if all_markets_odds else {}
 
             for sel_key, sel_label in market_cfg["selections"].items():
                 # Probabilidade do modelo
@@ -919,8 +993,19 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
 
                 # Odd do mercado
                 market_o = market_odds_dict.get(sel_key, 0)
+
+                # Para mercados de finalizações sem odds da API:
+                # Gerar com FAIR ODD do modelo — user verifica no bookmaker real
+                is_shots_market = market_key in _SHOTS_MARKET_KEYS
                 if market_o <= 1.0:
-                    continue
+                    if is_shots_market and model_p > 0.05:
+                        # Fair odd do modelo (1/prob)
+                        fair_odd = round(1.0 / model_p, 2)
+                        market_o = fair_odd
+                        if market_o <= 1.02:
+                            continue
+                    else:
+                        continue
                 if not _is_odd_valid(market_o, market_label):
                     continue
                 if not _is_model_sane(model_p, total_xg, market_label):
@@ -929,43 +1014,58 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 edge = calculate_edge(model_p, market_o)
                 if edge >= config.MAX_EDGE_SANE:
                     continue
-                if edge >= config.MIN_EDGE_THRESHOLD:
-                    fair_odd = round(1.0 / max(0.01, model_p), 2)
-                    implied_p = 1.0 / market_o
-                    kelly = fractional_kelly(model_p, market_o)
-                    conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
-                    reasoning = generate_reasoning(match, f"{market_label} - {sel_label}", edge, model_p)
 
-                    opportunities.append(ValueOpportunity(
-                        match_id=match.match_id,
-                        league_name=match.league_name,
-                        league_country=match.league_country,
-                        match_date=match.match_date,
-                        match_time=match.match_time,
-                        home_team=match.home_team.team_name,
-                        away_team=match.away_team.team_name,
-                        market=market_label,
-                        selection=sel_label,
-                        market_odd=market_o,
-                        fair_odd=fair_odd,
-                        model_prob=round(model_p, 4),
-                        implied_prob=round(implied_p, 4),
-                        edge=round(edge, 4),
-                        edge_pct=f"+{edge*100:.1f}%",
-                        kelly_fraction=round(kelly, 4),
-                        kelly_bet_pct=f"{kelly*100:.2f}%",
-                        confidence=conf,
-                        reasoning=reasoning,
-                        home_xg=match.model_home_xg,
-                        away_xg=match.model_away_xg,
-                        weather_note=match.weather.description,
-                        fatigue_note="",
-                        urgency_home=match.league_urgency_home,
-                        urgency_away=match.league_urgency_away,
-                        bookmaker=match.odds.bookmaker,
-                        data_quality=match.data_quality_score,
-                        odds_suspect=getattr(match, 'odds_home_away_suspect', False),
-                    ))
+                # Determinar se é mercado de finalizações sem odds da API
+                has_api_odds = bool(market_odds_dict.get(sel_key, 0) > 1.0)
+                is_model_only = is_shots_market and not has_api_odds
+
+                # Para mercados normais: exigir edge mínimo
+                # Para finalizações (modelo): mostrar SEMPRE (fair odds do modelo)
+                if not is_model_only and edge < config.MIN_EDGE_THRESHOLD:
+                    continue
+
+                fair_odd = round(1.0 / max(0.01, model_p), 2)
+                implied_p = 1.0 / market_o
+                kelly = fractional_kelly(model_p, market_o) if not is_model_only else 0.0
+                conf = classify_confidence(edge, model_p, weather_stable, fatigue_free) if not is_model_only else "MODELO"
+
+                # Para finalizações modelo: bookmaker indica "Fair Odds"
+                bk_name = match.odds.bookmaker if has_api_odds else "Fair Odds (modelo)"
+                # Para finalizações modelo: usar fair_odd como market_odd
+                display_odd = market_o if has_api_odds else fair_odd
+
+                reasoning = generate_reasoning(match, f"{market_label} - {sel_label}", edge, model_p)
+
+                opportunities.append(ValueOpportunity(
+                    match_id=match.match_id,
+                    league_name=match.league_name,
+                    league_country=match.league_country,
+                    match_date=match.match_date,
+                    match_time=match.match_time,
+                    home_team=match.home_team.team_name,
+                    away_team=match.away_team.team_name,
+                    market=market_label,
+                    selection=sel_label,
+                    market_odd=display_odd,
+                    fair_odd=fair_odd,
+                    model_prob=round(model_p, 4),
+                    implied_prob=round(implied_p, 4),
+                    edge=round(edge, 4),
+                    edge_pct=f"+{edge*100:.1f}%" if edge > 0 else "Fair",
+                    kelly_fraction=round(kelly, 4),
+                    kelly_bet_pct=f"{kelly*100:.2f}%" if kelly > 0 else "N/A",
+                    confidence=conf,
+                    reasoning=reasoning,
+                    home_xg=match.model_home_xg,
+                    away_xg=match.model_away_xg,
+                    weather_note=match.weather.description,
+                    fatigue_note="",
+                    urgency_home=match.league_urgency_home,
+                    urgency_away=match.league_urgency_away,
+                    bookmaker=bk_name,
+                    data_quality=match.data_quality_score,
+                    odds_suspect=getattr(match, 'odds_home_away_suspect', False),
+                ))
 
     return opportunities
 

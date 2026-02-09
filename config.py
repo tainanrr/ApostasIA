@@ -64,6 +64,8 @@ ODDS_MAX_HT = 15.0                 # Odd máxima mercados HT
 ODDS_MAX_HOME_AWAY_OU = 12.0       # Odd máxima Gols Time O/U
 ODDS_MAX_EXACT = 200.0             # Odd máxima Exact Score
 ODDS_MAX_GENERIC = 25.0            # Odd máxima genérica
+ODDS_MAX_SHOTS = 8.0               # Odd máxima Finalizações O/U
+ODDS_MAX_PLAYER_SHOTS = 8.0        # Odd máxima Finalizações Jogador O/U
 
 # ═══════════════════════════════════════════════════════
 # AJUSTES CONTEXTUAIS
