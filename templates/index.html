@@ -3062,8 +3062,121 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
         return html;
     };
 
+    // ── Painel EV+ Summary (top oportunidades pre-computadas) ──
+    const renderEvSummary = (homeData, awayData, homeName, awayName) => {
+        const homeEv = homeData.ev_analysis || {};
+        const awayEv = awayData.ev_analysis || {};
+        const homeOpps = homeEv.top_opportunities || [];
+        const awayOpps = awayEv.top_opportunities || [];
+        const homePlayerRank = homeEv.player_rankings || [];
+        const awayPlayerRank = awayEv.player_rankings || [];
+        if (!homeOpps.length && !awayOpps.length && !homePlayerRank.length && !awayPlayerRank.length) return '';
+
+        const _thr = 'padding:6px 8px;font-size:10px;text-align:left;border-bottom:1px solid var(--border);color:var(--text-muted);text-transform:uppercase;font-weight:700';
+        const _tdr = 'padding:5px 8px;font-size:11px;border-bottom:1px solid rgba(255,255,255,0.03)';
+
+        const fairOddClass = (fair) => {
+            if (fair <= 1.30) return 'color:var(--accent-green);font-weight:700';
+            if (fair <= 1.60) return 'color:var(--accent-yellow);font-weight:700';
+            return 'color:var(--text-secondary)';
+        };
+
+        const renderOppsTable = (opps, teamName, color) => {
+            if (!opps.length) return '';
+            let h = `<div style="margin-bottom:14px">
+                <div style="font-size:11px;font-weight:800;color:${color};margin-bottom:6px">${teamName}</div>
+                <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+                <thead><tr>
+                    <th style="${_thr}">Mercado</th><th style="${_thr}">Linha</th>
+                    <th style="${_thr};text-align:center">Prob. Hist.</th>
+                    <th style="${_thr};text-align:center">Fair Odd</th>
+                    <th style="${_thr};text-align:center">Amostra</th>
+                    <th style="${_thr};text-align:center">Veredicto</th>
+                </tr></thead><tbody>`;
+            opps.forEach(o => {
+                const badge = o.pct >= 70 ? '<span style="background:var(--accent-green);color:#000;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700">FORTE</span>'
+                    : o.pct >= 55 ? '<span style="background:var(--accent-yellow);color:#000;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700">PROVAVEL</span>'
+                    : '<span style="color:var(--text-muted);font-size:9px">NEUTRO</span>';
+                h += `<tr>
+                    <td style="${_tdr}">${o.market}</td>
+                    <td style="${_tdr};font-weight:600">${o.line}</td>
+                    <td style="${_tdr};text-align:center;font-weight:700;color:${o.pct >= 65 ? 'var(--accent-green)' : 'var(--text-primary)'}">${o.pct}%</td>
+                    <td style="${_tdr};text-align:center;${fairOddClass(o.fair_odd)}">${o.fair_odd}</td>
+                    <td style="${_tdr};text-align:center;color:var(--text-muted)">${o.sample}j</td>
+                    <td style="${_tdr};text-align:center">${badge}</td>
+                </tr>`;
+            });
+            h += '</tbody></table></div></div>';
+            return h;
+        };
+
+        const renderPlayerRanking = (players, teamName, color) => {
+            if (!players.length) return '';
+            let h = `<div style="margin-bottom:10px">
+                <div style="font-size:10px;font-weight:700;color:${color};margin-bottom:6px;text-transform:uppercase">Ranking Jogadores — ${teamName}</div>
+                <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">
+                <thead><tr>
+                    <th style="${_thr}">Jogador</th><th style="${_thr};text-align:center">Pos</th>
+                    <th style="${_thr};text-align:center">Jogos</th>
+                    <th style="${_thr};text-align:center">Fin/J</th><th style="${_thr};text-align:center">Alvo/J</th>
+                    <th style="${_thr};text-align:center">O0.5 Fin</th><th style="${_thr};text-align:center">O1.5 Fin</th>
+                    <th style="${_thr};text-align:center">O0.5 Gol</th><th style="${_thr};text-align:center">O1.5 Gol</th>
+                    <th style="${_thr};text-align:center">Gols</th>
+                </tr></thead><tbody>`;
+            players.slice(0, 10).forEach(p => {
+                const s05 = p.shots_lines?.['o0.5'];
+                const s15 = p.shots_lines?.['o1.5'];
+                const g05 = p.sot_lines?.['o0.5'];
+                const g15 = p.sot_lines?.['o1.5'];
+                const cellEv = (d) => {
+                    if (!d) return `<td style="${_tdr};text-align:center;color:var(--text-muted)">-</td>`;
+                    const c = d.pct >= 70 ? 'var(--accent-green)' : d.pct >= 50 ? 'var(--accent-yellow)' : 'var(--text-muted)';
+                    return `<td style="${_tdr};text-align:center"><span style="color:${c};font-weight:700">${d.pct}%</span><br><span style="font-size:8px;color:var(--text-muted)">@${d.fair_odd}</span></td>`;
+                };
+                const posLabel = p.position === 'F' ? 'ATA' : p.position === 'M' ? 'MEI' : p.position === 'D' ? 'DEF' : p.position === 'G' ? 'GOL' : p.position || '?';
+                h += `<tr>
+                    <td style="${_tdr};font-weight:600">${p.name}</td>
+                    <td style="${_tdr};text-align:center;font-size:9px">${posLabel}</td>
+                    <td style="${_tdr};text-align:center">${p.matches}</td>
+                    <td style="${_tdr};text-align:center;font-weight:700;color:var(--accent-green)">${p.avg_shots}</td>
+                    <td style="${_tdr};text-align:center;font-weight:700;color:var(--accent-blue)">${p.avg_sot}</td>
+                    ${cellEv(s05)}${cellEv(s15)}${cellEv(g05)}${cellEv(g15)}
+                    <td style="${_tdr};text-align:center;font-weight:700">${p.total_goals}</td>
+                </tr>`;
+            });
+            h += '</tbody></table></div></div>';
+            return h;
+        };
+
+        let html = `<div style="background:linear-gradient(135deg, rgba(0,255,136,0.04), rgba(100,180,255,0.04));border:1px solid rgba(0,255,136,0.15);border-radius:12px;padding:16px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="font-size:18px">⚡</span>
+                <div>
+                    <div style="font-size:13px;font-weight:800;color:var(--accent-green);text-transform:uppercase;letter-spacing:1px">Oportunidades EV+ Identificadas</div>
+                    <div style="font-size:10px;color:var(--text-muted)">Analise baseada em historico recente. "Fair Odd" = odd justa. Se o bookmaker oferece odd MAIOR, historicamente ha valor (+EV).</div>
+                </div>
+                <div style="margin-left:auto;font-size:9px;color:var(--text-muted);background:rgba(0,255,136,0.08);padding:4px 10px;border-radius:6px">
+                    📦 Dados salvos no Supabase
+                </div>
+            </div>`;
+
+        html += renderOppsTable(homeOpps.slice(0, 15), homeName, 'var(--accent-green)');
+        html += renderOppsTable(awayOpps.slice(0, 15), awayName, 'var(--accent-blue)');
+
+        // Player rankings side by side
+        if (homePlayerRank.length || awayPlayerRank.length) {
+            html += '<div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin:8px 0 6px;text-transform:uppercase">🎯 Finalizacoes por Jogador (EV+ com Fair Odds)</div>';
+            html += renderPlayerRanking(homePlayerRank, homeName, 'var(--accent-green)');
+            html += renderPlayerRanking(awayPlayerRank, awayName, 'var(--accent-blue)');
+        }
+
+        html += '</div>';
+        return html;
+    };
+
     // ── Montar tudo verticalmente ──
     return `<div>
+        ${renderEvSummary(homeData, awayData, homeName || 'Casa', awayName || 'Fora')}
         ${renderTeam(homeData, homeName || 'Casa', 'var(--accent-green)')}
         <div style="height:8px"></div>
         ${renderTeam(awayData, awayName || 'Fora', 'var(--accent-blue)')}
@@ -3071,7 +3184,7 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
         ${renderH2H(h2hData, homeName || 'Casa', awayName || 'Fora')}
     </div>
     <div style="font-size:10px;color:var(--text-muted);margin-top:12px;text-align:center;padding-top:8px;border-top:1px solid var(--border)">
-        ★ Favorito pelas odds &nbsp;|&nbsp; ☆ Underdog &nbsp;|&nbsp; C = Casa &nbsp;|&nbsp; F = Fora &nbsp;|&nbsp; XI = Escalacao disponivel &nbsp;|&nbsp; O2.5/U2.5 = Over/Under 2.5 gols &nbsp;|&nbsp; Esc = Escanteios &nbsp;|&nbsp; Cart = Cartoes
+        ★ Favorito pelas odds &nbsp;|&nbsp; ☆ Underdog &nbsp;|&nbsp; C = Casa &nbsp;|&nbsp; F = Fora &nbsp;|&nbsp; XI = Escalacao disponivel &nbsp;|&nbsp; O2.5/U2.5 = Over/Under 2.5 gols &nbsp;|&nbsp; Esc = Escanteios &nbsp;|&nbsp; Cart = Cartoes &nbsp;|&nbsp; 📦 = Salvo no Supabase
     </div>`;
 }
 

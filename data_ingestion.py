@@ -45,8 +45,10 @@ _CACHE_TTL_HOURS = {
     "injuries":             6,
     "fixtures/lineups":   720,
     "fixtures/statistics": 720,
+    "fixtures/players":   720,   # Dados de jogadores de partidas passadas
     "weather":              3,
     "status":               1,
+    "team_history":        12,    # Resultado completo com análise EV+
 }
 
 
@@ -981,34 +983,238 @@ def _ingest_real_data() -> list[MatchAnalysis]:
 #  HISTÓRICO DE TIMES — Dados detalhados para análise comparativa
 # ═══════════════════════════════════════════════════════════════
 
+def _compute_ev_analysis(all_matches: list, league_matches: list) -> dict:
+    """Computa analise EV+ completa: gols, escanteios, cartoes, finalizacoes, jogadores.
+    Retorna dict com fair odds para todas as linhas de cada mercado."""
+
+    def _ou_lines(values: list, lines: list) -> dict:
+        """Calcula Over/Under com probabilidade historica e fair odd."""
+        if not values:
+            return {}
+        n = len(values)
+        avg = round(sum(values) / n, 2)
+        result = {"avg": avg, "sample": n}
+        for line in lines:
+            oc = sum(1 for v in values if v > line)
+            pct = round(oc / n * 100, 1)
+            fair = round(n / oc, 2) if oc > 0 else 99.99
+            result[f"o{line}"] = {"count": oc, "total": n, "pct": pct, "fair_odd": fair}
+        return result
+
+    def _analyze_set(matches: list) -> dict:
+        """Analisa um conjunto de partidas (liga ou todas)."""
+        if not matches:
+            return {}
+        n = len(matches)
+
+        # ── Gols ──
+        team_goals = []
+        opp_goals = []
+        total_goals = []
+        for m in matches:
+            mg = m.get("score_home", 0) if m.get("is_home") else m.get("score_away", 0)
+            og = m.get("score_away", 0) if m.get("is_home") else m.get("score_home", 0)
+            team_goals.append(mg)
+            opp_goals.append(og)
+            total_goals.append(m.get("total_goals", 0))
+        btts_n = sum(1 for t, o in zip(team_goals, opp_goals) if t > 0 and o > 0)
+        cs_n = sum(1 for o in opp_goals if o == 0)
+        fts_n = sum(1 for t in team_goals if t == 0)
+
+        goals = {
+            "total": _ou_lines(total_goals, [0.5, 1.5, 2.5, 3.5, 4.5]),
+            "team": _ou_lines(team_goals, [0.5, 1.5, 2.5, 3.5]),
+            "opp": _ou_lines(opp_goals, [0.5, 1.5, 2.5]),
+            "btts_pct": round(btts_n / n * 100, 1),
+            "btts_fair": round(n / btts_n, 2) if btts_n > 0 else 99.99,
+            "cs_pct": round(cs_n / n * 100, 1),
+            "fts_pct": round(fts_n / n * 100, 1),
+        }
+
+        # ── Finalizacoes ──
+        t_shots = [int(m["stats"]["team_shots"]) for m in matches
+                   if m.get("stats", {}).get("team_shots") is not None]
+        t_sot = [int(m["stats"]["team_shots_on_target"]) for m in matches
+                 if m.get("stats", {}).get("team_shots_on_target") is not None]
+        o_shots = [int(m["stats"]["opp_shots"]) for m in matches
+                   if m.get("stats", {}).get("opp_shots") is not None]
+        o_sot = [int(m["stats"]["opp_shots_on_target"]) for m in matches
+                 if m.get("stats", {}).get("opp_shots_on_target") is not None]
+
+        shots = {
+            "team_shots": _ou_lines(t_shots, [7.5, 8.5, 9.5, 10.5, 11.5, 12.5]),
+            "team_sot": _ou_lines(t_sot, [1.5, 2.5, 3.5, 4.5, 5.5]),
+            "opp_shots": _ou_lines(o_shots, [7.5, 8.5, 9.5, 10.5, 11.5]),
+            "opp_sot": _ou_lines(o_sot, [1.5, 2.5, 3.5, 4.5, 5.5]),
+        }
+
+        # ── Escanteios ──
+        c_total = [int(m["stats"]["total_corners"]) for m in matches
+                   if m.get("stats", {}).get("total_corners") is not None]
+        c_team = [int(m["stats"]["team_corners"]) for m in matches
+                  if m.get("stats", {}).get("team_corners") is not None]
+        c_opp = [int(m["stats"]["opp_corners"]) for m in matches
+                 if m.get("stats", {}).get("opp_corners") is not None]
+
+        corners = {
+            "total": _ou_lines(c_total, [7.5, 8.5, 9.5, 10.5, 11.5]),
+            "team": _ou_lines(c_team, [3.5, 4.5, 5.5, 6.5]),
+            "opp": _ou_lines(c_opp, [3.5, 4.5, 5.5, 6.5]),
+        }
+
+        # ── Cartoes ──
+        k_total = [int(m["stats"]["total_cards"]) for m in matches
+                   if m.get("stats", {}).get("total_cards") is not None]
+        cards = {
+            "total": _ou_lines(k_total, [2.5, 3.5, 4.5, 5.5, 6.5]),
+        }
+
+        return {"sample": n, "goals": goals, "shots": shots, "corners": corners, "cards": cards}
+
+    # ── Analise de Jogadores ──
+    player_map = {}
+    for m in all_matches:
+        if not m.get("players"):
+            continue
+        for p in m["players"]:
+            if not p.get("name") or not p.get("minutes") or p["minutes"] < 1:
+                continue
+            key = p.get("id") or p["name"]
+            if key not in player_map:
+                player_map[key] = {
+                    "id": p.get("id"), "name": p["name"], "position": p.get("position", "?"),
+                    "matches": 0, "total_shots": 0, "total_sot": 0,
+                    "total_goals": 0, "total_assists": 0, "total_minutes": 0,
+                    "_shots_h": [], "_sot_h": [],
+                }
+            pl = player_map[key]
+            pl["matches"] += 1
+            pl["total_shots"] += p.get("total_shots", 0)
+            pl["total_sot"] += p.get("shots_on_target", 0)
+            pl["total_goals"] += p.get("goals", 0)
+            pl["total_assists"] += p.get("assists", 0)
+            pl["total_minutes"] += p["minutes"]
+            pl["_shots_h"].append(p.get("total_shots", 0))
+            pl["_sot_h"].append(p.get("shots_on_target", 0))
+
+    player_rankings = sorted(
+        [p for p in player_map.values() if p["matches"] >= 2],
+        key=lambda p: p["total_shots"] / max(1, p["matches"]),
+        reverse=True
+    )[:15]
+
+    for p in player_rankings:
+        nm = p["matches"]
+        p["avg_shots"] = round(p["total_shots"] / nm, 1)
+        p["avg_sot"] = round(p["total_sot"] / nm, 1)
+        # O/U Finalizacoes
+        p["shots_lines"] = {}
+        for line in [0.5, 1.5, 2.5, 3.5, 4.5]:
+            oc = sum(1 for s in p["_shots_h"] if s > line)
+            pct = round(oc / nm * 100, 1)
+            fair = round(nm / oc, 2) if oc > 0 else 99.99
+            p["shots_lines"][f"o{line}"] = {"count": oc, "total": nm, "pct": pct, "fair_odd": fair}
+        # O/U Finalizacoes em Gol
+        p["sot_lines"] = {}
+        for line in [0.5, 1.5, 2.5, 3.5]:
+            oc = sum(1 for s in p["_sot_h"] if s > line)
+            pct = round(oc / nm * 100, 1)
+            fair = round(nm / oc, 2) if oc > 0 else 99.99
+            p["sot_lines"][f"o{line}"] = {"count": oc, "total": nm, "pct": pct, "fair_odd": fair}
+        # Remover dados brutos
+        del p["_shots_h"]
+        del p["_sot_h"]
+
+    # ── Montar top oportunidades (fair odd + probabilidade) ──
+    top_opps = []
+
+    # Oportunidades de time (usar all_matches analysis)
+    all_analysis = _analyze_set(all_matches)
+    if all_analysis:
+        # Top shots lines
+        for market_key, market_label in [
+            ("team_shots", "Finalizacoes Time"), ("team_sot", "Fin. em Gol Time"),
+            ("opp_shots", "Finalizacoes Adversario"), ("opp_sot", "Fin. em Gol Advers."),
+        ]:
+            data = all_analysis.get("shots", {}).get(market_key, {})
+            for k, v in data.items():
+                if isinstance(v, dict) and v.get("pct") is not None and v["pct"] >= 55:
+                    top_opps.append({
+                        "market": market_label, "line": k.replace("o", "Over "),
+                        "pct": v["pct"], "fair_odd": v["fair_odd"], "sample": v["total"],
+                    })
+        # Top corners lines
+        for market_key, market_label in [("total", "Escanteios Total"), ("team", "Escanteios Time")]:
+            data = all_analysis.get("corners", {}).get(market_key, {})
+            for k, v in data.items():
+                if isinstance(v, dict) and v.get("pct") is not None and v["pct"] >= 55:
+                    top_opps.append({
+                        "market": f"{market_label}", "line": k.replace("o", "Over "),
+                        "pct": v["pct"], "fair_odd": v["fair_odd"], "sample": v["total"],
+                    })
+        # Top cards lines
+        data = all_analysis.get("cards", {}).get("total", {})
+        for k, v in data.items():
+            if isinstance(v, dict) and v.get("pct") is not None and v["pct"] >= 55:
+                top_opps.append({
+                    "market": "Cartoes Total", "line": k.replace("o", "Over "),
+                    "pct": v["pct"], "fair_odd": v["fair_odd"], "sample": v["total"],
+                })
+        # Top goals lines
+        for market_key, market_label in [("total", "Gols Total"), ("team", "Gols Time")]:
+            data = all_analysis.get("goals", {}).get(market_key, {})
+            for k, v in data.items():
+                if isinstance(v, dict) and v.get("pct") is not None and v["pct"] >= 55:
+                    top_opps.append({
+                        "market": f"{market_label}", "line": k.replace("o", "Over "),
+                        "pct": v["pct"], "fair_odd": v["fair_odd"], "sample": v["total"],
+                    })
+
+    # Oportunidades de jogadores
+    for p in player_rankings:
+        for line_key, v in p.get("shots_lines", {}).items():
+            if v.get("pct", 0) >= 60:
+                top_opps.append({
+                    "market": f"Fin. {p['name']}", "line": line_key.replace("o", "Over "),
+                    "pct": v["pct"], "fair_odd": v["fair_odd"], "sample": v["total"],
+                })
+        for line_key, v in p.get("sot_lines", {}).items():
+            if v.get("pct", 0) >= 60:
+                top_opps.append({
+                    "market": f"Fin. Gol {p['name']}", "line": line_key.replace("o", "Over "),
+                    "pct": v["pct"], "fair_odd": v["fair_odd"], "sample": v["total"],
+                })
+
+    top_opps.sort(key=lambda x: x["pct"], reverse=True)
+
+    return {
+        "all_analysis": all_analysis,
+        "league_analysis": _analyze_set(league_matches),
+        "player_rankings": player_rankings,
+        "top_opportunities": top_opps[:30],
+    }
+
+
 def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> dict:
     """
-    Busca histórico completo de um time:
-      - Últimos N jogos (todos os campeonatos)
-      - Últimos N jogos no campeonato específico (se league_id fornecido)
-      - Lineups de cada jogo (para classificar titular/misto/reserva)
-      - Estatísticas detalhadas de cada jogo
+    Busca historico completo de um time com analise EV+ pre-computada.
+    Resultado inteiro e cacheado no Supabase (nao precisa rodar 2x).
 
     Retorna dict com:
       {
         "team_id": int,
-        "all_matches": [...],        # todos os campeonatos
-        "league_matches": [...],     # só o campeonato especificado
-      }
-
-    Cada match contém:
-      {
-        "fixture_id", "date", "league_name", "league_country",
-        "home_team", "away_team", "home_id", "away_id",
-        "score_home", "score_away", "result" (W/D/L),
-        "is_home", "opponent", "opponent_id",
-        "odds_home", "odds_draw", "odds_away",
-        "was_favorite" (bool),
-        "lineup_type" (titular/misto/reserva/N/D),
-        "lineup_count" (número de titulares habituais),
-        "stats": { goals, shots, shots_on_target, corners, cards, fouls, possession, ... }
+        "all_matches": [...],
+        "league_matches": [...],
+        "ev_analysis": { analise EV+ completa com fair odds },
       }
     """
+    # ── Verificar cache do resultado completo ──
+    cache_params = {"team": team_id, "league": league_id or 0, "last": last}
+    cached_result = _get_cached_response("team_history", cache_params)
+    if cached_result is not None:
+        print(f"  [CACHE] team_history({team_id}) -> HIT (resultado completo com analise EV+)")
+        return cached_result
+
     result = {"team_id": team_id, "all_matches": [], "league_matches": []}
 
     # ── 1. Buscar últimos jogos (todos os campeonatos) ──
@@ -1241,6 +1447,24 @@ def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> d
 
     result["all_matches"] = all_processed
     result["league_matches"] = league_processed
+
+    # ── Computar analise EV+ completa ──
+    try:
+        result["ev_analysis"] = _compute_ev_analysis(all_processed, league_processed)
+        print(f"  [EV+] Analise EV+ computada para team {team_id}: "
+              f"{len(result['ev_analysis'].get('top_opportunities', []))} oportunidades, "
+              f"{len(result['ev_analysis'].get('player_rankings', []))} jogadores ranqueados")
+    except Exception as e:
+        print(f"  [EV+] Erro ao computar analise: {e}")
+        result["ev_analysis"] = {}
+
+    # ── Salvar resultado completo no cache (local + Supabase) ──
+    try:
+        _save_to_cache("team_history", cache_params, result)
+        print(f"  [CACHE] team_history({team_id}) salvo (local + Supabase)")
+    except Exception as e:
+        print(f"  [CACHE] Erro ao salvar team_history: {e}")
+
     return result
 
 
