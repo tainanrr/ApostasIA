@@ -1907,14 +1907,22 @@ function showOppDetail(idx) {
                 const probs = (m && m.model_probs) || {};
 
                 const selLower = o.selection.toLowerCase();
+                // Extrair linha numérica da seleção (ex: "Under 2.5 Gols" → "2.5")
+                const lineMatch = selLower.match(/(\d+\.?\d*)/);
+                const lineNum = lineMatch ? lineMatch[1] : null;
                 const selMapping = {
                     'vitória casa': 'home', 'vitória fora': 'away', 'empate': 'draw',
                     'casa ou empate': 'home/draw', 'fora ou empate': 'draw/away',
-                    'sim': 'yes', 'não': 'no', 'over': 'over', 'under': 'under',
+                    'sim': 'yes', 'não': 'no',
                 };
                 let selKey = null;
                 for (const [label, key] of Object.entries(selMapping)) {
                     if (selLower.includes(label)) { selKey = key; break; }
+                }
+                // Para mercados Over/Under: incluir a linha no selKey (ex: "over_2.5", "under_2.5")
+                if (!selKey && (selLower.includes('over') || selLower.includes('under'))) {
+                    const ouDir = selLower.includes('over') ? 'over' : 'under';
+                    selKey = lineNum ? `${ouDir}_${lineNum}` : ouDir;
                 }
                 if (!selKey) {
                     selKey = selLower.replace(/ /g, '_');
@@ -1928,10 +1936,18 @@ function showOppDetail(idx) {
                 const entries = [];
                 for (const [bkn, vals] of Object.entries(bkData)) {
                     let val = vals[selKey];
-                    if (!val) {
+                    if (val == null || val === 0) {
+                        // Busca exata primeiro: se selKey = "under_2.5", buscar exatamente essa chave
+                        // Fallback parcial somente se não houver linha numérica
                         for (const [k2, v2] of Object.entries(vals)) {
-                            if (typeof v2 === 'number' && k2.includes(selKey)) { val = v2; break; }
-                            if (typeof v2 === 'number' && selKey.includes(k2)) { val = v2; break; }
+                            if (typeof v2 === 'number' && v2 > 1.0 && k2 === selKey) { val = v2; break; }
+                        }
+                        // Se ainda não encontrou e NÃO tem linha numérica, tentar parcial
+                        if ((val == null || val === 0) && !lineNum) {
+                            for (const [k2, v2] of Object.entries(vals)) {
+                                if (typeof v2 === 'number' && v2 > 1.0 && k2.includes(selKey)) { val = v2; break; }
+                                if (typeof v2 === 'number' && v2 > 1.0 && selKey.includes(k2)) { val = v2; break; }
+                            }
                         }
                     }
                     if (typeof val === 'number' && val > 1.0) {

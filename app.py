@@ -57,6 +57,7 @@ import supabase_client
 import numpy as np
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 CACHE_FILE = os.path.join(os.path.dirname(__file__), "_cache_data.json")
 
