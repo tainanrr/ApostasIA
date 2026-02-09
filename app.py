@@ -466,8 +466,8 @@ def serialize_match(m: MatchAnalysis) -> dict:
         "odds_ah_line": m.odds.asian_handicap_line,
         "odds_ah_home": m.odds.asian_handicap_home,
         "odds_ah_away": m.odds.asian_handicap_away,
-        "odds_1x": m.odds.home_win_or_draw,
-        "odds_x2": m.odds.away_win_or_draw,
+        "odds_1x": m.odds.double_chance_1x,
+        "odds_x2": m.odds.double_chance_x2,
         # Qualidade dos dados
         "data_quality": m.data_quality_score,
         "has_real_odds": m.has_real_odds,
