@@ -2239,7 +2239,8 @@ function showOppDetail(idx) {
 
         <!-- ══ TAB 5: ANÁLISE TÉCNICA ══ -->
         <div id="tab-analysis" class="modal-tab-content">
-            <div style="padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;overflow-x:auto">
+            ${buildExecutiveSummary(o)}
+            <div style="padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;overflow-x:auto;margin-top:12px">
                 <pre style="font-family:'JetBrains Mono','Fira Code',monospace;font-size:11.5px;line-height:1.7;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word;margin:0">${buildDetailedAnalysis(o)}</pre>
             </div>
         </div>
@@ -2292,6 +2293,266 @@ function buildStatsTableRows(m) {
         const aStyle = (inv ? hBold : aBold) ? 'color:var(--accent-blue);font-weight:800' : '';
         return '<tr style="background:' + bg + '"><td style="padding:7px 12px;font-size:12px;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.04)">' + r[0] + '</td><td style="text-align:center;padding:7px 12px;font-family:\'JetBrains Mono\';font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);' + hStyle + '">' + r[1] + '</td><td style="text-align:center;padding:7px 12px;font-family:\'JetBrains Mono\';font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);' + aStyle + '">' + r[2] + '</td></tr>';
     }).join('');
+}
+
+// ── RESUMO EXECUTIVO — Por que o modelo vê valor? ──
+function buildExecutiveSummary(o) {
+    const m = allMatches.find(x => x.match_id === o.match_id);
+    if (!m) return '';
+
+    const modelP = o.model_prob / 100;
+    const impliedP = o.implied_prob / 100;
+    const edge = parseFloat(o.edge_pct) || 0;
+    const xgTotal = (o.home_xg + o.away_xg);
+    const fairOdd = o.fair_odd;
+    const marketOdd = o.market_odd;
+    const hGP = m.home_games_played ?? 0;
+    const aGP = m.away_games_played ?? 0;
+    const minGP = Math.min(hGP, aGP);
+    const alphaH = m.model_alpha_h ?? m.home_attack ?? 1.0;
+    const betaH = m.model_beta_h ?? m.home_defense ?? 1.0;
+    const alphaA = m.model_alpha_a ?? m.away_attack ?? 1.0;
+    const betaA = m.model_beta_a ?? m.away_defense ?? 1.0;
+    const leagueAvg = m.league_avg_goals ?? 2.7;
+
+    // ── Identificar os DRIVERS (fatores-chave) da análise ──
+    const drivers = [];
+    const warnings = [];
+
+    // 1. Amostra pequena
+    if (minGP < 10) {
+        warnings.push({
+            icon: '⚠️',
+            title: 'Amostra pequena',
+            desc: `Apenas ${hGP} jogos (casa) e ${aGP} jogos (fora) disputados. A regressão à média (peso ${Math.min(100, Math.round(minGP/15*100))}% dados obs.) suaviza, mas campeonatos em fase inicial são naturalmente imprevisíveis.`,
+            severity: 'high'
+        });
+    }
+
+    // 2. Analisar por tipo de mercado
+    const sel = o.selection.toLowerCase();
+    const mkt = o.market.toLowerCase();
+
+    if (mkt.includes('o/u') || mkt.includes('gols')) {
+        // Mercado de gols
+        if (sel.includes('under')) {
+            drivers.push({
+                icon: '🛡️',
+                title: 'Defesas sólidas',
+                desc: `β Casa = ${betaH.toFixed(2)} e β Fora = ${betaA.toFixed(2)} (média da liga = 1.00). Ambas as defesas estão ${Math.min(betaH, betaA) < 0.85 ? 'MUITO acima' : 'acima'} da média, dificultando gols.`
+            });
+            if (xgTotal < 2.0) {
+                drivers.push({
+                    icon: '📉',
+                    title: 'xG Total muito baixo',
+                    desc: `O modelo espera apenas ${xgTotal.toFixed(2)} gols na partida (média da liga: ${leagueAvg.toFixed(2)}). Com poucos gols esperados, a probabilidade de Under é naturalmente alta.`
+                });
+            }
+        } else if (sel.includes('over')) {
+            if (xgTotal > leagueAvg) {
+                drivers.push({
+                    icon: '⚡',
+                    title: 'Ataques acima da média',
+                    desc: `α Casa = ${alphaH.toFixed(2)} e α Fora = ${alphaA.toFixed(2)}. O xG Total de ${xgTotal.toFixed(2)} gols supera a média da liga (${leagueAvg.toFixed(2)}).`
+                });
+            }
+            if (Math.max(betaH, betaA) > 1.15) {
+                drivers.push({
+                    icon: '🔓',
+                    title: 'Defesa(s) vulnerável(is)',
+                    desc: `${betaH > 1.15 ? o.home_team + ' (β=' + betaH.toFixed(2) + ') ' : ''}${betaA > 1.15 ? o.away_team + ' (β=' + betaA.toFixed(2) + ')' : ''} — acima de 1.00 significa que sofre(m) mais gols que a média.`
+                });
+            }
+        }
+    } else if (mkt.includes('1x2') || mkt.includes('dupla chance')) {
+        // Mercado 1x2
+        if (sel.includes('casa')) {
+            drivers.push({
+                icon: '🏟️',
+                title: 'Vantagem de mando + ataque forte',
+                desc: `α Casa = ${alphaH.toFixed(2)} com fator de mando 1.08. Contra defesa de β = ${betaA.toFixed(2)}, o modelo projeta ${o.home_xg.toFixed(2)} gols do mandante.`
+            });
+        } else if (sel.includes('fora')) {
+            drivers.push({
+                icon: '✈️',
+                title: 'Visitante com ataque superior',
+                desc: `α Fora = ${alphaA.toFixed(2)} contra defesa de β = ${betaH.toFixed(2)}. Mesmo sem vantagem de mando, o modelo projeta ${o.away_xg.toFixed(2)} gols do visitante.`
+            });
+        }
+    } else if (mkt.includes('btts') || mkt.includes('ambas')) {
+        if (sel.includes('sim') || sel.includes('yes')) {
+            drivers.push({
+                icon: '⚽',
+                title: 'Ambos times com ataque ativo',
+                desc: `α Casa = ${alphaH.toFixed(2)}, α Fora = ${alphaA.toFixed(2)}. Com xG Casa = ${o.home_xg.toFixed(2)} e xG Fora = ${o.away_xg.toFixed(2)}, ambos têm chances reais de marcar.`
+            });
+        } else {
+            drivers.push({
+                icon: '🛡️',
+                title: 'Pelo menos uma defesa forte',
+                desc: `${Math.min(betaH, betaA) < 0.85 ? 'Defesa muito sólida presente' : 'Uma defesa dificulta o ataque adversário'}. xG mais baixo = ${Math.min(o.home_xg, o.away_xg).toFixed(2)}.`
+            });
+        }
+    }
+
+    // Drivers genéricos
+    // Forma recente
+    const hForm = m.home_form || [];
+    const aForm = m.away_form || [];
+    const hFormW = hForm.filter(x => x === 'W').length;
+    const hFormL = hForm.filter(x => x === 'L').length;
+    const aFormW = aForm.filter(x => x === 'W').length;
+    const aFormL = aForm.filter(x => x === 'L').length;
+    if (hForm.length >= 3 || aForm.length >= 3) {
+        let formNote = '';
+        if (hFormL === 0 && hForm.length >= 3) formNote += `${o.home_team} invicto nos últimos ${hForm.length} jogos. `;
+        if (aFormL === 0 && aForm.length >= 3) formNote += `${o.away_team} invicto nos últimos ${aForm.length} jogos. `;
+        if (hFormW === 0 && hForm.length >= 3) formNote += `${o.home_team} sem vitórias nos últimos ${hForm.length} jogos. `;
+        if (aFormW === 0 && aForm.length >= 3) formNote += `${o.away_team} sem vitórias nos últimos ${aForm.length} jogos. `;
+        if (formNote) {
+            drivers.push({ icon: '📊', title: 'Forma recente', desc: formNote.trim() });
+        }
+    }
+
+    // Discrepância modelo vs mercado
+    const gapPct = ((modelP - impliedP) * 100).toFixed(1);
+    drivers.push({
+        icon: '💰',
+        title: 'Discrepância modelo vs mercado',
+        desc: `O modelo atribui ${o.model_prob}% ao evento, mas o mercado precifica apenas ${o.implied_prob}% (diferença de ${gapPct} p.p.). Isso gera a odd justa de ${fairOdd.toFixed(2)} vs a odd real de ${marketOdd.toFixed(2)}.`
+    });
+
+    // Urgência
+    if (o.urgency_home >= 0.9 || o.urgency_away >= 0.9) {
+        const urgTeams = [];
+        if (o.urgency_home >= 0.9) urgTeams.push(o.home_team);
+        if (o.urgency_away >= 0.9) urgTeams.push(o.away_team);
+        drivers.push({
+            icon: '🔥',
+            title: 'Alta urgência competitiva',
+            desc: `${urgTeams.join(' e ')} em disputa por título ou contra rebaixamento — fator motivacional elevado.`
+        });
+    }
+
+    // Odds suspect
+    if (o.odds_suspect || m.odds_home_away_suspect) {
+        warnings.push({
+            icon: '🔄',
+            title: 'Possível inversão Casa/Fora',
+            desc: 'As odds sugerem que o mandante designado pela API pode estar incorreto. O modelo usou estatísticas neutras para compensar.',
+            severity: 'medium'
+        });
+    }
+
+    // ── Classificar edge ──
+    let edgeClass = 'normal';
+    let edgeLabel = 'Edge moderado';
+    let edgeColor = 'var(--accent-green)';
+    if (edge >= 30) { edgeClass = 'extreme'; edgeLabel = 'Edge EXTREMO'; edgeColor = '#ff4444'; }
+    else if (edge >= 15) { edgeClass = 'high'; edgeLabel = 'Edge muito alto'; edgeColor = 'var(--accent-yellow)'; }
+    else if (edge >= 8) { edgeClass = 'good'; edgeLabel = 'Edge bom'; edgeColor = 'var(--accent-green)'; }
+
+    // ── Construir HTML ──
+    let html = `<div style="background:linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.04));border:1px solid rgba(59,130,246,0.2);border-radius:12px;padding:20px;margin-bottom:4px">`;
+
+    // Header
+    html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <div style="font-size:20px">🧠</div>
+        <div>
+            <div style="font-size:15px;font-weight:800;color:var(--text-primary)">RESUMO: Por que o modelo vê valor?</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${o.market} → ${o.selection} | Edge: <span style="color:${edgeColor};font-weight:700">${o.edge_pct}</span></div>
+        </div>
+    </div>`;
+
+    // A explicação em linguagem natural
+    html += `<div style="background:rgba(0,0,0,0.15);border-radius:8px;padding:14px 16px;margin-bottom:14px;border-left:3px solid ${edgeColor}">
+        <div style="font-size:12px;font-weight:700;color:${edgeColor};margin-bottom:6px">${edgeLabel}</div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.7">`;
+
+    // Gerar o parágrafo explicativo
+    html += `O modelo calcula que <strong style="color:var(--text-primary)">${o.selection}</strong> tem
+        <strong style="color:var(--accent-green)">${o.model_prob}%</strong> de probabilidade, usando o modelo Dixon-Coles
+        com base nos parâmetros de ataque/defesa dos times (média da liga: ${leagueAvg.toFixed(2)} gols/jogo).`;
+
+    if (minGP < 10) {
+        html += ` <span style="color:var(--accent-yellow)">Como os times jogaram apenas ${minGP}–${Math.max(hGP,aGP)} partidas,
+        o modelo aplica <strong>regressão à média</strong> (${Math.round(minGP/15*100)}% peso observado, ${100-Math.round(minGP/15*100)}% média da liga)
+        para não superestimar padrões de amostra pequena.</span>`;
+    }
+
+    html += `<br><br>A odd justa calculada é <strong style="color:var(--text-primary)">${fairOdd.toFixed(2)}</strong>,
+        mas o mercado oferece <strong style="color:var(--accent-green)">${marketOdd.toFixed(2)}</strong>.
+        Essa diferença gera o edge de <strong style="color:${edgeColor}">${o.edge_pct}</strong>.`;
+
+    if (edge >= 30) {
+        html += `<br><br><span style="color:#ff4444;font-weight:700">⚠️ ATENÇÃO: Edge acima de 30% é incomum e pode indicar que o modelo está superestimando a probabilidade
+        (ex: amostra pequena, dados insuficientes, ou particularidades que o modelo não captura). Recomenda-se cautela.</span>`;
+    }
+
+    html += `</div></div>`;
+
+    // ── Fatores-chave (drivers) ──
+    html += `<div style="font-size:11px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📌 Fatores-chave</div>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:8px;margin-bottom:${warnings.length ? '14px' : '0'}">`;
+    drivers.forEach(d => {
+        html += `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="font-size:14px">${d.icon}</span>
+                <span style="font-size:11px;font-weight:700;color:var(--text-primary)">${d.title}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);line-height:1.5">${d.desc}</div>
+        </div>`;
+    });
+    html += '</div>';
+
+    // ── Avisos ──
+    if (warnings.length) {
+        html += `<div style="font-size:11px;font-weight:800;color:var(--accent-yellow);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">⚠️ Pontos de atenção</div>`;
+        warnings.forEach(w => {
+            const borderC = w.severity === 'high' ? '#ff4444' : 'var(--accent-yellow)';
+            html += `<div style="background:rgba(255,200,0,0.04);border:1px solid rgba(255,200,0,0.15);border-left:3px solid ${borderC};border-radius:8px;padding:10px 12px;margin-bottom:6px">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                    <span style="font-size:13px">${w.icon}</span>
+                    <span style="font-size:11px;font-weight:700;color:var(--accent-yellow)">${w.title}</span>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary);line-height:1.5">${w.desc}</div>
+            </div>`;
+        });
+    }
+
+    // ── Mini pipeline visual ──
+    html += `<div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06)">
+        <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🔄 Como a odd justa é calculada</div>
+        <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap">
+            <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);border-radius:6px;padding:6px 10px;font-size:10px;text-align:center">
+                <div style="color:var(--accent-cyan);font-weight:700">1. Dados</div>
+                <div style="color:var(--text-muted);margin-top:2px">Gols, forma,<br>standings</div>
+            </div>
+            <div style="color:var(--text-muted);padding:0 4px;font-size:12px">→</div>
+            <div style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:6px;padding:6px 10px;font-size:10px;text-align:center">
+                <div style="color:#a78bfa;font-weight:700">2. α / β</div>
+                <div style="color:var(--text-muted);margin-top:2px">Ataque/defesa<br>+ regressão</div>
+            </div>
+            <div style="color:var(--text-muted);padding:0 4px;font-size:12px">→</div>
+            <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);border-radius:6px;padding:6px 10px;font-size:10px;text-align:center">
+                <div style="color:var(--accent-green);font-weight:700">3. xG</div>
+                <div style="color:var(--text-muted);margin-top:2px">λ=${o.home_xg.toFixed(2)}<br>μ=${o.away_xg.toFixed(2)}</div>
+            </div>
+            <div style="color:var(--text-muted);padding:0 4px;font-size:12px">→</div>
+            <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:6px 10px;font-size:10px;text-align:center">
+                <div style="color:var(--accent-yellow);font-weight:700">4. Monte Carlo</div>
+                <div style="color:var(--text-muted);margin-top:2px">5.000 sim.<br>→ P=${o.model_prob}%</div>
+            </div>
+            <div style="color:var(--text-muted);padding:0 4px;font-size:12px">→</div>
+            <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:6px;padding:6px 10px;font-size:10px;text-align:center">
+                <div style="color:#f87171;font-weight:700">5. Odd Justa</div>
+                <div style="color:var(--text-muted);margin-top:2px">1/P = ${fairOdd.toFixed(2)}<br>vs mkt ${marketOdd.toFixed(2)}</div>
+            </div>
+        </div>
+    </div>`;
+
+    html += '</div>';
+    return html;
 }
 
 function buildDetailedAnalysis(o) {
