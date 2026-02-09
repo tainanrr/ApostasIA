@@ -2584,6 +2584,22 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
         })();
 
         // ═══ TAB 4: FINALIZAÇÕES ═══
+        // ── Helper: barra EV+ com fair odd ──
+        const evBar = (label, count, total, color) => {
+            const pct = total > 0 ? (count / total) : 0;
+            const pctStr = (pct * 100).toFixed(0);
+            const fairOdd = pct > 0 ? (1 / pct).toFixed(2) : '∞';
+            const evColor = pct >= 0.55 ? 'var(--accent-green)' : pct >= 0.40 ? 'var(--accent-yellow)' : 'var(--text-muted)';
+            return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0">
+                <div style="min-width:48px;font-size:11px;color:var(--text-secondary);text-align:right;font-weight:600">${label}</div>
+                <div style="flex:1;height:22px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden;position:relative">
+                    <div style="height:100%;width:${pctStr}%;background:${color};border-radius:4px;transition:width .3s"></div>
+                    <span style="position:absolute;right:8px;top:3px;font-size:10px;font-weight:700;color:var(--text-primary)">${count}/${total} (${pctStr}%)</span>
+                </div>
+                <div style="min-width:68px;text-align:center;font-size:10px;font-weight:700;color:${evColor};background:rgba(255,255,255,0.03);padding:2px 6px;border-radius:4px" title="Odd justa calculada (se mercado oferece odd MAIOR que esta, pode ser EV+)">Fair: ${fairOdd}</div>
+            </div>`;
+        };
+
         const shotsPanel = (() => {
             const valid = ms.filter(m => m.stats?.team_shots != null);
             if (!valid.length) return '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:16px">Dados de finalizacoes indisponiveis</div>';
@@ -2606,13 +2622,35 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
                 ${kpi('% Acerto Time', tShots > 0 ? ((tSoT / tShots) * 100).toFixed(0) + '%' : '-', 'var(--accent-yellow)')}
             </div>`;
 
+            // ── EV+ Finalizações do TIME (Over/Under) ──
+            h += '<div style="font-size:10px;font-weight:700;color:var(--accent-green);margin:12px 0 4px;text-transform:uppercase">⚡ EV+ Finalizacoes do Time (Over/Under)</div>';
+            h += '<div style="font-size:9px;color:var(--text-muted);margin-bottom:6px">Se a casa oferece odd MAIOR que a "Fair", historicamente e EV+</div>';
+            const teamShotLines = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5];
+            const tslOvc = teamShotLines.map(() => 0);
+            valid.forEach(m => {
+                const ts = si(m.stats.team_shots) || 0;
+                teamShotLines.forEach((l, i) => { if (ts > l) tslOvc[i]++; });
+            });
+            teamShotLines.forEach((l, i) => { h += evBar('O ' + l, tslOvc[i], vn, 'var(--accent-green)'); });
+
+            // ── EV+ Finalizações em GOL do TIME ──
+            h += '<div style="font-size:10px;font-weight:700;color:var(--accent-green);margin:14px 0 4px;text-transform:uppercase">⚡ EV+ Finalizacoes em Gol do Time (Over/Under)</div>';
+            const teamSoTLines = [1.5, 2.5, 3.5, 4.5, 5.5];
+            const tsotOvc = teamSoTLines.map(() => 0);
+            valid.forEach(m => {
+                const sot = si(m.stats.team_shots_on_target) || 0;
+                teamSoTLines.forEach((l, i) => { if (sot > l) tsotOvc[i]++; });
+            });
+            teamSoTLines.forEach((l, i) => { h += evBar('O ' + l, tsotOvc[i], vn, 'var(--accent-blue)'); });
+
+            // ── Over/Under Totais no Jogo ──
+            h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin:14px 0 4px;text-transform:uppercase">Over/Under Finalizacoes Totais no Jogo</div>';
             const totalLines = [17.5, 19.5, 21.5, 23.5, 25.5];
             const ovc = totalLines.map(() => 0);
             valid.forEach(m => {
                 const tot = (si(m.stats.team_shots) || 0) + (si(m.stats.opp_shots) || 0);
                 totalLines.forEach((l, i) => { if (tot > l) ovc[i]++; });
             });
-            h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase">Over/Under Finalizacoes Totais no Jogo</div>';
             totalLines.forEach((l, i) => { h += pctBar('O ' + l, ovc[i], vn, 'var(--accent-green)'); });
 
             h += detailOpen + `<table style="width:100%;border-collapse:collapse;font-size:11px">
@@ -2636,6 +2674,148 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
                     <td style="${_td};text-align:center">${sv}</td></tr>`;
             });
             h += '</tbody></table>' + detailClose;
+            return h;
+        })();
+
+        // ═══ TAB EV+ JOGADORES ═══
+        const playersPanel = (() => {
+            // Agregar dados de jogadores por todos os jogos
+            const matchesWithPlayers = ms.filter(m => m.players && m.players.length > 0);
+            if (!matchesWithPlayers.length) return '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:16px">Dados de finalizacoes de jogadores indisponiveis.<br><span style="font-size:9px">Estes dados sao buscados via API ao carregar o historico.</span></div>';
+
+            const playerMap = {};
+            matchesWithPlayers.forEach((m, mi) => {
+                m.players.forEach(p => {
+                    if (!p.name || !p.minutes || p.minutes < 1) return;
+                    const key = p.id || p.name;
+                    if (!playerMap[key]) {
+                        playerMap[key] = {
+                            id: p.id, name: p.name, position: p.position,
+                            matches: 0, totalShots: 0, totalSOT: 0, totalGoals: 0,
+                            totalAssists: 0, totalMinutes: 0,
+                            shotsPerMatch: [], sotPerMatch: [],
+                            matchDetails: [],
+                        };
+                    }
+                    const pl = playerMap[key];
+                    pl.matches++;
+                    pl.totalShots += p.total_shots;
+                    pl.totalSOT += p.shots_on_target;
+                    pl.totalGoals += p.goals;
+                    pl.totalAssists += p.assists;
+                    pl.totalMinutes += p.minutes;
+                    pl.shotsPerMatch.push(p.total_shots);
+                    pl.sotPerMatch.push(p.shots_on_target);
+                    pl.matchDetails.push({
+                        date: m.date, opponent: m.opponent, minutes: p.minutes,
+                        shots: p.total_shots, sot: p.shots_on_target,
+                        goals: p.goals, substitute: p.substitute,
+                    });
+                });
+            });
+
+            // Filtrar e ordenar por média de finalizações
+            const players = Object.values(playerMap)
+                .filter(p => p.matches >= 2)
+                .sort((a, b) => (b.totalShots / b.matches) - (a.totalShots / a.matches));
+
+            if (!players.length) return '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:16px">Insuficientes dados de jogadores (minimo 2 partidas)</div>';
+
+            let h = '';
+
+            // ── 1. RANKING DE FINALIZAÇÕES ──
+            h += '<div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase">🏆 Ranking de Finalizacoes por Jogador</div>';
+            h += `<div style="overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr>
+                <th style="${_th}">Jogador</th><th style="${_th};text-align:center">Pos</th>
+                <th style="${_th};text-align:center">Jogos</th><th style="${_th};text-align:center">Min</th>
+                <th style="${_th};text-align:center">Fin. Total</th><th style="${_th};text-align:center;color:var(--accent-green)">Fin/J</th>
+                <th style="${_th};text-align:center">No Alvo</th><th style="${_th};text-align:center;color:var(--accent-blue)">Alvo/J</th>
+                <th style="${_th};text-align:center">Gols</th><th style="${_th};text-align:center">Assist.</th>
+            </tr></thead><tbody>`;
+            players.slice(0, 15).forEach((p, i) => {
+                const avgS = (p.totalShots / p.matches).toFixed(1);
+                const avgSOT = (p.totalSOT / p.matches).toFixed(1);
+                const posColor = p.position === 'F' ? 'var(--accent-red)' : p.position === 'M' ? 'var(--accent-green)' : p.position === 'D' ? 'var(--accent-blue)' : 'var(--text-muted)';
+                const posLabel = p.position === 'F' ? 'ATA' : p.position === 'M' ? 'MEI' : p.position === 'D' ? 'DEF' : p.position === 'G' ? 'GOL' : p.position;
+                const rowBg = i < 3 ? 'rgba(0,255,136,0.03)' : 'transparent';
+                h += `<tr style="background:${rowBg}">
+                    <td style="${_td};font-weight:${i < 3 ? '700' : '400'}">${i < 3 ? '⭐ ' : ''}${p.name}</td>
+                    <td style="${_td};text-align:center"><span style="color:${posColor};font-weight:700;font-size:9px">${posLabel}</span></td>
+                    <td style="${_td};text-align:center">${p.matches}</td>
+                    <td style="${_td};text-align:center;color:var(--text-muted)">${p.totalMinutes}</td>
+                    <td style="${_td};text-align:center">${p.totalShots}</td>
+                    <td style="${_td};text-align:center;font-weight:700;color:var(--accent-green)">${avgS}</td>
+                    <td style="${_td};text-align:center">${p.totalSOT}</td>
+                    <td style="${_td};text-align:center;font-weight:700;color:var(--accent-blue)">${avgSOT}</td>
+                    <td style="${_td};text-align:center;font-weight:700">${p.totalGoals}</td>
+                    <td style="${_td};text-align:center">${p.totalAssists}</td>
+                </tr>`;
+            });
+            h += '</tbody></table></div>';
+
+            // ── 2. EV+ FINALIZAÇÕES POR JOGADOR ──
+            const topPlayers = players.filter(p => p.matches >= 2 && p.totalShots > 0).slice(0, 10);
+            if (topPlayers.length) {
+                h += '<div style="font-size:10px;font-weight:700;color:var(--accent-green);margin:8px 0 4px;text-transform:uppercase">⚡ EV+ Finalizacoes por Jogador (Over/Under)</div>';
+                h += '<div style="font-size:9px;color:var(--text-muted);margin-bottom:8px">Probabilidade historica de cada jogador ter mais de X finalizacoes. "Fair" = odd justa. Se o mercado oferecer odd MAIOR, pode ser EV+.</div>';
+
+                topPlayers.forEach(p => {
+                    const avgS = (p.totalShots / p.matches).toFixed(1);
+                    h += `<div style="background:rgba(255,255,255,0.02);border-radius:8px;padding:10px 12px;margin-bottom:8px;border:1px solid rgba(255,255,255,0.04)">`;
+                    h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <span style="font-weight:700;font-size:12px;color:var(--text-primary)">${p.name}</span>
+                        <span style="font-size:9px;color:var(--text-muted)">${p.matches}j | ${avgS} fin/j | ${(p.totalSOT / p.matches).toFixed(1)} alvo/j</span>
+                    </div>`;
+
+                    // O/U Finalizações
+                    h += '<div style="font-size:9px;font-weight:600;color:var(--text-muted);margin-bottom:3px">FINALIZACOES</div>';
+                    [0.5, 1.5, 2.5, 3.5, 4.5].forEach(line => {
+                        const over = p.shotsPerMatch.filter(s => s > line).length;
+                        h += evBar('O ' + line, over, p.matches, 'var(--accent-green)');
+                    });
+
+                    // O/U Finalizações em Gol
+                    h += '<div style="font-size:9px;font-weight:600;color:var(--text-muted);margin:6px 0 3px">FINALIZACOES EM GOL (No Alvo)</div>';
+                    [0.5, 1.5, 2.5, 3.5].forEach(line => {
+                        const over = p.sotPerMatch.filter(s => s > line).length;
+                        h += evBar('O ' + line, over, p.matches, 'var(--accent-blue)');
+                    });
+
+                    h += '</div>';
+                });
+            }
+
+            // ── 3. DETALHAMENTO JOGO A JOGO POR JOGADOR ──
+            h += detailOpen.replace('VER JOGO A JOGO', 'VER HISTORICO COMPLETO POR JOGADOR');
+            topPlayers.slice(0, 8).forEach(p => {
+                h += `<div style="margin-bottom:10px">
+                <div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:4px">${p.name} <span style="color:var(--text-muted);font-weight:400">(${p.matches} jogos)</span></div>
+                <table style="width:100%;border-collapse:collapse;font-size:10px">
+                <thead><tr>
+                    <th style="${_th}">Data</th><th style="${_th}">Adversario</th>
+                    <th style="${_th};text-align:center">Min</th>
+                    <th style="${_th};text-align:center">Fin.</th><th style="${_th};text-align:center">Alvo</th>
+                    <th style="${_th};text-align:center">Gols</th><th style="${_th};text-align:center">Titular</th>
+                </tr></thead><tbody>`;
+                p.matchDetails.forEach(md => {
+                    const shotsBg = md.shots >= 3 ? 'rgba(0,255,136,0.08)' : 'transparent';
+                    const sotBg = md.sot >= 2 ? 'rgba(100,180,255,0.08)' : 'transparent';
+                    const titLabel = md.substitute ? '<span style="color:var(--text-muted);font-size:9px">SUB</span>' : '<span style="color:var(--accent-green);font-size:9px">TIT</span>';
+                    h += `<tr>
+                        <td style="${_td};color:var(--text-muted)">${md.date}</td>
+                        <td style="${_td}">${md.opponent}</td>
+                        <td style="${_td};text-align:center;color:var(--text-muted)">${md.minutes}'</td>
+                        <td style="${_td};text-align:center;font-weight:700;background:${shotsBg}">${md.shots}</td>
+                        <td style="${_td};text-align:center;font-weight:700;background:${sotBg}">${md.sot}</td>
+                        <td style="${_td};text-align:center;font-weight:700;color:${md.goals > 0 ? 'var(--accent-green)' : 'var(--text-muted)'}">${md.goals}</td>
+                        <td style="${_td};text-align:center">${titLabel}</td>
+                    </tr>`;
+                });
+                h += '</tbody></table></div>';
+            });
+            h += detailClose;
+
             return h;
         })();
 
@@ -2758,10 +2938,11 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
 
         // ═══ Montar tabs ═══
         const tabs = [
-            { id: 'goals',   label: '⚽ Gols & BTTS',    content: goalsPanel },
-            { id: 'corners', label: '🏁 Escanteios',     content: cornersPanel },
-            { id: 'cards',   label: '🟨 Cartoes',        content: cardsPanel },
-            { id: 'shots',   label: '🎯 Finalizacoes',   content: shotsPanel },
+            { id: 'goals',   label: '⚽ Gols & BTTS',     content: goalsPanel },
+            { id: 'corners', label: '🏁 Escanteios',      content: cornersPanel },
+            { id: 'cards',   label: '🟨 Cartoes',         content: cardsPanel },
+            { id: 'shots',   label: '🎯 Fin. Time',       content: shotsPanel },
+            { id: 'players', label: '⚡ EV+ Jogadores',   content: playersPanel },
             { id: 'other',   label: '📊 Posse/xG/Gerais', content: otherPanel },
         ];
 

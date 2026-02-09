@@ -1092,6 +1092,7 @@ def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> d
             "lineup_type": "N/D",
             "lineup_count": None,
             "stats": {},
+            "players": [],
         }
 
     # Processar todos os fixtures
@@ -1115,6 +1116,10 @@ def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> d
         # Buscar odds do jogo (pré-jogo)
         odds_data = _api_football_request("odds", {"fixture": fix_id})
         odds_response = odds_data.get("response", [])
+
+        # Buscar estatísticas de jogadores (finalizações individuais)
+        players_data = _api_football_request("fixtures/players", {"fixture": fix_id})
+        players_response = players_data.get("response", [])
 
         # Processar e atribuir aos matches
         for match_list in [all_processed, league_processed]:
@@ -1200,6 +1205,39 @@ def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> d
                             m["was_favorite"] = m["odds_home"] < m["odds_away"]
                         else:
                             m["was_favorite"] = m["odds_away"] < m["odds_home"]
+
+                # ── Estatísticas de Jogadores (finalizações individuais) ──
+                for team_players in players_response:
+                    tid = team_players.get("team", {}).get("id", 0)
+                    if tid == team_id:
+                        plist = []
+                        for p in team_players.get("players", []):
+                            pi = p.get("player", {})
+                            pstats_list = p.get("statistics", [])
+                            if not pstats_list:
+                                continue
+                            ps = pstats_list[0]
+                            shots_info = ps.get("shots", {}) or {}
+                            goals_info = ps.get("goals", {}) or {}
+                            games_info = ps.get("games", {}) or {}
+                            minutes_played = games_info.get("minutes", 0) or 0
+                            if minutes_played < 1:
+                                continue  # Pular jogadores que não entraram
+                            plist.append({
+                                "id": pi.get("id"),
+                                "name": pi.get("name", "?"),
+                                "position": games_info.get("position", "?"),
+                                "number": games_info.get("number"),
+                                "minutes": minutes_played,
+                                "rating": games_info.get("rating"),
+                                "substitute": games_info.get("substitute", False),
+                                "total_shots": (shots_info.get("total") or 0),
+                                "shots_on_target": (shots_info.get("on") or 0),
+                                "goals": (goals_info.get("total") or 0),
+                                "assists": (goals_info.get("assists") or 0),
+                            })
+                        m["players"] = plist
+                        break
 
     result["all_matches"] = all_processed
     result["league_matches"] = league_processed
