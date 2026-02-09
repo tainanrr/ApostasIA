@@ -1492,13 +1492,17 @@ function showOppDetail(idx) {
 
     // Helper: form dots
     function formHtml(form) {
-        if (!form || !form.length) return '<span style="color:var(--text-muted)">N/D</span>';
+        if (!form || !form.length) return '<span style="color:var(--text-muted)">Sem dados</span>';
         return form.map(f => `<div class="form-dot form-${f}">${f}</div>`).join("");
     }
     function formSummary(form) {
         if (!form || !form.length) return '';
         const w = form.filter(x=>x==='W').length, d = form.filter(x=>x==='D').length, l = form.filter(x=>x==='L').length;
         return `${w}V ${d}E ${l}D`;
+    }
+    function formLabel(form) {
+        if (!form || !form.length) return 'FORMA RECENTE';
+        return `FORMA RECENTE (${form.length} jogos)`;
     }
 
     // Build match opps for this match
@@ -1535,7 +1539,7 @@ function showOppDetail(idx) {
                 <div class="team-col team-col-home">
                     <div class="team-name-lg" style="color:var(--accent-green)">${o.home_team}</div>
                     <div class="team-badge-info">${m ? (v(m.home_league_pos,'') ? m.home_league_pos + '° lugar' : '') + (v(m.home_league_pts,'') !== '' ? ' • ' + m.home_league_pts + ' pts' : '') + (v(m.home_games_played,'') !== '' ? ' • ' + m.home_games_played + ' jogos' : '') : 'N/D'}</div>
-                    <div style="margin-bottom:6px"><span style="font-size:10px;color:var(--text-muted)">FORMA RECENTE</span></div>
+                    <div style="margin-bottom:6px"><span style="font-size:10px;color:var(--text-muted)">${m ? formLabel(m.home_form) : 'FORMA RECENTE'}</span></div>
                     <div class="form-dots" style="justify-content:flex-end">${m ? formHtml(m.home_form) : 'N/D'}</div>
                     <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${m ? formSummary(m.home_form) : ''}</div>
                 </div>
@@ -1543,7 +1547,7 @@ function showOppDetail(idx) {
                 <div class="team-col team-col-away">
                     <div class="team-name-lg" style="color:var(--accent-blue)">${o.away_team}</div>
                     <div class="team-badge-info">${m ? (v(m.away_league_pos,'') ? m.away_league_pos + '° lugar' : '') + (v(m.away_league_pts,'') !== '' ? ' • ' + m.away_league_pts + ' pts' : '') + (v(m.away_games_played,'') !== '' ? ' • ' + m.away_games_played + ' jogos' : '') : 'N/D'}</div>
-                    <div style="margin-bottom:6px"><span style="font-size:10px;color:var(--text-muted)">FORMA RECENTE</span></div>
+                    <div style="margin-bottom:6px"><span style="font-size:10px;color:var(--text-muted)">${m ? formLabel(m.away_form) : 'FORMA RECENTE'}</span></div>
                     <div class="form-dots">${m ? formHtml(m.away_form) : 'N/D'}</div>
                     <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${m ? formSummary(m.away_form) : ''}</div>
                 </div>
@@ -1959,15 +1963,23 @@ function buildDetailedAnalysis(o) {
 
     // ── 3. FORMA RECENTE ──
     L.push("═══════════════════════════════════════════════════════");
-    L.push("📊  FORMA RECENTE (últimos 10 jogos)");
+    L.push("  FORMA RECENTE");
     L.push("═══════════════════════════════════════════════════════");
-    if (m && m.home_form) {
+    if (m) {
         const hf = m.home_form || [];
         const af = m.away_form || [];
-        const hW = hf.filter(x=>x==='W').length, hD = hf.filter(x=>x==='D').length, hL = hf.filter(x=>x==='L').length;
-        const aW = af.filter(x=>x==='W').length, aD = af.filter(x=>x==='D').length, aL = af.filter(x=>x==='L').length;
-        L.push(`  ${o.home_team}: ${hf.join(' ')} → ${hW}V ${hD}E ${hL}D`);
-        L.push(`  ${o.away_team}: ${af.join(' ')} → ${aW}V ${aD}E ${aL}D`);
+        if (hf.length) {
+            const hW = hf.filter(x=>x==='W').length, hD = hf.filter(x=>x==='D').length, hL = hf.filter(x=>x==='L').length;
+            L.push(`  ${o.home_team} (ult. ${hf.length} jogos): ${hf.join(' ')} -> ${hW}V ${hD}E ${hL}D`);
+        } else {
+            L.push(`  ${o.home_team}: Dados de forma indisponiveis`);
+        }
+        if (af.length) {
+            const aW = af.filter(x=>x==='W').length, aD = af.filter(x=>x==='D').length, aL = af.filter(x=>x==='L').length;
+            L.push(`  ${o.away_team} (ult. ${af.length} jogos): ${af.join(' ')} -> ${aW}V ${aD}E ${aL}D`);
+        } else {
+            L.push(`  ${o.away_team}: Dados de forma indisponiveis`);
+        }
     }
     L.push("");
 

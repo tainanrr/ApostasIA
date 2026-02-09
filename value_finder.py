@@ -292,15 +292,23 @@ def generate_reasoning(match: MatchAnalysis, market: str,
     lines.append("")
 
     # ── 3. FORMA RECENTE ──
+    home_n = len(home.form_last10)
+    away_n = len(away.form_last10)
     home_wins = sum(1 for f in home.form_last10 if f == 'W')
     home_draws = sum(1 for f in home.form_last10 if f == 'D')
     home_losses = sum(1 for f in home.form_last10 if f == 'L')
     away_wins = sum(1 for f in away.form_last10 if f == 'W')
     away_draws = sum(1 for f in away.form_last10 if f == 'D')
     away_losses = sum(1 for f in away.form_last10 if f == 'L')
-    lines.append("📊 FORMA RECENTE (últimos 10 jogos):")
-    lines.append(f"  {home.team_name}: {''.join(home.form_last10)} → {home_wins}V {home_draws}E {home_losses}D (pontos: {home.form_points:.2f})")
-    lines.append(f"  {away.team_name}: {''.join(away.form_last10)} → {away_wins}V {away_draws}E {away_losses}D (pontos: {away.form_points:.2f})")
+    lines.append("FORMA RECENTE:")
+    if home_n:
+        lines.append(f"  {home.team_name} (ult. {home_n}): {''.join(home.form_last10)} -> {home_wins}V {home_draws}E {home_losses}D (pontos: {home.form_points:.2f})")
+    else:
+        lines.append(f"  {home.team_name}: Dados de forma indisponiveis")
+    if away_n:
+        lines.append(f"  {away.team_name} (ult. {away_n}): {''.join(away.form_last10)} -> {away_wins}V {away_draws}E {away_losses}D (pontos: {away.form_points:.2f})")
+    else:
+        lines.append(f"  {away.team_name}: Dados de forma indisponiveis")
     lines.append("")
 
     # ── 4. CÁLCULO DE xG ──

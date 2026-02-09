@@ -310,17 +310,15 @@ COUNTRY_CODES = {
 
 
 def _parse_form_string(form_str: str) -> list[str]:
-    """Converte string de forma 'WWDLW' em lista ['W','W','D','L','W']."""
+    """Converte string de forma 'WWDLW' em lista ['W','W','D','L','W'].
+    NÃO duplica — retorna apenas os resultados reais da API."""
     if not form_str:
-        return ["D"] * 5
+        return []          # sem dados reais → lista vazia
     result = []
     for ch in form_str.upper():
         if ch in ("W", "D", "L"):
             result.append(ch)
-    # Duplicar para 10 se tiver apenas 5
-    while len(result) < 10:
-        result = result + result
-    return result[:10]
+    return result          # sem duplicação — mostra só o que a API retorna
 
 
 def _form_points(form: list[str]) -> float:
@@ -351,9 +349,9 @@ def _build_team_from_standings(team_id: int, team_name: str,
             shots_on_target_avg=4.0, shots_blocked_avg=3.0,
             corners_avg=5.0, cards_avg=2.0, fouls_avg=12.0,
             possession_final_third=30.0,
-            form_last10=["D"] * 10, form_points=0.33,
-            league_position=10, league_points=20,
-            games_played=20, games_remaining=18,
+            form_last10=[], form_points=0.0,       # ← sem dados reais de forma
+            league_position=0, league_points=0,
+            games_played=0, games_remaining=0,
             has_real_data=False,
         )
 
