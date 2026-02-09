@@ -132,18 +132,39 @@ def calculate_expected_goals(match: MatchAnalysis) -> tuple[float, float]:
 
     λ = α_home_team × β_away_team × home_advantage × league_factor
     μ = α_away_team × β_home_team × league_factor
+
+    Quando odds_home_away_suspect é True (odds sugerem possível inversão
+    de mandante/visitante), o modelo usa estatísticas NEUTRAS (média de
+    casa+fora) e remove a vantagem de mando para evitar distorções.
     """
     home = match.home_team
     away = match.away_team
 
+    # ── Verificar se odds sugerem inversão casa/fora ──
+    suspect = getattr(match, 'odds_home_away_suspect', False)
+
+    if suspect:
+        # Usar estatísticas NEUTRAS: média de desempenho em casa e fora
+        # para ambos os times — remove viés de mando incorreto
+        h_scored = (home.home_goals_scored_avg + home.away_goals_scored_avg) / 2
+        h_conceded = (home.home_goals_conceded_avg + home.away_goals_conceded_avg) / 2
+        a_scored = (away.home_goals_scored_avg + away.away_goals_scored_avg) / 2
+        a_conceded = (away.home_goals_conceded_avg + away.away_goals_conceded_avg) / 2
+        home_advantage = 1.0  # SEM vantagem de mando (campo neutro)
+    else:
+        # Usar estatísticas posicionais normais (casa vs fora)
+        h_scored = home.home_goals_scored_avg
+        h_conceded = home.home_goals_conceded_avg
+        a_scored = away.away_goals_scored_avg
+        a_conceded = away.away_goals_conceded_avg
+        home_advantage = 1.08  # Fator de vantagem de mando
+
     # Parâmetros de ataque/defesa
     alpha_h, beta_h, alpha_a, beta_a = estimate_attack_defense_params(
-        home.home_goals_scored_avg, home.home_goals_conceded_avg,
-        away.away_goals_scored_avg, away.away_goals_conceded_avg
+        h_scored, h_conceded, a_scored, a_conceded
     )
 
     # Força de ataque do time da casa vs defesa do visitante
-    home_advantage = 1.08  # Fator de vantagem de mando
     lambda_ = alpha_h * beta_a * home_advantage
     mu = alpha_a * beta_h
 

@@ -201,6 +201,7 @@ class ValueOpportunity:
     urgency_away: float = 0.5
     bookmaker: str = "N/D"
     data_quality: float = 0.0
+    odds_suspect: bool = False  # True = possível inversão casa/fora
 
 
 # ═══════════════════════════════════════════════════════
@@ -711,6 +712,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 urgency_away=match.league_urgency_away,
                 bookmaker=match.odds.bookmaker,
                 data_quality=match.data_quality_score,
+                odds_suspect=getattr(match, 'odds_home_away_suspect', False),
             ))
 
     # ── MERCADO DUPLA CHANCE (Casa ou Empate / Fora ou Empate) ──
@@ -783,6 +785,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 urgency_away=match.league_urgency_away,
                 bookmaker=match.odds.bookmaker,
                 data_quality=match.data_quality_score,
+                odds_suspect=getattr(match, 'odds_home_away_suspect', False),
             ))
 
     # ── MERCADO OVER/UNDER 2.5 ──
@@ -836,6 +839,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 urgency_away=match.league_urgency_away,
                 bookmaker=match.odds.bookmaker,
                 data_quality=match.data_quality_score,
+                odds_suspect=getattr(match, 'odds_home_away_suspect', False),
             ))
 
     # ── MERCADO BTTS ──
@@ -888,6 +892,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 urgency_away=match.league_urgency_away,
                 bookmaker=match.odds.bookmaker,
                 data_quality=match.data_quality_score,
+                odds_suspect=getattr(match, 'odds_home_away_suspect', False),
             ))
 
     # ═══════════════════════════════════════════════════════════
@@ -959,6 +964,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                         urgency_away=match.league_urgency_away,
                         bookmaker=match.odds.bookmaker,
                         data_quality=match.data_quality_score,
+                        odds_suspect=getattr(match, 'odds_home_away_suspect', False),
                     ))
 
     return opportunities

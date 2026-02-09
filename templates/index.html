@@ -1274,9 +1274,10 @@ function renderOpportunities(data) {
         const probWidth = Math.min(100, o.model_prob);
         const probColor = o.model_prob > 50 ? "var(--accent-green)" : o.model_prob > 30 ? "var(--accent-blue)" : "var(--accent-yellow)";
         
-        return `<tr onclick="showOppDetail(${allOpps.indexOf(o)})" style="cursor:pointer">
+        const suspectBadge = o.odds_suspect ? ' <span title="Possivel inversao Casa/Fora na API — modelo usou stats neutras" style="cursor:help;color:var(--accent-yellow);font-size:13px">⚠️</span>' : '';
+        return `<tr onclick="showOppDetail(${allOpps.indexOf(o)})" style="cursor:pointer${o.odds_suspect ? ';border-left:3px solid var(--accent-yellow)' : ''}">
             <td style="color:var(--text-muted);font-weight:600">${i+1}</td>
-            <td class="team-cell">${o.home_team} <span class="vs">vs</span> ${o.away_team}</td>
+            <td class="team-cell">${o.home_team} <span class="vs">vs</span> ${o.away_team}${suspectBadge}</td>
             <td style="font-size:11px">${o.league_name}</td>
             <td style="font-size:11px;color:var(--text-secondary)">${o.match_date}<br>${o.match_time}</td>
             <td><span class="market-tag ${marketClass}">${o.market}</span></td>
@@ -1619,14 +1620,32 @@ function showOppDetail(idx) {
 
     // ── BUILD HTML ──
     document.getElementById("modal-body").innerHTML = `
-        <!-- ══ SUGGESTION BANNER ══ -->
-        <div style="background:linear-gradient(135deg,#0d2818,#0a1f12);border:2px solid var(--accent-green);border-radius:12px;padding:18px 24px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <!-- ══ ODDS SUSPECT WARNING ══ -->
+        ${o.odds_suspect ? `
+        <div style="background:linear-gradient(135deg,#2d2000,#1f1700);border:2px solid var(--accent-yellow);border-radius:12px;padding:14px 20px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px">
+            <div style="font-size:22px;flex-shrink:0">⚠️</div>
             <div>
-                <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted);margin-bottom:4px">SUGESTÃO DE APOSTA</div>
-                <div style="font-size:20px;font-weight:800;color:var(--accent-green)">${o.selection}</div>
+                <div style="font-size:13px;font-weight:800;color:var(--accent-yellow);margin-bottom:4px">POSSÍVEL INVERSÃO CASA / FORA</div>
+                <div style="font-size:11px;color:var(--text-secondary);line-height:1.5">
+                    As odds sugerem que a API pode ter invertido quem é mandante e visitante nesta partida.
+                    O mandante designado (<strong>${o.home_team}</strong>) tem odds ${m ? m.odds_home.toFixed(2) : '?'} enquanto o visitante (<strong>${o.away_team}</strong>) tem odds ${m ? m.odds_away.toFixed(2) : '?'}.
+                    Normalmente o mandante tem odds menores (é favorecido).
+                    <br><strong>Ajuste aplicado:</strong> O modelo usou estatísticas NEUTRAS (média casa+fora) e removeu a vantagem de mando para evitar distorções.
+                    <strong>Recomendação:</strong> Confirme manualmente na casa de apostas quem é o real mandante antes de apostar.
+                </div>
+            </div>
+        </div>
+        ` : ''}
+
+        <!-- ══ SUGGESTION BANNER ══ -->
+        <div style="background:linear-gradient(135deg,#0d2818,#0a1f12);border:2px solid ${o.odds_suspect ? 'var(--accent-yellow)' : 'var(--accent-green)'};border-radius:12px;padding:18px 24px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted);margin-bottom:4px">SUGESTÃO DE APOSTA${o.odds_suspect ? ' (⚠️ VERIFICAR CASA/FORA)' : ''}</div>
+                <div style="font-size:20px;font-weight:800;color:${o.odds_suspect ? 'var(--accent-yellow)' : 'var(--accent-green)'}">${o.selection}</div>
                 <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${o.market} — Odd <strong style="color:var(--accent-yellow)">${o.market_odd.toFixed(2)}</strong> (${o.bookmaker})</div>
             </div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                ${o.odds_suspect ? '<span style="background:rgba(255,165,0,0.15);color:var(--accent-yellow);padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;border:1px solid rgba(255,165,0,0.3)">⚠️ VERIFICAR</span>' : ''}
                 <span class="badge ${confClass}" style="font-size:12px;padding:5px 12px">${o.confidence}</span>
                 <span style="background:var(--accent-green-dim);color:var(--accent-green);padding:5px 14px;border-radius:6px;font-weight:800;font-size:16px;font-family:'JetBrains Mono'">${o.edge_pct}</span>
                 <span style="background:rgba(255,255,255,0.05);padding:5px 12px;border-radius:6px;font-size:12px;color:${dqColor};font-weight:700;border:1px solid ${dqColor}40">Dados: ${dqPct}%</span>
@@ -1984,6 +2003,14 @@ function buildDetailedAnalysis(o) {
         L.push(`    └─ ${o.away_team}: ${m.away_has_real_data ? '✅ Dados reais da API' : '⚠️ ESTIMADO (defaults)'}`);
         L.push(`  ✅ Clima REAL:       ${m.has_real_weather ? 'SIM' : '❌ NÃO — Sem dados meteorológicos'}`);
         L.push(`  ✅ Árbitro:          ${m.referee && m.referee !== 'Desconhecido' ? 'SIM (' + m.referee + ')' : '❌ NÃO IDENTIFICADO'}`);
+        if (m.odds_home_away_suspect || o.odds_suspect) {
+            L.push("");
+            L.push(`  ⚠️ INVERSÃO CASA/FORA DETECTADA:`);
+            L.push(`     As odds indicam que "${o.home_team}" (designado como mandante`);
+            L.push(`     pela API) é na verdade o visitante/underdog.`);
+            L.push(`     Odds: ${o.home_team}=${m.odds_home.toFixed(2)} vs ${o.away_team}=${m.odds_away.toFixed(2)}`);
+            L.push(`     → Modelo ajustado: stats neutras + sem vantagem de mando.`);
+        }
     } else {
         L.push(`  ⚠️ Dados detalhados da partida não disponíveis no cache`);
     }
@@ -2070,19 +2097,32 @@ function buildDetailedAnalysis(o) {
     L.push("═══════════════════════════════════════════════════════");
     L.push("⚽  CÁLCULO DE xG (Gols Esperados)");
     L.push("═══════════════════════════════════════════════════════");
-    L.push("  Fórmula (Dixon-Coles):");
-    L.push("    λ (Casa) = α_casa × β_fora × vantagem_mando(1.08) × fator_forma");
-    L.push("    μ (Fora) = α_fora × β_casa × fator_forma");
+    const isSuspect = o.odds_suspect || (m && m.odds_home_away_suspect);
+    if (isSuspect) {
+        L.push("  ⚠️  ATENÇÃO: Possível inversão Casa/Fora detectada.");
+        L.push("  As odds sugerem que o mandante designado pode estar incorreto.");
+        L.push("  → Modelo usou estatísticas NEUTRAS (média casa+fora de cada time).");
+        L.push("  → Vantagem de mando REMOVIDA (fator = 1.0 em vez de 1.08).");
+        L.push("");
+        L.push("  Fórmula AJUSTADA (campo neutro):");
+        L.push("    λ = α_avg × β_avg × 1.00 × fator_forma");
+        L.push("    μ = α_avg × β_avg × fator_forma");
+    } else {
+        L.push("  Fórmula (Dixon-Coles):");
+        L.push("    λ (Casa) = α_casa × β_fora × vantagem_mando(1.08) × fator_forma");
+        L.push("    μ (Fora) = α_fora × β_casa × fator_forma");
+    }
     L.push("");
     if (m) {
         const hFormFactor = (0.85 + (m.home_form_points ?? 0.5) * 0.30).toFixed(2);
         const aFormFactor = (0.85 + (m.away_form_points ?? 0.5) * 0.30).toFixed(2);
         const homeHasReal = m.home_has_real_data !== false;
         const awayHasReal = m.away_has_real_data !== false;
+        const hmAdv = isSuspect ? '1.00' : '1.08';
         
         if (homeHasReal && awayHasReal) {
             L.push(`  Cálculo λ (${o.home_team}):`);
-            L.push(`    = ${m.home_attack ?? 'N/D'} × ${m.away_defense ?? 'N/D'} × 1.08 × ${hFormFactor}`);
+            L.push(`    = ${m.home_attack ?? 'N/D'} × ${m.away_defense ?? 'N/D'} × ${hmAdv} × ${hFormFactor}`);
             L.push(`    → xG Casa = ${o.home_xg.toFixed(2)}`);
             L.push("");
             L.push(`  Cálculo μ (${o.away_team}):`);

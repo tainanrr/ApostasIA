@@ -253,6 +253,8 @@ class MatchAnalysis:
     has_real_standings: bool = False        # True = pelo menos 1 time tem standings reais
     has_real_weather: bool = False          # True = clima veio da API
     data_quality_score: float = 0.0        # 0.0 a 1.0 — índice de confiança dos dados
+    # ── Validação casa/fora ──
+    odds_home_away_suspect: bool = False   # True = odds sugerem que mandante/visitante pode estar invertido
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -881,6 +883,20 @@ def _parse_fixture_to_match(
         if injuries_raw:
             dq += 0.15
 
+        # ── Detecção de possível inversão Casa/Fora ──
+        # Se a odd do "mandante" é muito maior que a do "visitante", a API
+        # pode ter invertido quem é casa/fora.  Isso é comum em competições
+        # continentais (Champions League, Libertadores) e jogos em campo neutro.
+        _odds_suspect = False
+        if _has_real_odds and odds.home_win > 1.0 and odds.away_win > 1.0:
+            odds_ratio = odds.home_win / odds.away_win
+            if odds_ratio > 2.0:
+                _odds_suspect = True
+                print(f"    [WARN] {home_name} vs {away_name}: "
+                      f"odds sugerem possivel inversao casa/fora "
+                      f"(home_odd={odds.home_win}, away_odd={odds.away_win}, "
+                      f"ratio={odds_ratio:.2f}).  Modelo usara stats neutras.")
+
         return MatchAnalysis(
             match_id=fix_id,
             league_id=league_id,
@@ -901,6 +917,7 @@ def _parse_fixture_to_match(
             has_real_odds=_has_real_odds,
             has_real_standings=_has_real_standings,
             data_quality_score=round(dq, 2),
+            odds_home_away_suspect=_odds_suspect,
         )
     except Exception as e:
         print(f"    [PARSE] ❌ Erro ao parsear fixture: {e}")

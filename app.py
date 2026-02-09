@@ -375,6 +375,7 @@ def serialize_opportunity(o: ValueOpportunity) -> dict:
         "urgency_away": o.urgency_away,
         "bookmaker": o.bookmaker,
         "data_quality": o.data_quality,
+        "odds_suspect": getattr(o, 'odds_suspect', False),
     }
 
 
@@ -482,6 +483,7 @@ def serialize_match(m: MatchAnalysis) -> dict:
         "has_real_weather": m.has_real_weather,
         "home_has_real_data": h.has_real_data,
         "away_has_real_data": a.has_real_data,
+        "odds_home_away_suspect": getattr(m, 'odds_home_away_suspect', False),
     }
 
 
