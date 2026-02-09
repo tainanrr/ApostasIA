@@ -299,6 +299,7 @@
         .market-oe { background: rgba(255,105,180,0.18); color: #ff69b4; }
         .market-exact { background: rgba(34,139,34,0.18); color: #228b22; }
         .market-shots { background: rgba(255,69,0,0.18); color: #ff4500; }
+        .market-shots-real { background: rgba(255,69,0,0.30); color: #ff4500; border: 1px solid #ff4500; font-weight: 600; }
         .market-player-shots { background: rgba(186,85,211,0.18); color: #ba55d3; }
         .market-team-ou { background: rgba(255,215,0,0.18); color: #daa520; }
 
@@ -738,6 +739,8 @@
                                 <option value="Placar Exato">Placar Exato</option>
                                 <option value="Finaliz. O/U">Finaliz. Totais O/U</option>
                                 <option value="Finaliz. Gol O/U">Finaliz. ao Gol O/U</option>
+                                <option value="Finaliz. Gol 1x2">Finaliz. Gol 1x2 (Bet365)</option>
+                                <option value="Finaliz. Totais 1x2">Finaliz. Totais 1x2 (Bet365)</option>
                                 <option value="Finaliz. Casa O/U">Finaliz. Casa O/U</option>
                                 <option value="Finaliz. Fora O/U">Finaliz. Fora O/U</option>
                                 <option value="SoT Casa O/U">SoT Casa O/U</option>
@@ -859,6 +862,7 @@ function getMarketClass(market) {
     if (m.includes('par/impar') || m.includes('par') || m.includes('impar')) return 'market-oe';
     if (m.includes('placar exato')) return 'market-exact';
     if (m.includes('fin. jogador') || m.includes('sot jogador')) return 'market-player-shots';
+    if (m.includes('finaliz') && m.includes('1x2')) return 'market-shots-real';
     if (m.includes('finaliz') || m.includes('sot')) return 'market-shots';
     if (m.includes('escanteio') || m.includes('corners')) return 'market-corners';
     if (m.includes('cart')) return 'market-cards';
@@ -2654,6 +2658,21 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
             </div>`;
         };
 
+        const evBar = (label, count, total, color) => {
+            const pct = total > 0 ? (count / total) : 0;
+            const pctStr = (pct * 100).toFixed(0);
+            const fairOdd = pct > 0 ? (1 / pct).toFixed(2) : '∞';
+            const evColor = pct >= 0.55 ? 'var(--accent-green)' : pct >= 0.40 ? 'var(--accent-yellow)' : 'var(--text-muted)';
+            return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0">
+                <div style="min-width:48px;font-size:11px;color:var(--text-secondary);text-align:right;font-weight:600">${label}</div>
+                <div style="flex:1;height:22px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden;position:relative">
+                    <div style="height:100%;width:${pctStr}%;background:${color};border-radius:4px;transition:width .3s"></div>
+                    <span style="position:absolute;right:8px;top:3px;font-size:10px;font-weight:700;color:var(--text-primary)">${count}/${total} (${pctStr}%)</span>
+                </div>
+                <div style="min-width:68px;text-align:center;font-size:10px;font-weight:700;color:${evColor};background:rgba(255,255,255,0.03);padding:2px 6px;border-radius:4px" title="Odd justa calculada (se mercado oferece odd MAIOR que esta, pode ser EV+)">Fair: ${fairOdd}</div>
+            </div>`;
+        };
+
         const detailOpen = `<details style="margin-top:10px"><summary style="cursor:pointer;font-size:10px;color:var(--accent-green);font-weight:700;padding:4px 0">▶ VER JOGO A JOGO</summary><div style="overflow-x:auto;margin-top:6px">`;
         const detailClose = `</div></details>`;
         const _th = thStyle;
@@ -2821,22 +2840,6 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
         })();
 
         // ═══ TAB 4: FINALIZAÇÕES ═══
-        // ── Helper: barra EV+ com fair odd ──
-        const evBar = (label, count, total, color) => {
-            const pct = total > 0 ? (count / total) : 0;
-            const pctStr = (pct * 100).toFixed(0);
-            const fairOdd = pct > 0 ? (1 / pct).toFixed(2) : '∞';
-            const evColor = pct >= 0.55 ? 'var(--accent-green)' : pct >= 0.40 ? 'var(--accent-yellow)' : 'var(--text-muted)';
-            return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0">
-                <div style="min-width:48px;font-size:11px;color:var(--text-secondary);text-align:right;font-weight:600">${label}</div>
-                <div style="flex:1;height:22px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden;position:relative">
-                    <div style="height:100%;width:${pctStr}%;background:${color};border-radius:4px;transition:width .3s"></div>
-                    <span style="position:absolute;right:8px;top:3px;font-size:10px;font-weight:700;color:var(--text-primary)">${count}/${total} (${pctStr}%)</span>
-                </div>
-                <div style="min-width:68px;text-align:center;font-size:10px;font-weight:700;color:${evColor};background:rgba(255,255,255,0.03);padding:2px 6px;border-radius:4px" title="Odd justa calculada (se mercado oferece odd MAIOR que esta, pode ser EV+)">Fair: ${fairOdd}</div>
-            </div>`;
-        };
-
         const shotsPanel = (() => {
             const valid = ms.filter(m => m.stats?.team_shots != null);
             if (!valid.length) return '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:16px">Dados de finalizacoes indisponiveis</div>';

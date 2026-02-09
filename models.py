@@ -538,6 +538,51 @@ def predict_shots(match: MatchAnalysis) -> tuple[float, float, float, float, dic
         probs[f"away_sot_over_{line}"] = round(p_over, 4)
         probs[f"away_sot_under_{line}"] = round(1.0 - p_over, 4)
 
+    # ── Shots 1x2: qual time terá mais finalizações totais ──
+    # P(home > away), P(home = away), P(away > home)
+    max_shots_calc = 35
+    h_pmf = [negative_binomial_pmf(k, h_shots_mu, alpha_shots) for k in range(max_shots_calc)]
+    a_pmf = [negative_binomial_pmf(k, a_shots_mu, alpha_shots) for k in range(max_shots_calc)]
+    
+    p_home_more = 0.0
+    p_draw_shots = 0.0
+    p_away_more = 0.0
+    for h in range(max_shots_calc):
+        for a in range(max_shots_calc):
+            joint = h_pmf[h] * a_pmf[a]
+            if h > a:
+                p_home_more += joint
+            elif h == a:
+                p_draw_shots += joint
+            else:
+                p_away_more += joint
+    
+    probs["shots_1x2_home"] = round(p_home_more, 4)
+    probs["shots_1x2_draw"] = round(p_draw_shots, 4)
+    probs["shots_1x2_away"] = round(p_away_more, 4)
+
+    # ── SoT 1x2: qual time terá mais finalizações ao gol ──
+    max_sot_calc = 20
+    h_sot_pmf = [negative_binomial_pmf(k, h_sot_mu, alpha_sot) for k in range(max_sot_calc)]
+    a_sot_pmf = [negative_binomial_pmf(k, a_sot_mu, alpha_sot) for k in range(max_sot_calc)]
+    
+    p_home_more_sot = 0.0
+    p_draw_sot = 0.0
+    p_away_more_sot = 0.0
+    for h in range(max_sot_calc):
+        for a in range(max_sot_calc):
+            joint = h_sot_pmf[h] * a_sot_pmf[a]
+            if h > a:
+                p_home_more_sot += joint
+            elif h == a:
+                p_draw_sot += joint
+            else:
+                p_away_more_sot += joint
+    
+    probs["sot_1x2_home"] = round(p_home_more_sot, 4)
+    probs["sot_1x2_draw"] = round(p_draw_sot, 4)
+    probs["sot_1x2_away"] = round(p_away_more_sot, 4)
+
     return h_shots_mu, a_shots_mu, h_sot_mu, a_sot_mu, probs
 
 
@@ -729,7 +774,13 @@ def run_full_model(match: MatchAnalysis) -> MatchAnalysis:
 
     # ── Shots O/U (Total Match) ──
     for k, v in shots_probs.items():
-        if k.startswith("over_") or k.startswith("under_"):
+        if k.startswith("shots_1x2_"):
+            # Shots 1x2: shots_1x2_home, shots_1x2_draw, shots_1x2_away
+            probs[f"shots_1x2__{k.replace('shots_1x2_', '')}"] = v
+        elif k.startswith("sot_1x2_"):
+            # SoT 1x2: sot_1x2_home, sot_1x2_draw, sot_1x2_away
+            probs[f"sot_1x2__{k.replace('sot_1x2_', '')}"] = v
+        elif k.startswith("over_") or k.startswith("under_"):
             # Total match shots: over_20.5, under_20.5, etc.
             probs[f"shots_ou__{k}"] = v
         elif k.startswith("sot_"):

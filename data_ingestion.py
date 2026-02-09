@@ -811,19 +811,46 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
             odds.over_35_cards = val_map.get("over 3.5", odds.over_35_cards)
             odds.under_35_cards = val_map.get("under 3.5", odds.under_35_cards)
 
-        # ═══ Total Shots O/U (Player Props / Specials) ═══
-        elif "shot" in bet_name and "over" in bet_name and "player" not in bet_name:
+        # ═══ Total ShotOnGoal O/U (bet id 87 — Bet365) ═══
+        # Valores: "Over 7.5", "Under 7.5" etc — finalizações ao gol (SoT)
+        elif bet_id == 87 or ("shotongoal" in bet_name.replace(" ", "") and "1x2" not in bet_name):
+            sot_ou = {}
+            for k, v in val_map.items():
+                sot_ou[k.replace(" ", "_")] = v
+            odds.all_markets["sot_ou"] = sot_ou
+
+        # ═══ ShotOnTarget 1x2 (bet id 176 — Bet365) ═══
+        # Valores: "Home", "Draw", "Away" — qual time terá mais finalizações ao gol
+        elif bet_id == 176 or ("shotontarget" in bet_name.replace(" ", "") and "1x2" in bet_name):
+            odds.all_markets["sot_1x2"] = {
+                "home": val_map.get("home", 0),
+                "draw": val_map.get("draw", 0),
+                "away": val_map.get("away", 0),
+            }
+
+        # ═══ Shots.1x2 (bet id 340 — Bet365) ═══
+        # Valores: "Home", "Draw", "Away" — qual time terá mais finalizações totais
+        elif bet_id == 340 or ("shots" in bet_name and "1x2" in bet_name):
+            odds.all_markets["shots_1x2"] = {
+                "home": val_map.get("home", 0),
+                "draw": val_map.get("draw", 0),
+                "away": val_map.get("away", 0),
+            }
+
+        # ═══ Total Shots O/U (genérico — caso a API forneça futuramente) ═══
+        elif "shot" in bet_name and "over" in bet_name and "player" not in bet_name and "target" not in bet_name and "goal" not in bet_name:
             s_ou = {}
             for k, v in val_map.items():
                 s_ou[k.replace(" ", "_")] = v
             odds.all_markets["shots_ou"] = s_ou
 
-        # ═══ Shots On Target O/U ═══
-        elif "shot" in bet_name and "target" in bet_name and "player" not in bet_name:
+        # ═══ SoT O/U genérico (caso não foi capturado pelo id 87) ═══
+        elif "shot" in bet_name and "target" in bet_name and "over" in bet_name and "player" not in bet_name and "1x2" not in bet_name:
             sot_ou = {}
             for k, v in val_map.items():
                 sot_ou[k.replace(" ", "_")] = v
-            odds.all_markets["sot_ou"] = sot_ou
+            if "sot_ou" not in odds.all_markets:
+                odds.all_markets["sot_ou"] = sot_ou
 
         # ═══ Home Team Shots O/U ═══
         elif "home" in bet_name and "shot" in bet_name:
@@ -853,6 +880,61 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
             if val_map and bet_name:
                 key = bet_name.replace(" ", "_").replace("/", "_")[:40]
                 odds.all_markets[key] = dict(val_map)
+
+    # ═══════════════════════════════════════════════════════════════════
+    # SEGUNDA PASSAGEM: Mercados especializados de OUTROS bookmakers
+    # Ex: Bet365 fornece Shots 1x2, ShotOnGoal O/U que Pinnacle não tem
+    # Apenas preencher mercados que NÃO existem no bookmaker principal
+    # ═══════════════════════════════════════════════════════════════════
+    _SPECIALIZED_BET_IDS = {87, 176, 340, 212, 213, 214, 215}  # shots, player props
+    
+    for bk in bookmakers:
+        if bk.get("name", "") == bk_name:
+            continue  # Já processado acima
+        for bet in bk.get("bets", []):
+            bet_id = bet.get("id", 0)
+            bet_name_extra = bet.get("name", "").lower()
+            
+            # Só buscar mercados especializados que não existem no bookmaker principal
+            is_shots = bet_id in _SPECIALIZED_BET_IDS or "shot" in bet_name_extra
+            if not is_shots:
+                continue
+            
+            values = bet.get("values", [])
+            val_map = {}
+            for v in values:
+                val_map[str(v.get("value", "")).lower()] = float(v.get("odd", 0))
+            
+            if not val_map:
+                continue
+            
+            # Total ShotOnGoal O/U (bet id 87)
+            if bet_id == 87 or ("shotongoal" in bet_name_extra.replace(" ", "") and "1x2" not in bet_name_extra):
+                if "sot_ou" not in odds.all_markets:
+                    sot_ou = {}
+                    for k, v in val_map.items():
+                        sot_ou[k.replace(" ", "_")] = v
+                    odds.all_markets["sot_ou"] = sot_ou
+            
+            # ShotOnTarget 1x2 (bet id 176)
+            elif bet_id == 176 or ("shotontarget" in bet_name_extra.replace(" ", "") and "1x2" in bet_name_extra):
+                if "sot_1x2" not in odds.all_markets:
+                    odds.all_markets["sot_1x2"] = {
+                        "home": val_map.get("home", 0),
+                        "draw": val_map.get("draw", 0),
+                        "away": val_map.get("away", 0),
+                        "_source": bk.get("name", "Bet365"),
+                    }
+            
+            # Shots.1x2 (bet id 340)
+            elif bet_id == 340 or ("shots" in bet_name_extra and "1x2" in bet_name_extra):
+                if "shots_1x2" not in odds.all_markets:
+                    odds.all_markets["shots_1x2"] = {
+                        "home": val_map.get("home", 0),
+                        "draw": val_map.get("draw", 0),
+                        "away": val_map.get("away", 0),
+                        "_source": bk.get("name", "Bet365"),
+                    }
 
     return odds
 

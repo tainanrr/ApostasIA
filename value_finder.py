@@ -47,6 +47,8 @@ _ODDS_LIMITS = {
     "Finaliz. Fora O/U": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
     "SoT Casa O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
     "SoT Fora O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Gol 1x2": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Totais 1x2": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
     "Fin. Jogador":     (config.ODDS_MIN_VALID, config.ODDS_MAX_PLAYER_SHOTS),
     "SoT Jogador":      (config.ODDS_MIN_VALID, config.ODDS_MAX_PLAYER_SHOTS),
     # Backward compatibility
@@ -196,6 +198,19 @@ _ALL_MARKETS = {
             "over_3.5": "Fora Over 3.5 SoT", "under_3.5": "Fora Under 3.5 SoT",
             "over_4.5": "Fora Over 4.5 SoT", "under_4.5": "Fora Under 4.5 SoT",
             "over_5.5": "Fora Over 5.5 SoT", "under_5.5": "Fora Under 5.5 SoT",
+        }
+    },
+    # ── Mercados REAIS de Shots do Bet365 (via API-Football) ──
+    "sot_1x2": {
+        "label": "Finaliz. Gol 1x2", "selections": {
+            "home": "Casa + Fin. no Gol", "draw": "Empate Fin. Gol",
+            "away": "Fora + Fin. no Gol"
+        }
+    },
+    "shots_1x2": {
+        "label": "Finaliz. Totais 1x2", "selections": {
+            "home": "Casa + Finaliz.", "draw": "Empate Finaliz.",
+            "away": "Fora + Finaliz."
         }
     },
     "exact_score": {
@@ -974,8 +989,10 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
 
     # Mercados de finalizações — gerar oportunidades MESMO sem odds da API
     # (bookmakers como Bet365 oferecem esses mercados, mas a API de odds não os inclui)
+    # NOTA: sot_1x2 e shots_1x2 TÊM odds reais (Bet365 via API) — NÃO são "modelo-only"
     _SHOTS_MARKET_KEYS = ("shots_ou", "sot_ou", "home_shots_ou", "away_shots_ou",
                           "home_sot_ou", "away_sot_ou")
+    # sot_1x2 e shots_1x2 NÃO estão aqui — eles usam odds REAIS da Bet365
 
     if model_probs:
         for market_key, market_cfg in _ALL_MARKETS.items():
@@ -1032,7 +1049,14 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 conf = classify_confidence(edge, model_p, weather_stable, fatigue_free) if not is_model_only else "MODELO"
 
                 # Para finalizações modelo: bookmaker indica "Fair Odds"
-                bk_name = match.odds.bookmaker if has_api_odds else "Fair Odds (modelo)"
+                # Para mercados de outro bookmaker (ex: Bet365 shots): usar o bookmaker correto
+                source_bk = market_odds_dict.get("_source", "")
+                if has_api_odds and source_bk:
+                    bk_name = source_bk  # Ex: "Bet365" para shots 1x2
+                elif has_api_odds:
+                    bk_name = match.odds.bookmaker
+                else:
+                    bk_name = "Fair Odds (modelo)"
                 # Para finalizações modelo: usar fair_odd como market_odd
                 display_odd = market_o if has_api_odds else fair_odd
 

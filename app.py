@@ -709,7 +709,7 @@ def serialize_opportunity(o: ValueOpportunity) -> dict:
         "implied_prob": round(o.implied_prob * 100, 1),
         "edge": round(o.edge * 100, 1),
         "edge_pct": o.edge_pct,
-        "kelly_bet_pct": o.kelly_bet_pct,
+        "kelly_bet_pct": o.kelly_bet_pct if o.kelly_bet_pct != "N/A" else "0.00%",
         "confidence": o.confidence,
         "reasoning": o.reasoning,
         "home_xg": o.home_xg,
