@@ -175,7 +175,7 @@ def _load_cache_from_disk() -> bool:
         def _is_opp_sane(o):
             match_dq = dq_map.get(o.get("match_id"), o.get("data_quality", 0))
             if match_dq < 0.30:  # Apenas rejeitar se quase sem dados reais
-                return False
+                    return False
             return True
 
         filtered_opps = [o for o in raw_opps if _is_opp_sane(o)]
@@ -524,6 +524,8 @@ def deserialize_match(d: dict) -> MatchAnalysis:
         model_beta_h=d.get("model_beta_h", 1.0),
         model_alpha_a=d.get("model_alpha_a", 1.0),
         model_beta_a=d.get("model_beta_a", 1.0),
+        h2h_avg_goals=d.get("h2h_avg_goals"),
+        h2h_count=d.get("h2h_count", 0),
     )
     return match
 
@@ -595,6 +597,43 @@ def recalculate_engine():
             odds_refreshed += 1
 
     print(f"[RECALC] Odds re-parseadas do cache bruto: {odds_refreshed}/{len(matches)} partidas")
+
+    # ── 2c. Carregar dados H2H do cache (0 API calls) ──
+    # Se o usuário já visualizou o detalhe do jogo, o H2H estará em cache.
+    # Caso contrário, não faz API call — apenas pula o ajuste H2H.
+    h2h_loaded = 0
+    for match in matches:
+        home_id = match.home_team.team_id
+        away_id = match.away_team.team_id
+        if not home_id or not away_id:
+            continue
+        try:
+            h2h_raw = _get_cached_response("fixtures/headtohead", {
+                "h2h": f"{home_id}-{away_id}", "last": 10, "status": "FT-AET-PEN"
+            })
+            if not h2h_raw:
+                # Tentar ordem inversa
+                h2h_raw = _get_cached_response("fixtures/headtohead", {
+                    "h2h": f"{away_id}-{home_id}", "last": 10, "status": "FT-AET-PEN"
+                })
+            if h2h_raw:
+                h2h_fixtures = h2h_raw.get("response", [])
+                if h2h_fixtures:
+                    total_goals = []
+                    for fix in h2h_fixtures:
+                        g = fix.get("goals", {})
+                        gh = g.get("home", 0) or 0
+                        ga = g.get("away", 0) or 0
+                        total_goals.append(gh + ga)
+                    if total_goals:
+                        match.h2h_avg_goals = round(sum(total_goals) / len(total_goals), 2)
+                        match.h2h_count = len(total_goals)
+                        h2h_loaded += 1
+        except Exception:
+            pass
+
+    if h2h_loaded:
+        print(f"[RECALC] H2H carregado do cache para {h2h_loaded} partidas")
 
     # ── 3. Re-executar MODELOS (inclui novos mercados de finalizações) ──
     print("[RECALC] Executando modelos estatisticos (Dixon-Coles + NB Shots)...")
@@ -689,6 +728,8 @@ def serialize_opportunity(o: ValueOpportunity) -> dict:
         "bookmaker": o.bookmaker,
         "data_quality": o.data_quality,
         "odds_suspect": getattr(o, 'odds_suspect', False),
+        "result_status": getattr(o, 'result_status', 'PENDENTE'),
+        "result_score": getattr(o, 'result_score', ''),
     }
 
 
@@ -812,6 +853,8 @@ def serialize_match(m: MatchAnalysis) -> dict:
         "away_has_real_data": a.has_real_data,
         "odds_home_away_suspect": getattr(m, 'odds_home_away_suspect', False),
         "league_avg_goals": getattr(m, 'league_avg_goals', 2.7),
+        "h2h_avg_goals": getattr(m, 'h2h_avg_goals', None),
+        "h2h_count": getattr(m, 'h2h_count', 0),
     }
 
 
@@ -1023,7 +1066,8 @@ def api_register_bet(opp_id):
 def api_check_results():
     """
     Busca resultados de jogos onde oportunidades foram mapeadas e o jogo já terminou.
-    Resolve GREEN/RED/VOID automaticamente e salva no Supabase.
+    Só verifica jogos cujo horário + 120min < agora (status 'Encerrado').
+    Resolve GREEN/RED/VOID automaticamente, salva no Supabase E atualiza o cache local.
     """
     from data_ingestion import fetch_finished_fixtures
 
@@ -1031,37 +1075,75 @@ def api_check_results():
         # 1. Buscar oportunidades pendentes com match_date <= hoje
         pending = supabase_client.get_pending_opportunities()
         if not pending:
-            return jsonify({"ok": True, "msg": "Nenhuma oportunidade pendente", "checked": 0, "resolved": 0})
+            return jsonify({"ok": True, "msg": "Nenhuma oportunidade pendente",
+                            "checked": 0, "finished": 0, "resolved": 0,
+                            "green": 0, "red": 0, "void": 0,
+                            "total_pending": 0, "skipped_not_finished": 0})
 
-        # 2. Agrupar por match_id (evitar buscar o mesmo jogo múltiplas vezes)
+        # 2. Filtrar APENAS jogos cuja hora prevista + 120min < agora (encerrados)
+        #    NOTA: match_time no Supabase está em UTC, converter para Brasília antes de comparar
+        from zoneinfo import ZoneInfo
+        utc_tz = ZoneInfo("UTC")
+        now = datetime.now(config.BR_TIMEZONE)
+        eligible = []
+        skipped_not_finished = 0
+        for opp in pending:
+            md = opp.get("match_date", "")
+            mt = opp.get("match_time", "00:00")
+            try:
+                dt_parts = md.split("-")
+                tm_parts = (mt or "00:00").split(":")
+                # match_time do Supabase está em UTC
+                match_dt_utc = datetime(
+                    int(dt_parts[0]), int(dt_parts[1]), int(dt_parts[2]),
+                    int(tm_parts[0]), int(tm_parts[1]), 0,
+                    tzinfo=utc_tz,
+                )
+                # Converter para Brasília para comparar com now (Brasília)
+                match_dt_br = match_dt_utc.astimezone(config.BR_TIMEZONE)
+                elapsed_min = (now - match_dt_br).total_seconds() / 60
+                if elapsed_min >= 120:
+                    eligible.append(opp)
+                else:
+                    skipped_not_finished += 1
+            except Exception:
+                eligible.append(opp)  # Em caso de erro no parse, incluir mesmo assim
+
+        if not eligible:
+            return jsonify({"ok": True, "msg": f"Nenhum jogo encerrado (>120min). {skipped_not_finished} ainda em andamento/futuro.",
+                            "checked": 0, "finished": 0, "resolved": 0,
+                            "green": 0, "red": 0, "void": 0,
+                            "total_pending": len(pending), "skipped_not_finished": skipped_not_finished})
+
+        # 3. Agrupar por match_id (evitar buscar o mesmo jogo múltiplas vezes)
         already_resolved = supabase_client.get_resolved_match_ids()
         match_ids_to_check = set()
-        for opp in pending:
+        for opp in eligible:
             mid = opp.get("match_id")
             if mid and mid not in already_resolved:
                 match_ids_to_check.add(mid)
 
         if not match_ids_to_check:
-            return jsonify({"ok": True, "msg": "Todos os jogos pendentes ainda não terminaram ou já foram resolvidos", "checked": 0, "resolved": 0})
+            return jsonify({"ok": True, "msg": "Jogos encerrados já foram resolvidos anteriormente.",
+                            "checked": 0, "finished": 0, "resolved": 0,
+                            "green": 0, "red": 0, "void": 0,
+                            "total_pending": len(pending), "skipped_not_finished": skipped_not_finished})
 
-        print(f"[CHECK-RESULTS] Verificando {len(match_ids_to_check)} jogos...")
+        print(f"[CHECK-RESULTS] {len(eligible)} oportunidades elegíveis | {len(match_ids_to_check)} jogos únicos a verificar | {skipped_not_finished} ignorados (ainda não encerrados)")
 
-        # 3. Buscar resultados via API
+        # 4. Buscar resultados via API (1 call por jogo)
         results = fetch_finished_fixtures(list(match_ids_to_check))
         finished_count = sum(1 for r in results.values() if r.get("score"))
 
-        if not results:
-            return jsonify({"ok": True, "msg": "Nenhum resultado obtido da API", "checked": len(match_ids_to_check), "resolved": 0})
-
-        # 4. Resolver cada oportunidade
+        # 5. Resolver cada oportunidade
         updates = []
-        for opp in pending:
+        for opp in eligible:
             mid = opp.get("match_id")
             if mid not in results:
                 continue
             result = results[mid]
             if not result.get("score"):
-                continue  # Jogo ainda não terminou
+                continue  # API retornou mas jogo ainda não terminou
 
             score = result["score"]
             hg = result["home_goals"]
@@ -1071,33 +1153,98 @@ def api_check_results():
             if status:
                 updates.append({
                     "id": opp["id"],
+                    "match_id": mid,
                     "result_status": status,
                     "result_score": score,
                     "market_odd": opp.get("market_odd", 0),
                 })
 
-        # 5. Salvar resultados no Supabase
+        # 6. Salvar resultados no Supabase
         saved = 0
+        n_green = sum(1 for u in updates if u["result_status"] == "GREEN")
+        n_red = sum(1 for u in updates if u["result_status"] == "RED")
+        n_void = sum(1 for u in updates if u["result_status"] == "VOID")
+
         if updates:
             saved = supabase_client.batch_update_results(updates)
-            print(f"[CHECK-RESULTS] {saved} oportunidades atualizadas ({sum(1 for u in updates if u['result_status']=='GREEN')} GREEN, "
-                  f"{sum(1 for u in updates if u['result_status']=='RED')} RED, "
-                  f"{sum(1 for u in updates if u['result_status']=='VOID')} VOID)")
+            print(f"[CHECK-RESULTS] {saved} oportunidades atualizadas ({n_green} GREEN, {n_red} RED, {n_void} VOID)")
+
+            # 7. ATUALIZAR O CACHE EM MEMÓRIA para que /api/opportunities retorne dados atualizados
+            _update_cache_with_results(updates)
 
         return jsonify({
             "ok": True,
             "checked": len(match_ids_to_check),
             "finished": finished_count,
             "resolved": saved,
-            "green": sum(1 for u in updates if u["result_status"] == "GREEN"),
-            "red": sum(1 for u in updates if u["result_status"] == "RED"),
-            "void": sum(1 for u in updates if u["result_status"] == "VOID"),
+            "green": n_green,
+            "red": n_red,
+            "void": n_void,
+            "total_pending": len(pending),
+            "skipped_not_finished": skipped_not_finished,
         })
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _update_cache_with_results(updates: list[dict]):
+    """
+    Atualiza o cache em memória com os resultados do check-results.
+    Garante que /api/opportunities retorne dados atualizados sem precisar reload do Supabase.
+    """
+    if not updates:
+        return
+
+    # Criar mapa por opp_id (UUID do Supabase) E por match_id
+    update_by_id = {u["id"]: u for u in updates}
+    update_by_match = {}  # match_id -> [updates]
+    for u in updates:
+        mid = u.get("match_id")
+        if mid is not None:
+            update_by_match.setdefault(mid, []).append(u)
+
+    updated_count = 0
+
+    # 1) Atualizar _serialized_opportunities (quando veio do disco/supabase)
+    ser_opps = _cache.get("_serialized_opportunities")
+    if ser_opps and isinstance(ser_opps, list):
+        for opp in ser_opps:
+            opp_id = opp.get("id")
+            mid = opp.get("match_id")
+
+            # Primeiro: match por UUID do Supabase
+            if opp_id and opp_id in update_by_id:
+                u = update_by_id[opp_id]
+                opp["result_status"] = u["result_status"]
+                opp["result_score"] = u["result_score"]
+                updated_count += 1
+                continue
+
+            # Fallback: match por match_id + market + selection
+            if mid in update_by_match:
+                opp_market = (opp.get("market") or "").lower()
+                opp_sel = (opp.get("selection") or "").lower()
+                for u in update_by_match[mid]:
+                    opp["result_status"] = u["result_status"]
+                    opp["result_score"] = u["result_score"]
+                    updated_count += 1
+                    break
+
+    # 2) Atualizar objetos em memória (quando rodou direto do engine)
+    opps_in_memory = _cache.get("opportunities")
+    if opps_in_memory and isinstance(opps_in_memory, list) and opps_in_memory not in ("FROM_DISK", "FROM_SUPABASE"):
+        for opp in opps_in_memory:
+            if hasattr(opp, 'match_id') and opp.match_id in update_by_match:
+                for u in update_by_match[opp.match_id]:
+                    opp.result_status = u["result_status"]
+                    opp.result_score = u["result_score"]
+                    updated_count += 1
+                    break
+
+    print(f"[CHECK-RESULTS] Cache em memória atualizado: {updated_count} oportunidades")
 
 
 def _resolve_opportunity(opp: dict, home_goals: int, away_goals: int, result: dict) -> str:

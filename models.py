@@ -180,10 +180,32 @@ def calculate_expected_goals(match: MatchAnalysis) -> tuple[float, float]:
         a_conceded = away.away_goals_conceded_avg
         home_advantage = 1.08  # Fator de vantagem de mando
 
-    # ── Regressão à média da liga (amostras pequenas) ──
-    # Com poucos jogos, regredimos as médias em direção à média da liga
     home_gp = home.games_played or 1
     away_gp = away.games_played or 1
+
+    # ── Blending venue-specific + overall (amostra pequena) ──
+    # Com poucos jogos totais (<10), o split casa/fora tem ~3-5 jogos
+    # cada — extremamente volátil. Blendamos com as estatísticas GERAIS
+    # do time (attack_strength/defense_strength) que usam TODOS os jogos.
+    # Isso suaviza distorções como "0.33 gols sofridos em 3 jogos em casa".
+    MIN_GAMES_VENUE_TRUST = 10
+    if not suspect:
+        if home_gp < MIN_GAMES_VENUE_TRUST:
+            h_overall_scored = home.attack_strength * league_half
+            h_overall_conceded = home.defense_strength * league_half
+            venue_w = home_gp / MIN_GAMES_VENUE_TRUST
+            h_scored = venue_w * h_scored + (1 - venue_w) * h_overall_scored
+            h_conceded = venue_w * h_conceded + (1 - venue_w) * h_overall_conceded
+
+        if away_gp < MIN_GAMES_VENUE_TRUST:
+            a_overall_scored = away.attack_strength * league_half
+            a_overall_conceded = away.defense_strength * league_half
+            venue_w = away_gp / MIN_GAMES_VENUE_TRUST
+            a_scored = venue_w * a_scored + (1 - venue_w) * a_overall_scored
+            a_conceded = venue_w * a_conceded + (1 - venue_w) * a_overall_conceded
+
+    # ── Regressão à média da liga (amostras pequenas) ──
+    # Com poucos jogos, regredimos as médias em direção à média da liga
     h_scored = _regress_to_mean(h_scored, league_half, home_gp)
     h_conceded = _regress_to_mean(h_conceded, league_half, home_gp)
     a_scored = _regress_to_mean(a_scored, league_half, away_gp)
@@ -202,8 +224,11 @@ def calculate_expected_goals(match: MatchAnalysis) -> tuple[float, float]:
     match.model_beta_a = round(beta_a, 4)
 
     # Força de ataque do time da casa vs defesa do visitante
-    lambda_ = alpha_h * beta_a * home_advantage
-    mu = alpha_a * beta_h
+    # Nota: α e β são RAZÕES (ataque/defesa relativos à média da liga).
+    # Para obter gols esperados absolutos, multiplicamos por league_half.
+    # Sem isso, o modelo subestima gols sistematicamente (~25%).
+    lambda_ = alpha_h * beta_a * home_advantage * league_half
+    mu = alpha_a * beta_h * league_half
 
     # Ajuste pela forma recente (últimos 10 jogos)
     home_form_factor = 0.85 + home.form_points * 0.30
@@ -211,6 +236,22 @@ def calculate_expected_goals(match: MatchAnalysis) -> tuple[float, float]:
 
     lambda_ *= home_form_factor
     mu *= away_form_factor
+
+    # ── Ajuste H2H (confrontos diretos) ──
+    # Se temos dados de H2H, ajustamos o xG total em direção à média histórica
+    # do confronto. Peso proporcional ao número de jogos H2H:
+    #   1 jogo = 5%, 5 jogos = 20%, 10 jogos = 30% (máximo).
+    # H2H é informativo especialmente para rivalidades com padrões de gols distintos.
+    h2h_avg = getattr(match, 'h2h_avg_goals', None)
+    h2h_count = getattr(match, 'h2h_count', 0) or 0
+    if h2h_avg is not None and h2h_avg > 0 and h2h_count > 0:
+        model_total = lambda_ + mu
+        if model_total > 0:
+            H2H_WEIGHT = min(0.30, 0.05 * h2h_count)  # 5% por jogo, max 30%
+            h2h_factor = (H2H_WEIGHT * h2h_avg + (1 - H2H_WEIGHT) * model_total) / model_total
+            h2h_factor = max(0.7, min(1.5, h2h_factor))  # Limitar ajuste
+            lambda_ *= h2h_factor
+            mu *= h2h_factor
 
     # Clamp para valores realistas
     lambda_ = max(0.3, min(3.5, lambda_))

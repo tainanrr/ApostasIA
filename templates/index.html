@@ -344,21 +344,46 @@
             border-radius: 8px; padding: 4px 12px;
         }
         .date-picker-group label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
-        .date-picker-group input[type="date"] {
+        .date-picker-group input[type="date"],
+        .date-picker-group input[type="datetime-local"] {
             background: var(--bg-secondary); border: 1px solid var(--border);
             border-radius: 5px; color: var(--text-primary); font-size: 12px;
             padding: 4px 8px; font-family: 'JetBrains Mono', monospace;
         }
-        .date-picker-group input[type="date"]:focus { border-color: var(--accent-green); outline: none; }
+        .date-picker-group input[type="date"]:focus,
+        .date-picker-group input[type="datetime-local"]:focus { border-color: var(--accent-green); outline: none; }
+
+        /* Column datetime range filter */
+        .col-filter-datetime {
+            display: flex; flex-direction: column; gap: 2px; min-width: 135px;
+        }
+        .col-filter-datetime input[type="datetime-local"] {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 4px; color: var(--text-primary); font-size: 10px;
+            padding: 2px 4px; font-family: 'JetBrains Mono', monospace;
+            width: 100%;
+        }
+        .col-filter-datetime input[type="datetime-local"]:focus {
+            border-color: var(--accent-green); outline: none;
+        }
+        .col-filter-datetime label {
+            font-size: 8px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+        }
 
         .btn-check-results {
             background: linear-gradient(135deg, #8b5cf6, #7c3aed); border: none; color: #fff;
             padding: 8px 16px; border-radius: 8px; font-size: 12px;
             font-weight: 700; cursor: pointer; transition: all 0.2s;
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', sans-serif; min-width: 120px; text-align: center;
+            line-height: 1.3;
         }
         .btn-check-results:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(139,92,246,0.4); }
-        .btn-check-results:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-check-results:disabled { opacity: 0.7; cursor: wait; transform: none;
+            animation: btnPulse 1.5s infinite; }
+        @keyframes btnPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(139,92,246,0); }
+        }
 
         /* ── DASHBOARD ── */
         .dashboard-grid {
@@ -836,7 +861,10 @@
                             <th></th>
                             <th><input class="col-filter" type="text" id="cf-team" placeholder="Time..." oninput="applyColumnFilters()"></th>
                             <th><select class="col-filter" id="cf-league" onchange="applyColumnFilters()"><option value="">Todas</option></select></th>
-                            <th><select class="col-filter" id="cf-date" onchange="applyColumnFilters()"><option value="">Todas</option></select></th>
+                            <th><div class="col-filter-datetime">
+                                <input type="datetime-local" id="cf-dt-start" title="De (data/hora)" oninput="applyColumnFilters()">
+                                <input type="datetime-local" id="cf-dt-end" title="Até (data/hora)" oninput="applyColumnFilters()">
+                            </div></th>
                             <th><select class="col-filter" id="cf-game-status" onchange="applyColumnFilters()">
                                 <option value="">Todos</option>
                                 <option value="LIVE">🔴 Ao Vivo</option>
@@ -893,9 +921,12 @@
                 <select class="filter-select" id="filter-match-league" onchange="filterMatches()">
                     <option value="all">Todas as Ligas</option>
                 </select>
-                <select class="filter-select" id="filter-match-date" onchange="filterMatches()">
-                    <option value="all">Todas as Datas</option>
-                </select>
+                <div class="col-filter-datetime" style="flex-direction:row;gap:6px;align-items:center;min-width:auto">
+                    <label style="font-size:10px;white-space:nowrap">De:</label>
+                    <input type="datetime-local" id="filter-match-dt-start" oninput="filterMatches()" style="font-size:11px;padding:4px 6px">
+                    <label style="font-size:10px;white-space:nowrap">Até:</label>
+                    <input type="datetime-local" id="filter-match-dt-end" oninput="filterMatches()" style="font-size:11px;padding:4px 6px">
+                </div>
                 <input class="filter-input" type="text" id="filter-match-search" placeholder="Buscar time..." oninput="filterMatches()">
             </div>
             <div class="table-wrap">
@@ -1584,38 +1615,76 @@ async function recalculateEngine() {
 async function checkResults() {
     const btn = document.getElementById("btn-check-results");
     btn.disabled = true;
-    btn.textContent = "⏳ Verificando...";
+    
+    // Timer de progresso visual
+    const startTime = Date.now();
+    let timerInterval;
+    const phases = [
+        { t: 0, text: "Buscando oportunidades pendentes..." },
+        { t: 3, text: "Filtrando jogos encerrados (>120min)..." },
+        { t: 6, text: "Consultando resultados na API..." },
+        { t: 15, text: "Processando resultados (pode levar alguns minutos)..." },
+        { t: 45, text: "Ainda processando jogos... Quase lá!" },
+        { t: 120, text: "Muitos jogos a processar... Aguarde..." },
+    ];
+    
+    timerInterval = setInterval(() => {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        const timeStr = mins > 0 ? `${mins}m${String(secs).padStart(2,'0')}s` : `${secs}s`;
+        
+        // Fase atual baseada no tempo
+        let phase = phases[0].text;
+        for (let i = phases.length - 1; i >= 0; i--) {
+            if (elapsed >= phases[i].t) { phase = phases[i].text; break; }
+        }
+        
+        btn.innerHTML = `⏳ ${timeStr} <span style="font-size:9px;opacity:0.8;display:block">${phase}</span>`;
+    }, 500);
     
     try {
         const res = await fetch("/api/check-results", { method: "POST" });
         const data = await res.json();
+        clearInterval(timerInterval);
+        
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        const elapsedStr = elapsed > 60 ? `${Math.floor(elapsed/60)}m${elapsed%60}s` : `${elapsed}s`;
         
         if (!data.ok) {
             alert("Erro: " + (data.error || "desconhecido"));
             return;
         }
         
-        let msg = `✅ Verificação concluída!\n\n`;
-        msg += `Jogos verificados: ${data.checked}\n`;
-        msg += `Jogos finalizados: ${data.finished}\n`;
-        msg += `Oportunidades resolvidas: ${data.resolved}\n`;
+        // Mostrar resultado detalhado
+        let msg = `✅ Verificação concluída em ${elapsedStr}\n\n`;
+        msg += `📋 Total pendentes: ${data.total_pending || 0}\n`;
+        msg += `⏭ Ignorados (ainda em jogo/futuro): ${data.skipped_not_finished || 0}\n`;
+        msg += `🔍 Jogos consultados (encerrados): ${data.checked}\n`;
+        msg += `📊 Jogos com resultado: ${data.finished}\n`;
+        msg += `✏️ Oportunidades resolvidas: ${data.resolved}\n`;
         if (data.resolved > 0) {
-            msg += `\n🟢 GREEN: ${data.green}\n🔴 RED: ${data.red}\n⬜ VOID: ${data.void}`;
+            msg += `\n🟢 GREEN: ${data.green}\n🔴 RED: ${data.red}\n⬜ VOID: ${data.void || 0}`;
+        }
+        if (data.resolved === 0 && data.checked === 0) {
+            msg += `\nℹ️ ${data.msg || 'Nenhum jogo encerrado para verificar.'}`;
         }
         
         alert(msg);
         
-        // Recarregar dados para mostrar resultados atualizados
-        if (data.resolved > 0) {
-            await loadCachedData();
-            loadDashboard();
-        }
+        // Recarregar dados para mostrar resultados atualizados na tabela
+        btn.innerHTML = "🔄 Atualizando tabela...";
+        await loadCachedData();
+        dashboardLoaded = false; // Forçar reload do dashboard
+        loadDashboard();
+        
     } catch (e) {
+        clearInterval(timerInterval);
         console.error(e);
-        alert("Erro: " + e.message);
+        alert("Erro de conexão: " + e.message);
     } finally {
         btn.disabled = false;
-        btn.textContent = "✅ Resultados";
+        btn.innerHTML = "✅ Resultados";
     }
 }
 
@@ -2007,48 +2076,53 @@ function getSortValue(o, key) {
 function applyColumnFilters() {
     const team = (document.getElementById('cf-team')?.value || '').toLowerCase();
     const league = document.getElementById('cf-league')?.value || '';
-    const date = document.getElementById('cf-date')?.value || '';
+    const dtStartRaw = document.getElementById('cf-dt-start')?.value || '';
+    const dtEndRaw = document.getElementById('cf-dt-end')?.value || '';
+    const dtStart = dtStartRaw ? new Date(dtStartRaw) : null;
+    const dtEnd = dtEndRaw ? new Date(dtEndRaw) : null;
+    const gameStatusFilter = document.getElementById('cf-game-status')?.value || '';
+    const resultFilter = document.getElementById('cf-result')?.value || '';
     const market = document.getElementById('cf-market')?.value || '';
     const selection = (document.getElementById('cf-selection')?.value || '').toLowerCase();
-    const bookmaker = (document.getElementById('cf-bookmaker')?.value || '').toLowerCase();
     const oddMin = parseFloat(document.getElementById('cf-odd-min')?.value) || null;
     const oddMax = parseFloat(document.getElementById('cf-odd-max')?.value) || null;
-    const fairMin = parseFloat(document.getElementById('cf-fair-min')?.value) || null;
-    const fairMax = parseFloat(document.getElementById('cf-fair-max')?.value) || null;
     const edgeMin = parseFloat(document.getElementById('cf-edge-min')?.value) || null;
     const edgeMax = parseFloat(document.getElementById('cf-edge-max')?.value) || null;
-    const kellyMin = parseFloat(document.getElementById('cf-kelly-min')?.value) || null;
-    const kellyMax = parseFloat(document.getElementById('cf-kelly-max')?.value) || null;
     const probMin = parseFloat(document.getElementById('cf-prob-min')?.value) || null;
     const probMax = parseFloat(document.getElementById('cf-prob-max')?.value) || null;
     const confidence = document.getElementById('cf-confidence')?.value || '';
-    const dqMin = parseFloat(document.getElementById('cf-dq-min')?.value) || null;
-    const dqMax = parseFloat(document.getElementById('cf-dq-max')?.value) || null;
-    const resultFilter = document.getElementById('cf-result')?.value || '';
 
     let filtered = allOpps.filter(o => {
         if (team && !(o.home_team.toLowerCase().includes(team) || o.away_team.toLowerCase().includes(team))) return false;
         if (league && o.league_name !== league) return false;
-        if (date && o.match_date !== date) return false;
-        if (market && o.market !== market) return false;
+        // Datetime range filter
+        if (dtStart || dtEnd) {
+            const timeParts = (o.match_time || '00:00').split(':');
+            const dateParts = (o.match_date || '').split('-');
+            if (dateParts.length >= 3) {
+                const matchDt = new Date(
+                    parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]),
+                    parseInt(timeParts[0]) || 0, parseInt(timeParts[1]) || 0, 0
+                );
+                if (dtStart && matchDt < dtStart) return false;
+                if (dtEnd && matchDt > dtEnd) return false;
+            }
+        }
+        // Game status filter
+        if (gameStatusFilter) {
+            const gs = getGameStatus(o.match_date, o.match_time);
+            if (gs.status !== gameStatusFilter) return false;
+        }
+        if (resultFilter && (o.result_status || 'PENDENTE') !== resultFilter) return false;
+        if (market && !o.market.includes(market)) return false;
         if (selection && !o.selection.toLowerCase().includes(selection)) return false;
-        if (bookmaker && !(o.bookmaker || '').toLowerCase().includes(bookmaker)) return false;
         if (oddMin !== null && o.market_odd < oddMin) return false;
         if (oddMax !== null && o.market_odd > oddMax) return false;
-        if (fairMin !== null && o.fair_odd < fairMin) return false;
-        if (fairMax !== null && o.fair_odd > fairMax) return false;
         if (edgeMin !== null && o.edge < edgeMin) return false;
         if (edgeMax !== null && o.edge > edgeMax) return false;
-        const kellyVal = parseFloat((o.kelly_bet_pct || '0').replace('%', ''));
-        if (kellyMin !== null && kellyVal < kellyMin) return false;
-        if (kellyMax !== null && kellyVal > kellyMax) return false;
         if (probMin !== null && o.model_prob < probMin) return false;
         if (probMax !== null && o.model_prob > probMax) return false;
         if (confidence && o.confidence !== confidence) return false;
-        const dqVal = (o.data_quality || 0) * 100;
-        if (dqMin !== null && dqVal < dqMin) return false;
-        if (dqMax !== null && dqVal > dqMax) return false;
-        if (resultFilter && (o.result_status || 'PENDENTE') !== resultFilter) return false;
         return true;
     });
 
@@ -2077,13 +2151,13 @@ function applyColumnFilters() {
 }
 
 function clearAllFilters() {
-    ['cf-team', 'cf-selection', 'cf-bookmaker', 'cf-odd-min', 'cf-odd-max',
-     'cf-fair-min', 'cf-fair-max', 'cf-edge-min', 'cf-edge-max', 'cf-kelly-min', 'cf-kelly-max',
-     'cf-prob-min', 'cf-prob-max', 'cf-dq-min', 'cf-dq-max'].forEach(id => {
+    ['cf-team', 'cf-selection', 'cf-dt-start', 'cf-dt-end',
+     'cf-odd-min', 'cf-odd-max', 'cf-edge-min', 'cf-edge-max',
+     'cf-prob-min', 'cf-prob-max'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
-    ['cf-league', 'cf-date', 'cf-market', 'cf-confidence', 'cf-result'].forEach(id => {
+    ['cf-league', 'cf-game-status', 'cf-result', 'cf-market', 'cf-confidence'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -2103,14 +2177,6 @@ function populateFilters() {
             leagues.map(l => `<option value="${l}">${l}</option>`).join("");
     }
 
-    // Column filters - dates
-    const dates = [...new Set(allOpps.map(o => o.match_date))].sort();
-    const cfDate = document.getElementById("cf-date");
-    if (cfDate) {
-        cfDate.innerHTML = '<option value="">Todas</option>' +
-            dates.map(d => `<option value="${d}">${d}</option>`).join("");
-    }
-
     // Match filters
     const matchLeagues = [...new Set(allMatches.map(m => m.league_name))].sort();
     const matchLeagueSelect = document.getElementById("filter-match-league");
@@ -2119,12 +2185,6 @@ function populateFilters() {
             matchLeagues.map(l => `<option value="${l}">${l}</option>`).join("");
     }
 
-    const matchDates = [...new Set(allMatches.map(m => m.match_date))].sort();
-    const matchDateSelect = document.getElementById("filter-match-date");
-    if (matchDateSelect) {
-        matchDateSelect.innerHTML = '<option value="all">Todas as Datas</option>' +
-            matchDates.map(d => `<option value="${d}">${d}</option>`).join("");
-    }
 }
 
 function filterOpps() {
@@ -2133,12 +2193,28 @@ function filterOpps() {
 
 function filterMatches() {
     const league = document.getElementById("filter-match-league").value;
-    const date = document.getElementById("filter-match-date").value;
+    const dtStartRaw = document.getElementById("filter-match-dt-start")?.value || '';
+    const dtEndRaw = document.getElementById("filter-match-dt-end")?.value || '';
+    const dtStart = dtStartRaw ? new Date(dtStartRaw) : null;
+    const dtEnd = dtEndRaw ? new Date(dtEndRaw) : null;
     const search = document.getElementById("filter-match-search").value.toLowerCase();
 
     let filtered = allMatches;
     if (league !== "all") filtered = filtered.filter(m => m.league_name === league);
-    if (date !== "all") filtered = filtered.filter(m => m.match_date === date);
+    if (dtStart || dtEnd) {
+        filtered = filtered.filter(m => {
+            const timeParts = (m.match_time || '00:00').split(':');
+            const dateParts = (m.match_date || '').split('-');
+            if (dateParts.length < 3) return true;
+            const matchDt = new Date(
+                parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]),
+                parseInt(timeParts[0]) || 0, parseInt(timeParts[1]) || 0, 0
+            );
+            if (dtStart && matchDt < dtStart) return false;
+            if (dtEnd && matchDt > dtEnd) return false;
+            return true;
+        });
+    }
     if (search) filtered = filtered.filter(m =>
         m.home_team.toLowerCase().includes(search) ||
         m.away_team.toLowerCase().includes(search)

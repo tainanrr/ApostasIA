@@ -269,6 +269,9 @@ class MatchAnalysis:
     odds_home_away_suspect: bool = False   # True = odds sugerem que mandante/visitante pode estar invertido
     # ── Média de gols da liga (calculada dos standings) ──
     league_avg_goals: float = 2.7          # Gols por jogo na liga (default genérico)
+    # ── H2H (confrontos diretos) ──
+    h2h_avg_goals: Optional[float] = None  # Média de gols nos confrontos diretos (None = sem dados)
+    h2h_count: int = 0                     # Número de confrontos diretos disponíveis
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2170,15 +2173,46 @@ def fetch_finished_fixtures(match_ids: list[int]) -> dict:
     Busca resultado FINAL de jogos pelo fixture_id.
     Retorna dict {match_id: {"status": "FT"|..., "home_goals": int, "away_goals": int, "score": "2-1"}}.
     Usa cache — se já tem resultado FT em cache, não busca de novo.
+    Primeiro verifica cache para resultados FT antes de ir à API.
     """
     results = {}
     if not match_ids:
         return results
 
-    for mid in match_ids:
-        # Tentar cache primeiro (fixtures retorna dados completos)
+    total = len(match_ids)
+    from_cache = 0
+    from_api = 0
+    print(f"[CHECK] Verificando {total} jogos para resultados finais...")
+
+    for i, mid in enumerate(match_ids, 1):
+        # 1. Verificar cache: se já tem resposta com status FT, usar direto
         cached = _get_cached_response("fixtures", {"id": mid})
-        raw = cached or _api_football_request("fixtures", {"id": mid})
+        if cached:
+            resp = cached.get("response", [])
+            if resp:
+                st = resp[0].get("fixture", {}).get("status", {}).get("short", "?")
+                if st in ("FT", "AET", "PEN"):
+                    # Cache já tem resultado final — usar sem chamar API
+                    fix = resp[0]
+                    goals = fix.get("goals", {})
+                    score = fix.get("score", {})
+                    hg = goals.get("home")
+                    ag = goals.get("away")
+                    if hg is not None and ag is not None:
+                        results[mid] = {
+                            "status": st,
+                            "home_goals": hg,
+                            "away_goals": ag,
+                            "score": f"{hg}-{ag}",
+                            "ht_home": (score.get("halftime", {}) or {}).get("home"),
+                            "ht_away": (score.get("halftime", {}) or {}).get("away"),
+                        }
+                        from_cache += 1
+                        continue
+
+        # 2. Cache não tem resultado FT — buscar da API
+        raw = _api_football_request("fixtures", {"id": mid})
+        from_api += 1
         if not raw:
             continue
         response = raw.get("response", [])
@@ -2204,12 +2238,17 @@ def fetch_finished_fixtures(match_ids: list[int]) -> dict:
                 "ht_home": (score.get("halftime", {}) or {}).get("home"),
                 "ht_away": (score.get("halftime", {}) or {}).get("away"),
             }
-            # Salvar no cache para não buscar de novo
-            if not cached:
-                _save_to_cache("fixtures", {"id": mid}, raw)
+            # Salvar resultado FT no cache para não buscar de novo
+            _save_to_cache("fixtures", {"id": mid}, raw)
         elif not finished:
             results[mid] = {"status": status_short, "home_goals": None, "away_goals": None, "score": None}
 
+        # Progresso a cada 10 jogos
+        if from_api % 10 == 0 or i == total:
+            print(f"  [CHECK] Progresso: {i}/{total} ({from_cache} cache, {from_api} API) | {len([r for r in results.values() if r.get('score')])} finalizados")
+
+    finished_count = len([r for r in results.values() if r.get("score")])
+    print(f"[CHECK] Concluído: {total} jogos ({from_cache} do cache, {from_api} da API) | {finished_count} com resultado final")
     return results
 
 

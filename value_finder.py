@@ -322,6 +322,8 @@ class ValueOpportunity:
     bookmaker: str = "N/D"
     data_quality: float = 0.0
     odds_suspect: bool = False  # True = possível inversão casa/fora
+    result_status: str = "PENDENTE"  # GREEN, RED, VOID, PENDENTE
+    result_score: str = ""           # ex: "2-1"
 
 
 # ═══════════════════════════════════════════════════════
@@ -495,6 +497,23 @@ def classify_confidence(edge: float, model_prob: float,
         return "BAIXO"
     else:
         return "BAIXO"
+
+
+def _downgrade_confidence_if_suspicious(conf: str, model_xg_suspicious: bool,
+                                         edge: float) -> str:
+    """
+    Rebaixa a confiança se o xG do modelo diverge muito do xG naive (overall stats).
+    Isso captura falsos positivos gerados por amostras pequenas de casa/fora.
+
+    Se edge > 50% E modelo é suspeito → sempre BAIXO.
+    Se modelo é suspeito → rebaixa em 1 nível (ALTO→MÉDIO, MÉDIO→BAIXO).
+    """
+    if not model_xg_suspicious:
+        return conf
+    if edge > 0.50:
+        return "BAIXO"
+    downgrade = {"ALTO": "MÉDIO", "MÉDIO": "BAIXO", "BAIXO": "BAIXO"}
+    return downgrade.get(conf, conf)
 
 
 # ═══════════════════════════════════════════════════════
@@ -806,6 +825,21 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                       and match.weather.rain_mm <= config.RAIN_VOLUME_THRESHOLD_MM)
     fatigue_free = not match.home_fatigue and not match.away_fatigue
 
+    # ── Sanity check: xG naive vs xG modelo ──
+    # Calcula xG "naive" a partir das estatísticas GERAIS (attack_strength × defense_strength)
+    # Se o modelo produz xG muito diferente do naive, a confiança deve ser reduzida.
+    # Isso captura situações onde o split casa/fora com amostra pequena distorce o modelo.
+    league_avg = getattr(match, 'league_avg_goals', 2.7) or 2.7
+    league_half = league_avg / 2.0
+    naive_home_xg = home.attack_strength * away.defense_strength * league_half
+    naive_away_xg = away.attack_strength * home.defense_strength * league_half
+    naive_total_xg = naive_home_xg + naive_away_xg
+
+    # Flag: modelo diverge muito do naive (>50% de diferença relativa)
+    small_sample = (home.games_played < 10) or (away.games_played < 10)
+    xg_divergence_ratio = total_xg / max(0.5, naive_total_xg) if naive_total_xg > 0 else 1.0
+    model_xg_suspicious = small_sample and (xg_divergence_ratio < 0.55 or xg_divergence_ratio > 1.8)
+
     # ── MERCADO 1x2 (sem Empate — foco em resultado) ──
     market_odds_1x2 = [odds.home_win, odds.draw, odds.away_win]
     fair_probs_1x2 = devig_odds(market_odds_1x2, method="power")
@@ -843,6 +877,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
             fair_odd = round(1.0 / max(0.01, model_p), 2)
             kelly = fractional_kelly(model_p, market_o)
             conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
+            conf = _downgrade_confidence_if_suspicious(conf, model_xg_suspicious, edge)
             reasoning = generate_reasoning(match, f"1x2 - {label}", edge, model_p)
 
             opportunities.append(ValueOpportunity(
@@ -916,6 +951,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
             implied_p = 1.0 / market_o if market_o > 0 else 0
             kelly = fractional_kelly(model_p, market_o)
             conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
+            conf = _downgrade_confidence_if_suspicious(conf, model_xg_suspicious, edge)
             reasoning = generate_reasoning(match, f"Dupla Chance - {label}", edge, model_p)
 
             opportunities.append(ValueOpportunity(
@@ -977,6 +1013,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
             fair_odd = round(1.0 / max(0.01, model_p), 2)
             kelly = fractional_kelly(model_p, market_o)
             conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
+            conf = _downgrade_confidence_if_suspicious(conf, model_xg_suspicious, edge)
             reasoning = generate_reasoning(match, f"BTTS - {label}", edge, model_p)
 
             opportunities.append(ValueOpportunity(
@@ -1058,6 +1095,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 implied_p = 1.0 / market_o
                 kelly = fractional_kelly(model_p, market_o)
                 conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
+                conf = _downgrade_confidence_if_suspicious(conf, model_xg_suspicious, edge)
 
                 # Identificar bookmaker correto (pode vir de _source para mercados especiais)
                 source_bk = market_odds_dict.get("_source", "")

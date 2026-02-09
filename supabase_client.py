@@ -535,7 +535,7 @@ def get_pending_opportunities() -> list[dict]:
             .eq("result_status", "PENDENTE")
             .lte("match_date", today)
             .order("match_date", desc=True)
-            .limit(500)
+            .limit(2000)
             .execute()
         )
         return result.data or []
