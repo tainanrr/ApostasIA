@@ -1,0 +1,987 @@
+"""
+═══════════════════════════════════════════════════════════════════════
+MÓDULO DE AQUISIÇÃO E ENGENHARIA DE DADOS (ETL)
+Engine de Análise Preditiva - Camada Sensorial
+
+Suporta:
+  - Modo Real: API-Football (v3) + OpenWeatherMap
+  - Modo Demo: Dados sintéticos realistas (fallback)
+═══════════════════════════════════════════════════════════════════════
+"""
+
+import random
+import math
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Optional
+
+import numpy as np
+import requests
+
+import config
+
+
+# ═══════════════════════════════════════════════════════
+# ESTRUTURAS DE DADOS
+# ═══════════════════════════════════════════════════════
+
+@dataclass
+class TeamStats:
+    """Vetor de estatísticas agregadas de um time."""
+    team_id: int
+    team_name: str
+    attack_strength: float = 0.0
+    defense_strength: float = 0.0
+    home_goals_scored_avg: float = 0.0
+    home_goals_conceded_avg: float = 0.0
+    away_goals_scored_avg: float = 0.0
+    away_goals_conceded_avg: float = 0.0
+    shots_on_target_avg: float = 0.0
+    shots_blocked_avg: float = 0.0
+    corners_avg: float = 0.0
+    cards_avg: float = 0.0
+    fouls_avg: float = 0.0
+    possession_final_third: float = 0.0
+    form_last10: list = field(default_factory=list)
+    form_points: float = 0.0
+    league_position: int = 0
+    league_points: int = 0
+    games_played: int = 0
+    games_remaining: int = 0
+    points_to_title: int = 99
+    points_to_relegation: int = 99
+    last_match_date: Optional[str] = None
+    has_real_data: bool = False            # True = dados de standings reais da API
+
+
+@dataclass
+class WeatherData:
+    temperature_c: float = 20.0
+    wind_speed_kmh: float = 5.0
+    rain_mm: float = 0.0
+    humidity_pct: float = 50.0
+    description: str = "N/D"
+
+
+@dataclass
+class RefereeStats:
+    name: str = "Desconhecido"
+    cards_per_game_avg: float = 4.0
+    yellow_avg: float = 3.5
+    red_avg: float = 0.2
+    fouls_per_game_avg: float = 25.0
+
+
+@dataclass
+class MarketOdds:
+    home_win: float = 2.0
+    draw: float = 3.3
+    away_win: float = 3.5
+    over_25: float = 1.85
+    under_25: float = 1.95
+    btts_yes: float = 1.80
+    btts_no: float = 2.00
+    over_95_corners: float = 1.90
+    under_95_corners: float = 1.90
+    over_35_cards: float = 1.85
+    under_35_cards: float = 1.95
+    asian_handicap_line: float = -0.5
+    asian_handicap_home: float = 1.90
+    asian_handicap_away: float = 1.90
+    bookmaker: str = "N/D"
+
+
+@dataclass
+class MatchAnalysis:
+    match_id: int
+    league_id: int
+    league_name: str
+    league_country: str
+    match_date: str
+    match_time: str
+    venue_name: str = ""
+    venue_lat: float = 0.0
+    venue_lon: float = 0.0
+    home_team: TeamStats = field(default_factory=TeamStats)
+    away_team: TeamStats = field(default_factory=TeamStats)
+    weather: WeatherData = field(default_factory=WeatherData)
+    referee: RefereeStats = field(default_factory=RefereeStats)
+    odds: MarketOdds = field(default_factory=MarketOdds)
+    league_urgency_home: float = 0.5
+    league_urgency_away: float = 0.5
+    home_fatigue: bool = False
+    away_fatigue: bool = False
+    injuries_home: list = field(default_factory=list)
+    injuries_away: list = field(default_factory=list)
+    model_home_xg: float = 0.0
+    model_away_xg: float = 0.0
+    model_prob_home: float = 0.0
+    model_prob_draw: float = 0.0
+    model_prob_away: float = 0.0
+    model_prob_over25: float = 0.0
+    model_prob_btts: float = 0.0
+    model_corners_expected: float = 0.0
+    model_cards_expected: float = 0.0
+    score_matrix: Optional[np.ndarray] = None
+    # ── Qualidade dos dados ──
+    has_real_odds: bool = False             # True = odds vieram de bookmaker real (API)
+    has_real_standings: bool = False        # True = pelo menos 1 time tem standings reais
+    has_real_weather: bool = False          # True = clima veio da API
+    data_quality_score: float = 0.0        # 0.0 a 1.0 — índice de confiança dos dados
+
+
+# ═══════════════════════════════════════════════════════════════
+#  API-FOOTBALL — CAMADA DE TRANSPORTE (com rate-limiting)
+# ═══════════════════════════════════════════════════════════════
+
+_api_call_count = 0
+
+
+def _api_football_request(endpoint: str, params: dict) -> dict:
+    """Chamada genérica com rate-limiting à API-Football v3."""
+    global _api_call_count
+    url = f"https://{config.API_FOOTBALL_HOST}/{endpoint}"
+    headers = {"x-apisports-key": config.API_FOOTBALL_KEY}
+
+    time.sleep(config.API_CALL_DELAY)
+    _api_call_count += 1
+
+    for attempt in range(2):
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+            remaining = resp.headers.get("x-ratelimit-requests-remaining", "?")
+            print(f"    [API] {endpoint}({params}) → {resp.status_code} | restantes={remaining}")
+
+            if resp.status_code == 429:
+                print("    [API] ⚠️  Rate limit HTTP 429! Aguardando 65s...")
+                time.sleep(65)
+                continue
+
+            resp.raise_for_status()
+            data = resp.json()
+
+            errors = data.get("errors", {})
+            if errors:
+                # Rate limit retornado no body (não como HTTP 429)
+                if "rateLimit" in errors:
+                    print(f"    [API] ⚠️  Rate limit no body! Aguardando 65s...")
+                    time.sleep(65)
+                    continue
+                elif "plan" in errors:
+                    # Plano não suporta — não faz sentido tentar de novo
+                    return {}
+                else:
+                    print(f"    [API] ⚠️  Erros: {errors}")
+                    return {}
+
+            return data
+        except Exception as e:
+            print(f"    [API] ❌ Falha em {endpoint}: {e}")
+            return {}
+
+    return {}
+
+
+# ═══════════════════════════════════════════════════════════════
+#  PIPELINE DE DADOS REAIS
+# ═══════════════════════════════════════════════════════════════
+
+def _fetch_fixtures(date: str) -> list[dict]:
+    """Busca TODOS os jogos agendados para uma data."""
+    print(f"  [ETL] Buscando fixtures para {date}...")
+    data = _api_football_request("fixtures", {"date": date})
+    raw = data.get("response", [])
+
+    # Contagens por status
+    status_counts = {}
+    for f in raw:
+        st = f.get("fixture", {}).get("status", {}).get("short", "?")
+        status_counts[st] = status_counts.get(st, 0) + 1
+    print(f"  [ETL] Status breakdown: {status_counts}")
+
+    # Prioridade: jogos não iniciados
+    ns_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") == "NS"]
+
+    # Se não há NS, incluir jogos em andamento
+    live_status = {"1H", "HT", "2H", "LIVE", "ET", "P", "BT"}
+    live_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in live_status]
+
+    # Se não há NS nem live, incluir TBD
+    tbd_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in {"TBD", "SUSP", "PST"}]
+
+    # Combinar: NS primeiro, depois live, depois TBD
+    fixtures = ns_fixtures + live_fixtures + tbd_fixtures
+
+    # Se ainda 0, incluir jogos finalizados (FT) para análise retroativa
+    if not fixtures and raw:
+        ft_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in {"FT", "AET", "PEN"}]
+        if ft_fixtures:
+            print(f"  [ETL] ⚠️  Sem jogos futuros — incluindo {len(ft_fixtures)} jogos finalizados para análise")
+            fixtures = ft_fixtures
+
+    print(f"  [ETL] {len(fixtures)} jogos selecionados para {date} (de {len(raw)} total)")
+    return fixtures
+
+
+def _fetch_standings(league_id: int, season: int) -> list[dict]:
+    """Busca classificação de uma liga/temporada."""
+    data = _api_football_request("standings", {"league": league_id, "season": season})
+    response = data.get("response", [])
+    if not response:
+        return []
+    league_data = response[0].get("league", {})
+    standings_groups = league_data.get("standings", [])
+    # standings pode ter múltiplos grupos (ex: conferência), pegar o primeiro
+    if standings_groups and isinstance(standings_groups[0], list):
+        return standings_groups[0]
+    return standings_groups
+
+
+def _fetch_odds_for_fixture(fixture_id: int) -> dict:
+    """Busca odds para um fixture específico."""
+    data = _api_football_request("odds", {"fixture": fixture_id})
+    response = data.get("response", [])
+    return response[0] if response else {}
+
+
+def _fetch_injuries_for_fixture(fixture_id: int) -> dict:
+    """Busca lesões para um fixture."""
+    data = _api_football_request("injuries", {"fixture": fixture_id})
+    return data.get("response", [])
+
+
+def _fetch_weather_by_city(city: str, country_code: str = "") -> WeatherData:
+    """Busca clima via OpenWeatherMap usando nome da cidade."""
+    if not config.OPENWEATHER_KEY or not city:
+        return WeatherData()
+    try:
+        q = f"{city},{country_code}" if country_code else city
+        url = "https://api.openweathermap.org/data/2.5/weather"
+        params = {"q": q, "appid": config.OPENWEATHER_KEY, "units": "metric", "lang": "pt_br"}
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code != 200:
+            return WeatherData()
+        d = resp.json()
+        return WeatherData(
+            temperature_c=round(d.get("main", {}).get("temp", 20.0), 1),
+            wind_speed_kmh=round(d.get("wind", {}).get("speed", 0) * 3.6, 1),
+            rain_mm=round(d.get("rain", {}).get("1h", 0.0), 1),
+            humidity_pct=d.get("main", {}).get("humidity", 50),
+            description=d.get("weather", [{}])[0].get("description", "N/D"),
+        )
+    except Exception:
+        return WeatherData()
+
+
+# ═══════════════════════════════════════════════════════════════
+#  PARSING — Converter JSON da API em objetos do sistema
+# ═══════════════════════════════════════════════════════════════
+
+COUNTRY_CODES = {
+    "England": "GB", "Spain": "ES", "Italy": "IT", "Germany": "DE",
+    "France": "FR", "Portugal": "PT", "Netherlands": "NL", "Belgium": "BE",
+    "Turkey": "TR", "Greece": "GR", "Scotland": "GB", "Brazil": "BR",
+    "Argentina": "AR", "USA": "US", "Mexico": "MX", "Japan": "JP",
+    "South-Korea": "KR", "China": "CN", "Australia": "AU", "Saudi-Arabia": "SA",
+    "Egypt": "EG", "Colombia": "CO", "Chile": "CL", "Uruguay": "UY",
+    "Paraguay": "PY", "Peru": "PE", "Ecuador": "EC", "Russia": "RU",
+    "Ukraine": "UA", "Poland": "PL", "Czech-Republic": "CZ", "Austria": "AT",
+    "Switzerland": "CH", "Denmark": "DK", "Sweden": "SE", "Norway": "NO",
+    "Finland": "FI", "Croatia": "HR", "Serbia": "RS", "Romania": "RO",
+    "Hungary": "HU", "Bulgaria": "BG", "Ireland": "IE", "Wales": "GB",
+    "Israel": "IL", "India": "IN", "Indonesia": "ID", "Thailand": "TH",
+    "Vietnam": "VN", "Malaysia": "MY", "Algeria": "DZ", "Morocco": "MA",
+    "Tunisia": "TN", "Nigeria": "NG", "South-Africa": "ZA", "Kenya": "KE",
+    "Ghana": "GH", "Cameroon": "CM", "Ivory-Coast": "CI", "Senegal": "SN",
+    "Costa-Rica": "CR", "Honduras": "HN", "Jamaica": "JM", "Panama": "PA",
+    "Bolivia": "BO", "Venezuela": "VE", "Canada": "CA", "Iceland": "IS",
+    "Cyprus": "CY", "Malta": "MT", "Luxembourg": "LU", "Albania": "AL",
+    "Bosnia-and-Herzegovina": "BA", "North-Macedonia": "MK", "Montenegro": "ME",
+    "Georgia": "GE", "Armenia": "AM", "Azerbaijan": "AZ", "Kazakhstan": "KZ",
+    "Uzbekistan": "UZ", "Iran": "IR", "Iraq": "IQ", "Jordan": "JO",
+    "Qatar": "QA", "UAE": "AE", "Bahrain": "BH", "Kuwait": "KW", "Oman": "OM",
+    "World": "", "Europe": "", "Africa": "", "Asia": "", "South-America": "",
+    "North-&-Central-America": "",
+}
+
+
+def _parse_form_string(form_str: str) -> list[str]:
+    """Converte string de forma 'WWDLW' em lista ['W','W','D','L','W']."""
+    if not form_str:
+        return ["D"] * 5
+    result = []
+    for ch in form_str.upper():
+        if ch in ("W", "D", "L"):
+            result.append(ch)
+    # Duplicar para 10 se tiver apenas 5
+    while len(result) < 10:
+        result = result + result
+    return result[:10]
+
+
+def _form_points(form: list[str]) -> float:
+    """Pontos normalizados da forma (0-1)."""
+    pts = sum(3 if r == "W" else 1 if r == "D" else 0 for r in form)
+    return pts / (3.0 * max(1, len(form)))
+
+
+def _build_team_from_standings(team_id: int, team_name: str,
+                                standings: list[dict],
+                                is_home: bool) -> TeamStats:
+    """Constrói TeamStats a partir dos dados de classificação da API."""
+    team_data = None
+    for entry in standings:
+        tid = entry.get("team", {}).get("id", 0)
+        if tid == team_id:
+            team_data = entry
+            break
+
+    if not team_data:
+        # Time não encontrado no standings — usar defaults
+        # has_real_data = False → dados NÃO CONFIÁVEIS
+        return TeamStats(
+            team_id=team_id, team_name=team_name,
+            attack_strength=1.2, defense_strength=1.0,
+            home_goals_scored_avg=1.3, home_goals_conceded_avg=1.1,
+            away_goals_scored_avg=1.0, away_goals_conceded_avg=1.3,
+            shots_on_target_avg=4.0, shots_blocked_avg=3.0,
+            corners_avg=5.0, cards_avg=2.0, fouls_avg=12.0,
+            possession_final_third=30.0,
+            form_last10=["D"] * 10, form_points=0.33,
+            league_position=10, league_points=20,
+            games_played=20, games_remaining=18,
+            has_real_data=False,
+        )
+
+    # Extrair dados do standing
+    rank = team_data.get("rank", 10)
+    points = team_data.get("points", 0)
+    form_str = team_data.get("form", "DDDDD")
+
+    all_stats = team_data.get("all", {})
+    home_stats = team_data.get("home", {})
+    away_stats = team_data.get("away", {})
+
+    all_played = all_stats.get("played", 1) or 1
+    home_played = home_stats.get("played", 1) or 1
+    away_played = away_stats.get("played", 1) or 1
+
+    home_gf = home_stats.get("goals", {}).get("for", 0) or 0
+    home_ga = home_stats.get("goals", {}).get("against", 0) or 0
+    away_gf = away_stats.get("goals", {}).get("for", 0) or 0
+    away_ga = away_stats.get("goals", {}).get("against", 0) or 0
+
+    total_gf = (home_gf + away_gf) or 1
+    total_ga = (home_ga + away_ga) or 1
+
+    # Calcular médias de gols da liga inteira
+    league_total_gf = 0
+    league_total_played = 0
+    for e in standings:
+        a = e.get("all", {})
+        league_total_gf += (a.get("goals", {}).get("for", 0) or 0)
+        league_total_played += (a.get("played", 0) or 0)
+
+    league_avg_gpg = (league_total_gf / max(1, league_total_played)) * 2  # gols por jogo
+    league_avg_gpg = max(1.5, league_avg_gpg)
+
+    # Força de ataque e defesa relativas à liga
+    team_gpg_scored = total_gf / all_played
+    team_gpg_conceded = total_ga / all_played
+    half_avg = league_avg_gpg / 2.0
+
+    attack = max(0.3, team_gpg_scored / max(0.3, half_avg))
+    defense = max(0.3, team_gpg_conceded / max(0.3, half_avg))
+
+    form = _parse_form_string(form_str)
+
+    # Pontos para título e rebaixamento
+    top_pts = standings[0].get("points", points) if standings else points
+    n_teams = len(standings) or 20
+    relegation_zone_idx = max(0, n_teams - 3)
+    rel_pts = standings[relegation_zone_idx].get("points", 0) if len(standings) > relegation_zone_idx else 0
+    total_rounds = max(all_played + 5, 34)  # estimativa
+
+    return TeamStats(
+        team_id=team_id,
+        team_name=team_name,
+        attack_strength=round(attack, 3),
+        defense_strength=round(defense, 3),
+        home_goals_scored_avg=round(home_gf / home_played, 2),
+        home_goals_conceded_avg=round(home_ga / home_played, 2),
+        away_goals_scored_avg=round(away_gf / away_played, 2),
+        away_goals_conceded_avg=round(away_ga / away_played, 2),
+        shots_on_target_avg=round(attack * 3.5, 1),
+        shots_blocked_avg=round(defense * 3.0, 1),
+        corners_avg=round(attack * 3.8, 1),         # ESTIMADO (API não fornece corners)
+        cards_avg=round(1.5 + defense * 0.8, 1),    # ESTIMADO
+        fouls_avg=round(10.0 + defense * 3.0, 1),   # ESTIMADO
+        possession_final_third=round(attack * 25.0, 1),  # ESTIMADO
+        form_last10=form,
+        form_points=_form_points(form),
+        league_position=rank,
+        league_points=points,
+        games_played=all_played,
+        games_remaining=max(0, total_rounds - all_played),
+        points_to_title=max(0, top_pts - points),
+        points_to_relegation=max(0, points - rel_pts),
+        has_real_data=True,  # ← dados REAIS da API de standings
+    )
+
+
+def _parse_odds_response(odds_raw: dict) -> MarketOdds:
+    """Converte resposta de odds da API em MarketOdds."""
+    bookmakers = odds_raw.get("bookmakers", [])
+    if not bookmakers:
+        return MarketOdds()
+
+    # Escolher bookmaker preferido
+    chosen = None
+    for pref in config.PREFERRED_BOOKMAKERS:
+        for bk in bookmakers:
+            if pref.lower() in bk.get("name", "").lower():
+                chosen = bk
+                break
+        if chosen:
+            break
+
+    if not chosen:
+        chosen = bookmakers[0]  # Fallback: primeiro disponível
+
+    bk_name = chosen.get("name", "Desconhecido")
+    bets = chosen.get("bets", [])
+
+    odds = MarketOdds(bookmaker=bk_name)
+
+    for bet in bets:
+        bet_name = bet.get("name", "").lower()
+        values = bet.get("values", [])
+
+        val_map = {}
+        for v in values:
+            val_map[str(v.get("value", "")).lower()] = float(v.get("odd", 0))
+
+        # Match Winner / 1x2
+        if bet.get("id") == 1 or "match winner" in bet_name:
+            odds.home_win = val_map.get("home", odds.home_win)
+            odds.draw = val_map.get("draw", odds.draw)
+            odds.away_win = val_map.get("away", odds.away_win)
+
+        # Over/Under 2.5
+        elif bet.get("id") == 5 or "goals over" in bet_name or "over/under" in bet_name:
+            odds.over_25 = val_map.get("over 2.5", odds.over_25)
+            odds.under_25 = val_map.get("under 2.5", odds.under_25)
+
+        # Both Teams Score
+        elif bet.get("id") == 8 or "both teams" in bet_name:
+            odds.btts_yes = val_map.get("yes", odds.btts_yes)
+            odds.btts_no = val_map.get("no", odds.btts_no)
+
+        # Asian Handicap
+        elif "asian" in bet_name or "handicap" in bet_name:
+            for v in values:
+                val_str = str(v.get("value", ""))
+                odd_v = float(v.get("odd", 0))
+                if "home" in val_str.lower():
+                    odds.asian_handicap_home = odd_v
+                elif "away" in val_str.lower():
+                    odds.asian_handicap_away = odd_v
+
+    return odds
+
+
+def _parse_injuries(injuries_raw: list, team_id: int) -> list[str]:
+    """Converte resposta de lesões da API em lista de strings."""
+    result = []
+    for inj in injuries_raw:
+        player_data = inj.get("player", {})
+        if inj.get("team", {}).get("id") == team_id:
+            name = player_data.get("name", "Desconhecido")
+            reason = player_data.get("reason", "N/D")
+            ptype = player_data.get("type", "")
+            result.append(f"{name} ({reason} - {ptype})")
+    return result
+
+
+def _parse_fixture_to_match(
+    fix_raw: dict,
+    standings_cache: dict,
+    odds_cache: dict,
+    injuries_cache: dict,
+) -> Optional[MatchAnalysis]:
+    """Converte um fixture JSON da API em MatchAnalysis completo."""
+    try:
+        fixture = fix_raw.get("fixture", {})
+        league = fix_raw.get("league", {})
+        teams = fix_raw.get("teams", {})
+
+        fix_id = fixture.get("id", 0)
+        league_id = league.get("id", 0)
+        league_name = league.get("name", "Desconhecida")
+        league_country = league.get("country", "N/D")
+
+        # Data e hora
+        date_str = fixture.get("date", "")
+        try:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            match_date = dt.strftime("%Y-%m-%d")
+            match_time = dt.strftime("%H:%M")
+        except (ValueError, TypeError):
+            match_date = config.TODAY
+            match_time = "00:00"
+
+        # Venue
+        venue = fixture.get("venue", {}) or {}
+        venue_name = venue.get("name", "N/D") or "N/D"
+        venue_city = venue.get("city", "") or ""
+
+        # Times
+        home_info = teams.get("home", {})
+        away_info = teams.get("away", {})
+        home_id = home_info.get("id", 0)
+        away_id = away_info.get("id", 0)
+        home_name = home_info.get("name", "Casa")
+        away_name = away_info.get("name", "Fora")
+
+        # Standings
+        standings = standings_cache.get(league_id, [])
+        home_stats = _build_team_from_standings(home_id, home_name, standings, True)
+        away_stats = _build_team_from_standings(away_id, away_name, standings, False)
+
+        # Odds
+        odds_raw = odds_cache.get(fix_id, {})
+        odds = _parse_odds_response(odds_raw) if odds_raw else MarketOdds()
+
+        # Lesões
+        injuries_raw = injuries_cache.get(fix_id, [])
+        injuries_home = _parse_injuries(injuries_raw, home_id) if injuries_raw else []
+        injuries_away = _parse_injuries(injuries_raw, away_id) if injuries_raw else []
+
+        # Árbitro
+        ref_data = fixture.get("referee")
+        referee = RefereeStats()
+        if ref_data and isinstance(ref_data, str):
+            referee.name = ref_data
+
+        # Calcular qualidade dos dados
+        _has_real_odds = odds.bookmaker not in ("N/D", "Modelo (Estimado)", "")
+        _has_real_standings = home_stats.has_real_data or away_stats.has_real_data
+        _both_standings = home_stats.has_real_data and away_stats.has_real_data
+
+        # Score de qualidade: 0.0 a 1.0
+        #   +0.40 se AMBOS os times têm standings reais
+        #   +0.20 se pelo menos 1 time tem standings reais
+        #   +0.35 se tem odds REAIS de bookmaker
+        #   +0.10 se tem árbitro identificado
+        #   +0.15 se tem lesões checadas
+        dq = 0.0
+        if _both_standings:
+            dq += 0.40
+        elif _has_real_standings:
+            dq += 0.20
+        if _has_real_odds:
+            dq += 0.35
+        if referee.name != "Desconhecido":
+            dq += 0.10
+        if injuries_raw:
+            dq += 0.15
+
+        return MatchAnalysis(
+            match_id=fix_id,
+            league_id=league_id,
+            league_name=league_name,
+            league_country=league_country,
+            match_date=match_date,
+            match_time=match_time,
+            venue_name=venue_name,
+            venue_lat=0.0,
+            venue_lon=0.0,
+            home_team=home_stats,
+            away_team=away_stats,
+            weather=WeatherData(),  # preenchido depois
+            referee=referee,
+            odds=odds,
+            injuries_home=injuries_home,
+            injuries_away=injuries_away,
+            has_real_odds=_has_real_odds,
+            has_real_standings=_has_real_standings,
+            data_quality_score=round(dq, 2),
+        )
+    except Exception as e:
+        print(f"    [PARSE] ❌ Erro ao parsear fixture: {e}")
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════
+#  ORQUESTRADOR DE INGESTÃO REAL
+# ═══════════════════════════════════════════════════════════════
+
+def _check_api_plan() -> dict:
+    """Verifica o plano da conta e limites restantes."""
+    data = _api_football_request("status", {})
+    resp = data.get("response", {})
+    plan = resp.get("subscription", {}).get("plan", "Unknown")
+    limit = resp.get("requests", {}).get("limit_day", 100)
+    current = resp.get("requests", {}).get("current", 0)
+    return {"plan": plan, "limit": limit, "used": current, "available": limit - current}
+
+
+def _ingest_real_data() -> list[MatchAnalysis]:
+    """
+    Pipeline COMPLETO de ingestão — Plano PRO.
+    7.500 req/dia | 300 req/min | ALL endpoints | ALL seasons.
+
+      1. Status da conta
+      2. Fixtures globais (T e T+1)
+      3. Standings REAIS (season atual) para TODAS as ligas
+      4. Odds REAIS (Pinnacle/Bet365) para TODOS os fixtures
+      5. Lesões REAIS para todos os fixtures
+      6. Clima real (OpenWeatherMap)
+    """
+    global _api_call_count
+    _api_call_count = 0
+
+    # ── PASSO 0: Verificar plano ──
+    print("[ETL] ═══ PASSO 0: Verificando status da conta ═══")
+    plan_info = _check_api_plan()
+    plan_name = plan_info["plan"]
+    api_available = plan_info["available"]
+    is_free = plan_name.lower() == "free"
+    print(f"  Plano: {plan_name} | Limite: {plan_info['limit']}/dia | Usadas: {plan_info['used']} | Disponíveis: {api_available}")
+
+    API_BUDGET = min(api_available - 50, 2000)  # Usar até 2000 por run, guardar reserva
+
+    if API_BUDGET < 10:
+        print("[ETL] ❌ Orçamento insuficiente para buscar dados reais!")
+        print("[ETL] ⚠️  O sistema NÃO processará dados sintéticos/exemplos.")
+        print("[ETL] ⚠️  Aguarde o reset diário da API ou aumente o plano.")
+        return []  # Retornar vazio em vez de dados sintéticos
+
+    all_fixtures_raw = []
+
+    # ── PASSO 1: Fixtures globais ──
+    print("[ETL] ═══ PASSO 1: Buscando fixtures globais ═══")
+    for date in config.ANALYSIS_DATES:
+        fixes = _fetch_fixtures(date)
+        all_fixtures_raw.extend(fixes)
+
+    if not all_fixtures_raw:
+        print("[ETL] ⚠️  Nenhum fixture encontrado!")
+        return []
+
+    print(f"[ETL] Total: {len(all_fixtures_raw)} fixtures | API calls: {_api_call_count}")
+
+    # ── PASSO 2: Standings para TODAS as ligas (season atual) ──
+    print("[ETL] ═══ PASSO 2: Buscando classificações (ALL ligas) ═══")
+
+    league_fixture_count = {}
+    league_info = {}
+    for f in all_fixtures_raw:
+        lid = f.get("league", {}).get("id", 0)
+        season = f.get("league", {}).get("season", 2025)
+        lname = f.get("league", {}).get("name", "?")
+        lcountry = f.get("league", {}).get("country", "?")
+        if lid:
+            league_fixture_count[lid] = league_fixture_count.get(lid, 0) + 1
+            league_info[lid] = (lname, lcountry, season)
+
+    sorted_leagues = sorted(league_fixture_count.items(), key=lambda x: x[1], reverse=True)
+    max_leagues = min(len(sorted_leagues), config.MAX_STANDINGS_LEAGUES)
+
+    print(f"  {len(sorted_leagues)} ligas únicas | Buscando top {max_leagues}")
+
+    standings_cache = {}
+    for lid, count in sorted_leagues[:max_leagues]:
+        if _api_call_count >= API_BUDGET:
+            print(f"  ⚠️  Budget atingido ({_api_call_count}/{API_BUDGET})")
+            break
+        lname, lcountry, season = league_info.get(lid, ("?", "?", 2025))
+        standings = _fetch_standings(lid, season)
+        if standings:
+            standings_cache[lid] = standings
+            print(f"    ✅ {lname} ({lcountry}): {len(standings)} times [season {season}] | {count} fixtures")
+
+    print(f"  Standings: {len(standings_cache)} ligas | API calls: {_api_call_count}")
+
+    # ── PASSO 3: Odds REAIS para todos os fixtures ──
+    print("[ETL] ═══ PASSO 3: Buscando ODDS REAIS de mercado ═══")
+    odds_cache = {}
+    fixture_ids = [f.get("fixture", {}).get("id", 0) for f in all_fixtures_raw if f.get("fixture", {}).get("id")]
+    max_odds = min(len(fixture_ids), config.MAX_ODDS_FIXTURES, API_BUDGET - _api_call_count - 50)
+
+    print(f"  Buscando odds para {max_odds} de {len(fixture_ids)} fixtures...")
+    odds_found = 0
+    for i, fid in enumerate(fixture_ids[:max_odds]):
+        if _api_call_count >= API_BUDGET:
+            break
+        oraw = _fetch_odds_for_fixture(fid)
+        if oraw:
+            odds_cache[fid] = oraw
+            odds_found += 1
+        if (i + 1) % 50 == 0:
+            print(f"    Progresso: {i+1}/{max_odds} | Odds encontradas: {odds_found}")
+
+    print(f"  Odds obtidas: {odds_found} fixtures | API calls: {_api_call_count}")
+
+    # ── PASSO 4: Lesões REAIS ──
+    print("[ETL] ═══ PASSO 4: Buscando LESÕES REAIS ═══")
+    injuries_cache = {}
+    max_injuries = min(len(fixture_ids), config.MAX_INJURIES_FIXTURES, API_BUDGET - _api_call_count - 10)
+
+    print(f"  Buscando lesões para {max_injuries} fixtures...")
+    injuries_found = 0
+    for i, fid in enumerate(fixture_ids[:max_injuries]):
+        if _api_call_count >= API_BUDGET:
+            break
+        inj_raw = _fetch_injuries_for_fixture(fid)
+        if inj_raw:
+            injuries_cache[fid] = inj_raw
+            injuries_found += 1
+
+    print(f"  Lesões: {injuries_found} fixtures com dados | API calls: {_api_call_count}")
+
+    # ── PASSO 5: Converter em MatchAnalysis ──
+    print("[ETL] ═══ PASSO 5: Convertendo dados em MatchAnalysis ═══")
+    all_matches = []
+    for fix_raw in all_fixtures_raw:
+        match = _parse_fixture_to_match(fix_raw, standings_cache, odds_cache, injuries_cache)
+        if match:
+            all_matches.append(match)
+
+    # Para partidas SEM odds reais, gerar estimadas
+    for match in all_matches:
+        if match.odds.bookmaker == "N/D":
+            _generate_estimated_odds(match)
+
+    print(f"  {len(all_matches)} partidas convertidas")
+
+    # ── PASSO 6: Clima real (OpenWeatherMap — API separada) ──
+    if config.OPENWEATHER_KEY:
+        print("[ETL] ═══ PASSO 6: Buscando clima real (OpenWeatherMap) ═══")
+        weather_cache = {}
+        calls = 0
+        max_weather = min(len(all_matches), 100)
+        for match in all_matches:
+            if calls >= max_weather:
+                break
+            city = match.venue_name
+            if not city or city == "N/D":
+                continue
+            country = match.league_country
+            cc = COUNTRY_CODES.get(country, "")
+            ck = f"{city}_{cc}"
+            if ck not in weather_cache:
+                w = _fetch_weather_by_city(city, cc)
+                weather_cache[ck] = w
+                calls += 1
+                time.sleep(0.1)
+            match.weather = weather_cache[ck]
+            if weather_cache[ck].description != "N/D":
+                match.has_real_weather = True
+                match.data_quality_score = min(1.0, match.data_quality_score + 0.10)
+        print(f"  Clima: {len(weather_cache)} locais")
+    else:
+        print("[ETL] ⚠️  OpenWeather não configurada")
+
+    # ── RESUMO FINAL ──
+    n_leagues = len(set(m.league_name for m in all_matches))
+    n_standings = sum(1 for m in all_matches if m.home_team.league_position > 0)
+    n_real_odds = sum(1 for m in all_matches if m.odds.bookmaker not in ("N/D", "Modelo (Estimado)"))
+    n_injuries = sum(1 for m in all_matches if m.injuries_home or m.injuries_away)
+
+    print(f"\n[ETL] ═══════════════════════════════════════")
+    print(f"[ETL]   INGESTÃO CONCLUÍDA — PLANO {plan_name.upper()}")
+    print(f"[ETL] ═══════════════════════════════════════")
+    print(f"[ETL] API-Football calls: {_api_call_count} de {api_available}")
+    print(f"[ETL] Partidas: {len(all_matches)} | Ligas: {n_leagues}")
+    print(f"[ETL] Com standings: {n_standings}")
+    print(f"[ETL] Com odds REAIS: {n_real_odds}")
+    print(f"[ETL] Com lesões: {n_injuries}")
+    print(f"[ETL] ═══════════════════════════════════════")
+
+    return all_matches
+
+
+def _generate_estimated_odds(match: MatchAnalysis):
+    """Gera odds estimadas quando não há dados de mercado reais."""
+    from math import exp, factorial
+
+    # Estimar xG a partir da força dos times
+    home_atk = match.home_team.attack_strength
+    home_def = match.home_team.defense_strength
+    away_atk = match.away_team.attack_strength
+    away_def = match.away_team.defense_strength
+
+    # xG estimado
+    home_xg = max(0.4, home_atk * away_def * 1.15)
+    away_xg = max(0.3, away_atk * home_def * 0.85)
+
+    max_g = 6
+    def poisson_pmf(k, lam):
+        return (lam ** k) * exp(-lam) / factorial(k)
+
+    p_home = p_draw = p_away = 0.0
+    p_over25 = 0.0
+    p_btts = 0.0
+
+    for i in range(max_g):
+        for j in range(max_g):
+            p = poisson_pmf(i, home_xg) * poisson_pmf(j, away_xg)
+            if i > j:
+                p_home += p
+            elif i == j:
+                p_draw += p
+            else:
+                p_away += p
+            if i + j > 2:
+                p_over25 += p
+            if i > 0 and j > 0:
+                p_btts += p
+
+    vig = 1.06  # margem típica
+    def to_odd(p):
+        return round(max(1.08, 1.0 / (max(0.01, p) * vig)), 2)
+
+    match.odds = MarketOdds(
+        home_win=to_odd(p_home),
+        draw=to_odd(p_draw),
+        away_win=to_odd(p_away),
+        over_25=to_odd(p_over25),
+        under_25=to_odd(1 - p_over25),
+        btts_yes=to_odd(p_btts),
+        btts_no=to_odd(1 - p_btts),
+        bookmaker="Modelo (Estimado)",
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+#  GERADOR SINTÉTICO (FALLBACK) - mantido para modo demo
+# ═══════════════════════════════════════════════════════════════
+
+LEAGUES_DB = [
+    {"id": 39, "name": "Premier League", "country": "Inglaterra",
+     "teams": [
+         ("Arsenal", 1.85, 0.85), ("Manchester City", 2.05, 0.75),
+         ("Liverpool", 1.95, 0.80), ("Chelsea", 1.55, 1.05),
+         ("Manchester United", 1.50, 1.10), ("Tottenham", 1.65, 1.00),
+         ("Newcastle", 1.60, 0.90), ("Aston Villa", 1.50, 1.00),
+         ("Brighton", 1.45, 0.95), ("West Ham", 1.35, 1.10),
+     ], "avg_goals": 2.85, "venue_lat": 51.5, "venue_lon": -0.1},
+    {"id": 140, "name": "La Liga", "country": "Espanha",
+     "teams": [
+         ("Real Madrid", 2.10, 0.70), ("Barcelona", 2.15, 0.75),
+         ("Atletico Madrid", 1.55, 0.80), ("Athletic Bilbao", 1.40, 0.90),
+         ("Real Sociedad", 1.45, 0.95), ("Villarreal", 1.50, 1.00),
+         ("Betis", 1.35, 1.05), ("Girona", 1.40, 1.10),
+         ("Sevilla", 1.30, 1.10), ("Mallorca", 1.15, 1.05),
+     ], "avg_goals": 2.55, "venue_lat": 40.4, "venue_lon": -3.7},
+]
+
+
+def _generate_form(attack: float, defense: float) -> list[str]:
+    strength = attack - defense
+    p_win = min(0.65, max(0.15, 0.35 + strength * 0.15))
+    p_draw = 0.25
+    form = []
+    for _ in range(10):
+        r = random.random()
+        if r < p_win:
+            form.append("W")
+        elif r < p_win + p_draw:
+            form.append("D")
+        else:
+            form.append("L")
+    return form
+
+
+def generate_synthetic_fixtures(date: str) -> list[MatchAnalysis]:
+    """Fallback: gera fixtures sintéticas."""
+    from math import exp, factorial
+    random.seed(hash(date) % 2**32)
+    np.random.seed(hash(date) % 2**32)
+    matches = []
+    mid = 1000
+    for league in LEAGUES_DB:
+        teams = league["teams"]
+        n = len(teams)
+        ng = random.randint(2, min(4, n // 2))
+        idx = list(range(n))
+        random.shuffle(idx)
+        for g in range(ng):
+            hi, ai = idx[g*2], idx[g*2+1]
+            hd, ad = teams[hi], teams[ai]
+            form_h = _generate_form(hd[1], hd[2])
+            form_a = _generate_form(ad[1], ad[2])
+            fp_h = _form_points(form_h)
+            fp_a = _form_points(form_a)
+            hs = TeamStats(team_id=hash(hd[0])%100000, team_name=hd[0],
+                          attack_strength=hd[1], defense_strength=hd[2],
+                          home_goals_scored_avg=round(hd[1]*1.4,2), home_goals_conceded_avg=round(hd[2]*1.0,2),
+                          away_goals_scored_avg=round(hd[1]*1.0,2), away_goals_conceded_avg=round(hd[2]*1.3,2),
+                          shots_on_target_avg=round(hd[1]*3.5,1), shots_blocked_avg=round(hd[2]*3,1),
+                          corners_avg=round(hd[1]*3.8,1), cards_avg=round(1.5+hd[2]*0.8,1),
+                          fouls_avg=round(10+hd[2]*3,1), possession_final_third=round(hd[1]*25,1),
+                          form_last10=form_h, form_points=fp_h,
+                          league_position=hi+1, league_points=int(fp_h*60),
+                          games_played=25, games_remaining=13,
+                          points_to_title=max(0,60-int(fp_h*60)), points_to_relegation=max(0,int(fp_h*60)-25))
+            aws = TeamStats(team_id=hash(ad[0])%100000, team_name=ad[0],
+                          attack_strength=ad[1], defense_strength=ad[2],
+                          home_goals_scored_avg=round(ad[1]*1.4,2), home_goals_conceded_avg=round(ad[2]*1.0,2),
+                          away_goals_scored_avg=round(ad[1]*1.0,2), away_goals_conceded_avg=round(ad[2]*1.3,2),
+                          shots_on_target_avg=round(ad[1]*3.5,1), shots_blocked_avg=round(ad[2]*3,1),
+                          corners_avg=round(ad[1]*3.8,1), cards_avg=round(1.5+ad[2]*0.8,1),
+                          fouls_avg=round(10+ad[2]*3,1), possession_final_third=round(ad[1]*25,1),
+                          form_last10=form_a, form_points=fp_a,
+                          league_position=ai+1, league_points=int(fp_a*60),
+                          games_played=25, games_remaining=13,
+                          points_to_title=max(0,60-int(fp_a*60)), points_to_relegation=max(0,int(fp_a*60)-25))
+            matches.append(MatchAnalysis(
+                match_id=mid, league_id=league["id"], league_name=league["name"],
+                league_country=league["country"], match_date=date,
+                match_time=random.choice(["15:00","17:00","20:00","21:00"]),
+                venue_name=f"Estádio {hd[0]}", home_team=hs, away_team=aws,
+                odds=MarketOdds(home_win=round(1/max(.1,fp_h)*1.8,2), draw=3.3,
+                               away_win=round(1/max(.1,fp_a)*1.8,2)),
+            ))
+            mid += 1
+    return matches
+
+
+# ═══════════════════════════════════════════════════════
+# INTERFACE PÚBLICA
+# ═══════════════════════════════════════════════════════
+
+def ingest_all_fixtures() -> list[MatchAnalysis]:
+    """
+    Pipeline principal de ingestão de dados.
+    Escolhe automaticamente entre API real e dados sintéticos.
+    """
+    if config.USE_MOCK_DATA:
+        print("[ETL] Modo: DADOS SINTÉTICOS (Demo)")
+        all_matches = []
+        for date in config.ANALYSIS_DATES:
+            print(f"[ETL] Gerando dados sintéticos para {date}...")
+            matches = generate_synthetic_fixtures(date)
+            all_matches.extend(matches)
+            print(f"[ETL] {len(matches)} jogos gerados para {date}")
+        print(f"[ETL] Total: {len(all_matches)} jogos")
+        return all_matches
+    else:
+        print("[ETL] Modo: API REAL (Produção)")
+        print(f"[ETL] API Key: {config.API_FOOTBALL_KEY[:8]}...{config.API_FOOTBALL_KEY[-4:]}")
+        print(f"[ETL] Weather: {'Configurado' if config.OPENWEATHER_KEY else 'Não configurado'}")
+        return _ingest_real_data()
+
+
+if __name__ == "__main__":
+    fixtures = ingest_all_fixtures()
+    print(f"\n{'='*60}")
+    print(f"  Resumo: {len(fixtures)} partidas carregadas")
+    print(f"  Ligas: {len(set(m.league_name for m in fixtures))}")
+    print(f"{'='*60}")
+    for m in fixtures[:10]:
+        print(f"  {m.league_name}: {m.home_team.team_name} vs {m.away_team.team_name} "
+              f"| Odds: {m.odds.home_win}/{m.odds.draw}/{m.odds.away_win}"
+              f"| Pos: {m.home_team.league_position} vs {m.away_team.league_position}")

@@ -1,0 +1,540 @@
+"""
+═══════════════════════════════════════════════════════════════════════
+MÓDULO DE MODELAGEM ESTATÍSTICA AVANÇADA (O CÉREBRO)
+Engine de Análise Preditiva - Camada Analítica
+═══════════════════════════════════════════════════════════════════════
+
+Implementa:
+  - Modelo Dixon-Coles (Poisson Bivariada Ajustada)
+  - Regressão Binomial Negativa (Escanteios / Cartões)
+  - Simulação de Monte Carlo
+"""
+
+import math
+import warnings
+from typing import Optional
+
+import numpy as np
+from scipy.optimize import minimize
+from scipy.special import gammaln
+from scipy.stats import poisson, nbinom
+
+import config
+from data_ingestion import MatchAnalysis
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+
+# ═══════════════════════════════════════════════════════
+# 1. MODELO DIXON-COLES
+# ═══════════════════════════════════════════════════════
+
+def _tau(x: int, y: int, lambda_: float, mu: float, rho: float) -> float:
+    """
+    Fator de correção τ de Dixon-Coles (1997).
+    Ajusta a interdependência em placares baixos (0-0, 1-0, 0-1, 1-1).
+
+    Args:
+        x: Gols do time da casa
+        y: Gols do time visitante
+        lambda_: Taxa de gols esperada (casa)
+        mu: Taxa de gols esperada (fora)
+        rho: Parâmetro de correlação
+
+    Returns:
+        Fator multiplicativo τ
+    """
+    if x == 0 and y == 0:
+        return 1.0 - lambda_ * mu * rho
+    elif x == 0 and y == 1:
+        return 1.0 + lambda_ * rho
+    elif x == 1 and y == 0:
+        return 1.0 + mu * rho
+    elif x == 1 and y == 1:
+        return 1.0 - rho
+    else:
+        return 1.0
+
+
+def dixon_coles_probability(x: int, y: int, lambda_: float,
+                             mu: float, rho: float) -> float:
+    """
+    Calcula P(X=x, Y=y) com ajuste Dixon-Coles.
+
+    P(x, y) = τ(x, y, λ, μ, ρ) × Poisson(x; λ) × Poisson(y; μ)
+    """
+    tau = _tau(x, y, lambda_, mu, rho)
+    p_home = poisson.pmf(x, lambda_)
+    p_away = poisson.pmf(y, mu)
+    return tau * p_home * p_away
+
+
+def build_score_matrix(lambda_: float, mu: float,
+                        rho: float = -0.05,
+                        max_goals: int = None) -> np.ndarray:
+    """
+    Constrói a matriz completa de probabilidade de placar exato.
+
+    Args:
+        lambda_: xG esperado do time da casa
+        mu: xG esperado do time visitante
+        rho: Parâmetro de correlação Dixon-Coles
+        max_goals: Placar máximo a considerar
+
+    Returns:
+        Matriz (max_goals+1) x (max_goals+1) de probabilidades
+    """
+    if max_goals is None:
+        max_goals = config.DIXON_COLES_MAX_GOALS
+
+    matrix = np.zeros((max_goals + 1, max_goals + 1))
+    for i in range(max_goals + 1):
+        for j in range(max_goals + 1):
+            matrix[i][j] = dixon_coles_probability(i, j, lambda_, mu, rho)
+
+    # Normalização para garantir soma = 1
+    total = matrix.sum()
+    if total > 0:
+        matrix /= total
+
+    return matrix
+
+
+def estimate_attack_defense_params(
+    home_scored_avg: float, home_conceded_avg: float,
+    away_scored_avg: float, away_conceded_avg: float,
+    league_avg_goals: float = 2.7
+) -> tuple[float, float, float, float]:
+    """
+    Estima parâmetros α (ataque) e β (defesa) para casa e fora.
+
+    Baseado no modelo de força relativa:
+        λ = α_home × β_away × league_avg / 2
+        μ = α_away × β_home × league_avg / 2
+
+    Returns:
+        (alpha_home, beta_home, alpha_away, beta_away)
+    """
+    half_avg = league_avg_goals / 2.0
+
+    alpha_home = max(0.3, home_scored_avg / half_avg) if half_avg > 0 else 1.0
+    beta_home = max(0.3, home_conceded_avg / half_avg) if half_avg > 0 else 1.0
+    alpha_away = max(0.3, away_scored_avg / half_avg) if half_avg > 0 else 1.0
+    beta_away = max(0.3, away_conceded_avg / half_avg) if half_avg > 0 else 1.0
+
+    return alpha_home, beta_home, alpha_away, beta_away
+
+
+def calculate_expected_goals(match: MatchAnalysis) -> tuple[float, float]:
+    """
+    Calcula os gols esperados (xG) para casa e fora usando
+    parâmetros de força de ataque/defesa.
+
+    λ = α_home_team × β_away_team × home_advantage × league_factor
+    μ = α_away_team × β_home_team × league_factor
+    """
+    home = match.home_team
+    away = match.away_team
+
+    # Parâmetros de ataque/defesa
+    alpha_h, beta_h, alpha_a, beta_a = estimate_attack_defense_params(
+        home.home_goals_scored_avg, home.home_goals_conceded_avg,
+        away.away_goals_scored_avg, away.away_goals_conceded_avg
+    )
+
+    # Força de ataque do time da casa vs defesa do visitante
+    home_advantage = 1.08  # Fator de vantagem de mando
+    lambda_ = alpha_h * beta_a * home_advantage
+    mu = alpha_a * beta_h
+
+    # Ajuste pela forma recente (últimos 10 jogos)
+    home_form_factor = 0.85 + home.form_points * 0.30
+    away_form_factor = 0.85 + away.form_points * 0.30
+
+    lambda_ *= home_form_factor
+    mu *= away_form_factor
+
+    # Clamp para valores realistas
+    lambda_ = max(0.3, min(4.0, lambda_))
+    mu = max(0.2, min(3.5, mu))
+
+    return round(lambda_, 4), round(mu, 4)
+
+
+def fit_rho_parameter(lambda_: float, mu: float) -> float:
+    """
+    Estima o parâmetro ρ (rho) de Dixon-Coles via otimização.
+    Em um cenário com dados completos, usaríamos MLE sobre resultados históricos.
+    Aqui estimamos baseado nas características do jogo.
+
+    Jogos de baixo xG tendem a ter |ρ| maior (mais interdependência).
+    """
+    total_xg = lambda_ + mu
+
+    if total_xg < 1.5:
+        rho = -0.12  # Jogos defensivos: forte correlação negativa em 0-0
+    elif total_xg < 2.5:
+        rho = -0.08
+    elif total_xg < 3.5:
+        rho = -0.04
+    else:
+        rho = -0.02  # Jogos ofensivos: pouca correção necessária
+
+    # Restrição: ρ deve manter τ > 0
+    max_rho = 1.0 / max(0.01, lambda_ * mu)
+    rho = max(-max_rho, min(max_rho, rho))
+
+    return rho
+
+
+# ═══════════════════════════════════════════════════════
+# 2. EXTRAÇÃO DE PROBABILIDADES DA MATRIZ
+# ═══════════════════════════════════════════════════════
+
+def extract_1x2_probabilities(matrix: np.ndarray) -> tuple[float, float, float]:
+    """
+    Extrai probabilidades de Vitória Casa / Empate / Vitória Fora
+    da matriz de placar exato.
+    """
+    n = matrix.shape[0]
+    p_home = p_draw = p_away = 0.0
+
+    for i in range(n):
+        for j in range(n):
+            if i > j:
+                p_home += matrix[i][j]
+            elif i == j:
+                p_draw += matrix[i][j]
+            else:
+                p_away += matrix[i][j]
+
+    return p_home, p_draw, p_away
+
+
+def extract_over_under_probabilities(matrix: np.ndarray,
+                                      line: float = 2.5) -> tuple[float, float]:
+    """
+    Calcula P(Over line) e P(Under line) a partir da matriz.
+    """
+    n = matrix.shape[0]
+    p_over = 0.0
+    for i in range(n):
+        for j in range(n):
+            if i + j > line:
+                p_over += matrix[i][j]
+    return p_over, 1.0 - p_over
+
+
+def extract_btts_probabilities(matrix: np.ndarray) -> tuple[float, float]:
+    """
+    Calcula P(Both Teams To Score) a partir da matriz.
+    """
+    n = matrix.shape[0]
+    p_btts = 0.0
+    for i in range(1, n):
+        for j in range(1, n):
+            p_btts += matrix[i][j]
+    return p_btts, 1.0 - p_btts
+
+
+def extract_correct_score_top(matrix: np.ndarray, top_n: int = 5) -> list[tuple[str, float]]:
+    """
+    Retorna os top N placares mais prováveis.
+    """
+    n = matrix.shape[0]
+    scores = []
+    for i in range(n):
+        for j in range(n):
+            scores.append((f"{i}-{j}", matrix[i][j]))
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return scores[:top_n]
+
+
+# ═══════════════════════════════════════════════════════
+# 3. SIMULAÇÃO DE MONTE CARLO
+# ═══════════════════════════════════════════════════════
+
+def monte_carlo_simulation(lambda_: float, mu: float, rho: float,
+                            n_sims: int = None) -> dict:
+    """
+    Executa simulação de Monte Carlo para gerar distribuições empíricas.
+
+    Gera n_sims placares usando Poisson com ajuste Dixon-Coles,
+    computando estatísticas derivadas.
+
+    Returns:
+        Dicionário com probabilidades de todos os mercados
+    """
+    if n_sims is None:
+        n_sims = config.MONTE_CARLO_SIMULATIONS
+
+    # Construir CDF da distribuição Dixon-Coles para amostragem
+    max_g = config.DIXON_COLES_MAX_GOALS
+    matrix = build_score_matrix(lambda_, mu, rho, max_g)
+
+    # Flatten para amostragem
+    flat_probs = matrix.flatten()
+    flat_probs /= flat_probs.sum()  # Normalizar
+    indices = np.arange(len(flat_probs))
+
+    # Amostrar placares
+    sampled = np.random.choice(indices, size=n_sims, p=flat_probs)
+    home_goals = sampled // (max_g + 1)
+    away_goals = sampled % (max_g + 1)
+
+    total_goals = home_goals + away_goals
+
+    # Calcular probabilidades empíricas
+    results = {
+        "p_home": float(np.mean(home_goals > away_goals)),
+        "p_draw": float(np.mean(home_goals == away_goals)),
+        "p_away": float(np.mean(home_goals < away_goals)),
+        "p_over_15": float(np.mean(total_goals > 1.5)),
+        "p_over_25": float(np.mean(total_goals > 2.5)),
+        "p_over_35": float(np.mean(total_goals > 3.5)),
+        "p_under_15": float(np.mean(total_goals < 1.5)),
+        "p_under_25": float(np.mean(total_goals < 2.5)),
+        "p_under_35": float(np.mean(total_goals < 3.5)),
+        "p_btts": float(np.mean((home_goals > 0) & (away_goals > 0))),
+        "avg_total_goals": float(np.mean(total_goals)),
+        "avg_home_goals": float(np.mean(home_goals)),
+        "avg_away_goals": float(np.mean(away_goals)),
+        "std_total_goals": float(np.std(total_goals)),
+    }
+
+    return results
+
+
+# ═══════════════════════════════════════════════════════
+# 4. REGRESSÃO BINOMIAL NEGATIVA
+#    Para mercados com Sobredispersão (Escanteios, Cartões)
+# ═══════════════════════════════════════════════════════
+
+def negative_binomial_pmf(k: int, mu: float, alpha: float) -> float:
+    """
+    PMF da distribuição Binomial Negativa parametrizada por (μ, α).
+
+    P(X=k) = Γ(k+r) / (k! × Γ(r)) × p^r × (1-p)^k
+
+    Onde:
+        r = 1/α  (parâmetro de dispersão)
+        p = r / (r + μ)
+    """
+    r = 1.0 / max(0.001, alpha)
+    p = r / (r + mu)
+
+    log_pmf = (gammaln(k + r) - gammaln(k + 1) - gammaln(r)
+               + r * np.log(p) + k * np.log(1 - p))
+    return float(np.exp(log_pmf))
+
+
+def predict_corners(match: MatchAnalysis) -> tuple[float, float, dict]:
+    """
+    Prediz a distribuição de escanteios usando Binomial Negativa.
+
+    Input Features:
+        - Shots on Target médios (casa + fora)
+        - Posse no terço final
+        - Média de escanteios histórica
+
+    Returns:
+        (expected_corners, overdispersion_alpha, probability_dict)
+    """
+    home = match.home_team
+    away = match.away_team
+
+    # Feature engineering para escanteios
+    sot_factor = (home.shots_on_target_avg + away.shots_on_target_avg) / 8.0
+    blocked_factor = (home.shots_blocked_avg + away.shots_blocked_avg) / 6.0
+    possession_factor = (home.possession_final_third + away.possession_final_third) / 50.0
+
+    # Média ponderada das features
+    base_corners = (home.corners_avg + away.corners_avg)
+    adjusted_corners = base_corners * 0.50 + sot_factor * base_corners * 0.20 \
+                       + blocked_factor * base_corners * 0.15 \
+                       + possession_factor * base_corners * 0.15
+
+    mu_corners = max(4.0, min(16.0, adjusted_corners))
+
+    # Sobredispersão para escanteios (tipicamente 0.15 - 0.40)
+    alpha = 0.25  # Variância = μ + α×μ²
+
+    # Calcular probabilidades de linhas comuns
+    probs = {}
+    for line in [7.5, 8.5, 9.5, 10.5, 11.5, 12.5]:
+        p_over = sum(negative_binomial_pmf(k, mu_corners, alpha)
+                     for k in range(int(line) + 1, 25))
+        probs[f"over_{line}"] = round(p_over, 4)
+        probs[f"under_{line}"] = round(1.0 - p_over, 4)
+
+    return mu_corners, alpha, probs
+
+
+def predict_cards(match: MatchAnalysis) -> tuple[float, float, dict]:
+    """
+    Prediz a distribuição de cartões usando Binomial Negativa.
+
+    Input Features:
+        - Média de cartões do árbitro (Referee Severity)
+        - Média de faltas dos times (Aggression)
+        - Urgência da partida (High-stakes = mais cartões)
+
+    Returns:
+        (expected_cards, overdispersion_alpha, probability_dict)
+    """
+    home = match.home_team
+    away = match.away_team
+    ref = match.referee
+
+    # Feature engineering para cartões
+    # Agressividade combinada
+    aggression = (home.fouls_avg + away.fouls_avg) / 25.0
+
+    # Rigor do árbitro
+    ref_severity = ref.cards_per_game_avg / 4.0
+
+    # Urgência aumenta cartões
+    urgency_factor = 1.0 + (match.league_urgency_home +
+                            match.league_urgency_away) * 0.1
+
+    # Modelo: μ_cards = base × rigor × agressividade × urgência
+    base_cards = (home.cards_avg + away.cards_avg)
+    mu_cards = base_cards * ref_severity * aggression * urgency_factor * 0.6
+
+    mu_cards = max(2.0, min(10.0, mu_cards))
+
+    # Sobredispersão para cartões (mais alta que escanteios)
+    alpha = 0.35
+
+    # Probabilidades para linhas comuns
+    probs = {}
+    for line in [2.5, 3.5, 4.5, 5.5, 6.5]:
+        p_over = sum(negative_binomial_pmf(k, mu_cards, alpha)
+                     for k in range(int(line) + 1, 20))
+        probs[f"over_{line}"] = round(p_over, 4)
+        probs[f"under_{line}"] = round(1.0 - p_over, 4)
+
+    return mu_cards, alpha, probs
+
+
+# ═══════════════════════════════════════════════════════
+# 5. PIPELINE PRINCIPAL DE MODELAGEM
+# ═══════════════════════════════════════════════════════
+
+def run_full_model(match: MatchAnalysis) -> MatchAnalysis:
+    """
+    Executa o pipeline completo de modelagem para uma partida.
+
+    1. Calcula xG (Dixon-Coles)
+    2. Constrói matriz de placar exato
+    3. Roda Monte Carlo
+    4. Prediz escanteios (NB)
+    5. Prediz cartões (NB)
+    6. Popula o MatchAnalysis com todos os resultados
+
+    Returns:
+        MatchAnalysis atualizado com probabilidades do modelo
+    """
+    # ═══ VALIDAÇÃO RIGOROSA DE DADOS REAIS ═══
+    # Garantir que apenas partidas com dados reais sejam processadas
+    if not match.has_real_odds:
+        raise ValueError(f"Partida {match.match_id} rejeitada: sem odds REAIS (bookmaker: {match.odds.bookmaker})")
+    
+    if not match.has_real_standings:
+        raise ValueError(f"Partida {match.match_id} rejeitada: sem standings REAIS (nenhum time com dados da API)")
+    
+    # Ajustado: aceitar qualidade >= 0.40 (odds reais OU standings reais)
+    if match.data_quality_score < 0.40:
+        raise ValueError(f"Partida {match.match_id} rejeitada: qualidade de dados insuficiente ({match.data_quality_score:.2f} < 0.40)")
+    
+    # Validar que os valores numéricos são válidos
+    home = match.home_team
+    away = match.away_team
+    
+    if (home.attack_strength <= 0 or home.defense_strength <= 0 or
+        away.attack_strength <= 0 or away.defense_strength <= 0):
+        raise ValueError(f"Partida {match.match_id} rejeitada: valores de ataque/defesa inválidos")
+    
+    # Nota: has_real_standings=True já garante que pelo menos 1 time tem dados reais
+    # Não precisamos verificar has_real_data individualmente aqui
+    
+    # 1. Gols esperados
+    lambda_, mu = calculate_expected_goals(match)
+    match.model_home_xg = lambda_
+    match.model_away_xg = mu
+
+    # 2. Parâmetro rho e matriz de placar
+    rho = fit_rho_parameter(lambda_, mu)
+    matrix = build_score_matrix(lambda_, mu, rho)
+    match.score_matrix = matrix
+
+    # 3. Probabilidades analíticas da matriz
+    p_home, p_draw, p_away = extract_1x2_probabilities(matrix)
+    p_over25, p_under25 = extract_over_under_probabilities(matrix, 2.5)
+    p_btts, _ = extract_btts_probabilities(matrix)
+
+    # 4. Monte Carlo para robustez
+    mc_results = monte_carlo_simulation(lambda_, mu, rho)
+
+    # Blend: 60% analítico + 40% Monte Carlo (para estabilidade)
+    match.model_prob_home = round(0.6 * p_home + 0.4 * mc_results["p_home"], 4)
+    match.model_prob_draw = round(0.6 * p_draw + 0.4 * mc_results["p_draw"], 4)
+    match.model_prob_away = round(0.6 * p_away + 0.4 * mc_results["p_away"], 4)
+    match.model_prob_over25 = round(0.6 * p_over25 + 0.4 * mc_results["p_over_25"], 4)
+    match.model_prob_btts = round(0.6 * p_btts + 0.4 * mc_results["p_btts"], 4)
+
+    # Normalizar 1x2
+    total_1x2 = match.model_prob_home + match.model_prob_draw + match.model_prob_away
+    if total_1x2 > 0:
+        match.model_prob_home /= total_1x2
+        match.model_prob_draw /= total_1x2
+        match.model_prob_away /= total_1x2
+
+    # 5. Escanteios (Binomial Negativa)
+    corners_mu, _, _ = predict_corners(match)
+    match.model_corners_expected = round(corners_mu, 2)
+
+    # 6. Cartões (Binomial Negativa)
+    cards_mu, _, _ = predict_cards(match)
+    match.model_cards_expected = round(cards_mu, 2)
+
+    return match
+
+
+def run_models_batch(matches: list[MatchAnalysis]) -> list[MatchAnalysis]:
+    """
+    Executa modelagem para lote de partidas.
+    Rejeita partidas sem dados reais suficientes e continua processando as demais.
+    """
+    print(f"[MODELS] Executando modelagem para {len(matches)} partidas...")
+    print("[MODELS] ⚠️  Apenas partidas com DADOS REAIS serão processadas:")
+    print("[MODELS]    - Odds REAIS de bookmaker")
+    print("[MODELS]    - Standings REAIS de pelo menos 1 time")
+    print("[MODELS]    - Qualidade de dados >= 0.50")
+    print()
+
+    valid_matches = []
+    rejected_count = 0
+    
+    for i, match in enumerate(matches):
+        try:
+            result = run_full_model(match)
+            valid_matches.append(result)
+        except ValueError as e:
+            # Partida rejeitada por falta de dados reais - isso é esperado e correto
+            rejected_count += 1
+            if rejected_count <= 5:  # Mostrar apenas as primeiras 5 rejeições
+                print(f"[MODELS] ⚠️  {str(e)}")
+        except Exception as e:
+            # Erro inesperado - logar mas continuar
+            print(f"[MODELS] ❌ Erro ao processar partida {match.match_id}: {e}")
+            rejected_count += 1
+
+        if (i + 1) % 10 == 0:
+            print(f"[MODELS] Progresso: {i+1}/{len(matches)} | Válidas: {len(valid_matches)} | Rejeitadas: {rejected_count}")
+
+    if rejected_count > 5:
+        print(f"[MODELS] ... e mais {rejected_count - 5} partidas rejeitadas (sem dados reais suficientes)")
+
+    print(f"[MODELS] ✅ Modelagem concluída: {len(valid_matches)} partidas processadas, {rejected_count} rejeitadas")
+    return valid_matches

@@ -1,0 +1,41 @@
+# ═══════════════════════════════════════════════════════
+# ApostasIA - .gitignore
+# ═══════════════════════════════════════════════════════
+
+# Variáveis de ambiente (CHAVES DE API - NUNCA SUBIR)
+.env
+.env.*
+
+# Cache local (dados temporários)
+_cache_data.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyo
+*.pyc
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log
+
+# Relatórios gerados (podem ser regenerados)
+DAILY_REPORT.md
