@@ -1336,11 +1336,6 @@ def _ingest_real_data() -> list[MatchAnalysis]:
         if match:
             all_matches.append(match)
 
-    # Para partidas SEM odds reais, gerar estimadas
-    for match in all_matches:
-        if match.odds.bookmaker == "N/D":
-            _generate_estimated_odds(match)
-
     print(f"  {len(all_matches)} partidas convertidas")
 
     # ── PASSO 6: Clima real (OpenWeatherMap — API separada) ──
@@ -2159,56 +2154,7 @@ def enrich_multi_bookmaker(match_id: int) -> dict:
     return result
 
 
-def _generate_estimated_odds(match: MatchAnalysis):
-    """Gera odds estimadas quando não há dados de mercado reais."""
-    from math import exp, factorial
-
-    # Estimar xG a partir da força dos times
-    home_atk = match.home_team.attack_strength
-    home_def = match.home_team.defense_strength
-    away_atk = match.away_team.attack_strength
-    away_def = match.away_team.defense_strength
-
-    # xG estimado
-    home_xg = max(0.4, home_atk * away_def * 1.15)
-    away_xg = max(0.3, away_atk * home_def * 0.85)
-
-    max_g = 6
-    def poisson_pmf(k, lam):
-        return (lam ** k) * exp(-lam) / factorial(k)
-
-    p_home = p_draw = p_away = 0.0
-    p_over25 = 0.0
-    p_btts = 0.0
-
-    for i in range(max_g):
-        for j in range(max_g):
-            p = poisson_pmf(i, home_xg) * poisson_pmf(j, away_xg)
-            if i > j:
-                p_home += p
-            elif i == j:
-                p_draw += p
-            else:
-                p_away += p
-            if i + j > 2:
-                p_over25 += p
-            if i > 0 and j > 0:
-                p_btts += p
-
-    vig = 1.06  # margem típica
-    def to_odd(p):
-        return round(max(1.08, 1.0 / (max(0.01, p) * vig)), 2)
-
-    match.odds = MarketOdds(
-        home_win=to_odd(p_home),
-        draw=to_odd(p_draw),
-        away_win=to_odd(p_away),
-        over_25=to_odd(p_over25),
-        under_25=to_odd(1 - p_over25),
-        btts_yes=to_odd(p_btts),
-        btts_no=to_odd(1 - p_btts),
-        bookmaker="Modelo (Estimado)",
-    )
+## _generate_estimated_odds REMOVIDA — sistema usa apenas odds reais de casas de apostas
 
 
 # ═══════════════════════════════════════════════════════════════

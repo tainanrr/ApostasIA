@@ -984,11 +984,6 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     all_markets_odds = getattr(match.odds, 'all_markets', {}) or {}
 
     # Mercados de finalizações — gerar oportunidades MESMO sem odds da API
-    # (bookmakers como Bet365 oferecem esses mercados, mas a API de odds não os inclui)
-    # NOTA: sot_1x2 e shots_1x2 TÊM odds reais (Bet365 via API) — NÃO são "modelo-only"
-    _SHOTS_MARKET_KEYS = ("shots_ou", "sot_ou", "home_shots_ou", "away_shots_ou",
-                          "home_sot_ou", "away_sot_ou")
-    # sot_1x2 e shots_1x2 NÃO estão aqui — eles usam odds REAIS da Bet365
 
     if model_probs:
         for market_key, market_cfg in _ALL_MARKETS.items():
@@ -1006,21 +1001,10 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 if model_p <= 0.005 or model_p >= 0.995:
                     continue
 
-                # Odd do mercado
+                # Odd do mercado — exigir odd REAL de bookmaker
                 market_o = market_odds_dict.get(sel_key, 0)
-
-                # Para mercados de finalizações sem odds da API:
-                # Gerar com FAIR ODD do modelo — user verifica no bookmaker real
-                is_shots_market = market_key in _SHOTS_MARKET_KEYS
                 if market_o <= 1.0:
-                    if is_shots_market and model_p > 0.05:
-                        # Fair odd do modelo (1/prob)
-                        fair_odd = round(1.0 / model_p, 2)
-                        market_o = fair_odd
-                        if market_o <= 1.02:
-                            continue
-                    else:
-                        continue
+                    continue
                 if not _is_odd_valid(market_o, market_label):
                     continue
                 if not _is_model_sane(model_p, total_xg, market_label):
@@ -1030,31 +1014,19 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 if edge >= config.MAX_EDGE_SANE:
                     continue
 
-                # Determinar se é mercado de finalizações sem odds da API
-                has_api_odds = bool(market_odds_dict.get(sel_key, 0) > 1.0)
-                is_model_only = is_shots_market and not has_api_odds
-
-                # Para mercados normais: exigir edge mínimo
-                # Para finalizações (modelo): mostrar SEMPRE (fair odds do modelo)
-                if not is_model_only and edge < config.MIN_EDGE_THRESHOLD:
+                # Exigir edge mínimo para todos os mercados
+                if edge < config.MIN_EDGE_THRESHOLD:
                     continue
 
                 fair_odd = round(1.0 / max(0.01, model_p), 2)
                 implied_p = 1.0 / market_o
-                kelly = fractional_kelly(model_p, market_o) if not is_model_only else 0.0
-                conf = classify_confidence(edge, model_p, weather_stable, fatigue_free) if not is_model_only else "MODELO"
+                kelly = fractional_kelly(model_p, market_o)
+                conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
 
-                # Para finalizações modelo: bookmaker indica "Fair Odds"
-                # Para mercados de outro bookmaker (ex: Bet365 shots): usar o bookmaker correto
+                # Identificar bookmaker correto (pode vir de _source para mercados especiais)
                 source_bk = market_odds_dict.get("_source", "")
-                if has_api_odds and source_bk:
-                    bk_name = source_bk  # Ex: "Bet365" para shots 1x2
-                elif has_api_odds:
-                    bk_name = match.odds.bookmaker
-                else:
-                    bk_name = "Fair Odds (modelo)"
-                # Para finalizações modelo: usar fair_odd como market_odd
-                display_odd = market_o if has_api_odds else fair_odd
+                bk_name = source_bk if source_bk else match.odds.bookmaker
+                display_odd = market_o
 
                 reasoning = generate_reasoning(match, f"{market_label} - {sel_label}", edge, model_p)
 

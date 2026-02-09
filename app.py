@@ -47,7 +47,6 @@ import config
 from data_ingestion import (
     ingest_all_fixtures, _check_api_plan, _api_call_count,
     MatchAnalysis, TeamStats, WeatherData, RefereeStats, MarketOdds,
-    get_cached_player_shots,
     _get_cached_response, _parse_odds_response,
 )
 from models import run_models_batch
@@ -542,102 +541,6 @@ def recalculate_engine():
     print("[RECALC] Escaneando oportunidades +EV...")
     opportunities = find_all_value(matches)
 
-    # ── 5. PLAYER SHOTS — Buscar dados de jogadores em CACHE (0 API calls) ──
-    print("[RECALC] Buscando dados de jogadores em cache (finalizacoes)...")
-    teams_checked = set()
-    player_opps_count = 0
-    for match in matches:
-        for team_side, team in [("Casa", match.home_team), ("Fora", match.away_team)]:
-            if team.team_id in teams_checked:
-                continue
-            teams_checked.add(team.team_id)
-            player_data = get_cached_player_shots(team.team_id)
-            if not player_data:
-                continue
-
-            for p in player_data[:5]:  # Top 5 jogadores por time
-                # Gerar oportunidades de finalizações por jogador
-                for line_key, v in p.get("shots_lines", {}).items():
-                    if v["pct"] < 40 or v["sample"] < 3:
-                        continue
-                    fair_odd = v["fair_odd"]
-                    if fair_odd <= 1.02 or fair_odd > 15.0:
-                        continue
-                    model_p = 1.0 / fair_odd
-                    opportunities.append(ValueOpportunity(
-                        match_id=match.match_id,
-                        league_name=match.league_name,
-                        league_country=match.league_country,
-                        match_date=match.match_date,
-                        match_time=match.match_time,
-                        home_team=match.home_team.team_name,
-                        away_team=match.away_team.team_name,
-                        market="Fin. Jogador",
-                        selection=f"{p['name']} {line_key.replace('over_', 'Over ')} Fin.",
-                        market_odd=fair_odd,
-                        fair_odd=fair_odd,
-                        model_prob=round(model_p, 4),
-                        implied_prob=round(model_p, 4),
-                        edge=0.0,
-                        edge_pct="Fair",
-                        kelly_fraction=0.0,
-                        kelly_bet_pct="N/A",
-                        confidence="MODELO",
-                        reasoning=f"Baseado em {v['sample']} jogos: {p['name']} teve {line_key.replace('over_', '+')} finalizacoes em {v['pct']:.0f}% das partidas. Media: {p['avg_shots']}/jogo. Fair odd: {fair_odd:.2f}. Verifique odd real no bookmaker.",
-                        home_xg=match.model_home_xg,
-                        away_xg=match.model_away_xg,
-                        weather_note=match.weather.description,
-                        fatigue_note="",
-                        urgency_home=match.league_urgency_home,
-                        urgency_away=match.league_urgency_away,
-                        bookmaker="Fair Odds (modelo)",
-                        data_quality=match.data_quality_score,
-                        odds_suspect=False,
-                    ))
-                    player_opps_count += 1
-
-                # Finalizações ao gol (SoT) por jogador
-                for line_key, v in p.get("sot_lines", {}).items():
-                    if v["pct"] < 40 or v["sample"] < 3:
-                        continue
-                    fair_odd = v["fair_odd"]
-                    if fair_odd <= 1.02 or fair_odd > 15.0:
-                        continue
-                    model_p = 1.0 / fair_odd
-                    opportunities.append(ValueOpportunity(
-                        match_id=match.match_id,
-                        league_name=match.league_name,
-                        league_country=match.league_country,
-                        match_date=match.match_date,
-                        match_time=match.match_time,
-                        home_team=match.home_team.team_name,
-                        away_team=match.away_team.team_name,
-                        market="SoT Jogador",
-                        selection=f"{p['name']} {line_key.replace('over_', 'Over ')} Fin. Gol",
-                        market_odd=fair_odd,
-                        fair_odd=fair_odd,
-                        model_prob=round(model_p, 4),
-                        implied_prob=round(model_p, 4),
-                        edge=0.0,
-                        edge_pct="Fair",
-                        kelly_fraction=0.0,
-                        kelly_bet_pct="N/A",
-                        confidence="MODELO",
-                        reasoning=f"Baseado em {v['sample']} jogos: {p['name']} teve {line_key.replace('over_', '+')} finalizacoes ao gol em {v['pct']:.0f}% das partidas. Media SoT: {p['avg_sot']}/jogo. Fair odd: {fair_odd:.2f}. Verifique odd real no bookmaker.",
-                        home_xg=match.model_home_xg,
-                        away_xg=match.model_away_xg,
-                        weather_note=match.weather.description,
-                        fatigue_note="",
-                        urgency_home=match.league_urgency_home,
-                        urgency_away=match.league_urgency_away,
-                        bookmaker="Fair Odds (modelo)",
-                        data_quality=match.data_quality_score,
-                        odds_suspect=False,
-                    ))
-                    player_opps_count += 1
-
-    print(f"[RECALC] {player_opps_count} oportunidades de jogadores geradas ({len(teams_checked)} times verificados)")
-
     # Reordenar por edge (maior primeiro)
     opportunities.sort(key=lambda o: o.edge, reverse=True)
 
@@ -661,7 +564,6 @@ def recalculate_engine():
         "high_conf": sum(1 for o in opportunities if o.confidence == "ALTO"),
         "med_conf": sum(1 for o in opportunities if o.confidence == "MÉDIO"),
         "low_conf": sum(1 for o in opportunities if o.confidence == "BAIXO"),
-        "model_conf": sum(1 for o in opportunities if o.confidence == "MODELO"),
         "avg_edge": round(sum(o.edge for o in opportunities) / max(1, len(opportunities)) * 100, 2),
         "max_edge": round(opportunities[0].edge * 100, 1) if opportunities else 0,
         "max_edge_match": (f"{opportunities[0].home_team} vs {opportunities[0].away_team}"
