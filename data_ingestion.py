@@ -86,6 +86,9 @@ class MarketOdds:
     under_95_corners: float = 1.90
     over_35_cards: float = 1.85
     under_35_cards: float = 1.95
+    double_chance_1x: float = 0.0   # Casa ou Empate (1X)
+    double_chance_x2: float = 0.0   # Fora ou Empate (X2)
+    double_chance_12: float = 0.0   # Casa ou Fora (12)
     asian_handicap_line: float = -0.5
     asian_handicap_home: float = 1.90
     asian_handicap_away: float = 1.90
@@ -477,6 +480,12 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
         elif bet.get("id") == 8 or "both teams" in bet_name:
             odds.btts_yes = val_map.get("yes", odds.btts_yes)
             odds.btts_no = val_map.get("no", odds.btts_no)
+
+        # Double Chance (1X, X2, 12)
+        elif bet.get("id") == 12 or "double chance" in bet_name:
+            odds.double_chance_1x = val_map.get("home/draw", odds.double_chance_1x)
+            odds.double_chance_x2 = val_map.get("draw/away", odds.double_chance_x2)
+            odds.double_chance_12 = val_map.get("home/away", odds.double_chance_12)
 
         # Asian Handicap
         elif "asian" in bet_name or "handicap" in bet_name:

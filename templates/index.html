@@ -278,6 +278,7 @@
             letter-spacing: 0.5px;
         }
         .market-1x2 { background: var(--accent-blue-dim); color: var(--accent-blue); }
+        .market-dc { background: rgba(46, 134, 222, 0.2); color: #2e86de; }
         .market-ou { background: var(--accent-purple); color: #fff; opacity: 0.85; }
         .market-btts { background: var(--accent-cyan); color: #000; opacity: 0.85; }
         .market-corners { background: var(--accent-yellow-dim); color: var(--accent-yellow); }
@@ -487,6 +488,7 @@
                 <select class="filter-select" id="filter-market" onchange="filterOpps()">
                     <option value="all">Todos os Mercados</option>
                     <option value="1x2">1x2</option>
+                    <option value="Dupla Chance">Dupla Chance</option>
                     <option value="O/U 2.5">O/U 2.5</option>
                     <option value="BTTS">BTTS</option>
                     <option value="Corners">Escanteios</option>
@@ -956,7 +958,7 @@ function renderOpportunities(data) {
     tbody.innerHTML = opps.map((o, i) => {
         const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
         const edgeClass = o.edge > 15 ? "edge-high" : "edge-med";
-        const marketClass = o.market === "1x2" ? "market-1x2" : o.market === "O/U 2.5" ? "market-ou" : o.market === "BTTS" ? "market-btts" : o.market === "Corners" ? "market-corners" : "market-cards";
+        const marketClass = o.market === "1x2" ? "market-1x2" : o.market === "Dupla Chance" ? "market-dc" : o.market === "O/U 2.5" ? "market-ou" : o.market === "BTTS" ? "market-btts" : o.market === "Corners" ? "market-corners" : "market-cards";
         const probWidth = Math.min(100, o.model_prob);
         const probColor = o.model_prob > 50 ? "var(--accent-green)" : o.model_prob > 30 ? "var(--accent-blue)" : "var(--accent-yellow)";
         
@@ -1123,7 +1125,7 @@ function showOppDetail(idx) {
 
         <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
             <span class="badge ${confClass}" style="font-size:13px;padding:6px 14px">${o.confidence}</span>
-            <span class="market-tag ${o.market === '1x2' ? 'market-1x2' : o.market === 'O/U 2.5' ? 'market-ou' : o.market === 'BTTS' ? 'market-btts' : o.market === 'Corners' ? 'market-corners' : 'market-cards'}" style="font-size:12px;padding:6px 14px">${o.market}</span>
+            <span class="market-tag ${o.market === '1x2' ? 'market-1x2' : o.market === 'Dupla Chance' ? 'market-dc' : o.market === 'O/U 2.5' ? 'market-ou' : o.market === 'BTTS' ? 'market-btts' : o.market === 'Corners' ? 'market-corners' : 'market-cards'}" style="font-size:12px;padding:6px 14px">${o.market}</span>
             <span style="background:var(--accent-green-dim);color:var(--accent-green);padding:6px 14px;border-radius:6px;font-weight:800;font-size:14px">${o.edge_pct}</span>
             ${(() => {
                 const dq = o.data_quality || 0;

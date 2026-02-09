@@ -37,7 +37,7 @@ MIN_EDGE_THRESHOLD = 0.03          # Edge mínimo de 3% para destaque (reduzido 
 KELLY_FRACTION = 0.25              # Kelly fracionário (1/4)
 MAX_KELLY_BET = 0.05               # Máximo de 5% da banca por aposta
 MAX_EDGE_SANE = 9.99               # SEM LIMITE — exibir todas as análises para refinamento do algoritmo
-EXCLUDE_DRAW_1X2 = False           # Incluir empates — exibir tudo para refinamento
+EXCLUDE_DRAW_1X2 = True            # Excluir empate sozinho do 1x2 (usar Dupla Chance)
 
 # ═══════════════════════════════════════════════════════
 # FILTROS DE SANIDADE DO MODELO (evitar lixo estatístico)
@@ -52,6 +52,7 @@ MAX_XG_TOTAL = 15.0                # Ampliado para não filtrar nada
 # ═══════════════════════════════════════════════════════
 ODDS_MIN_VALID = 1.05              # Odd mínima válida (abaixo = suspeita)
 ODDS_MAX_1X2 = 25.0               # Odd máxima válida para 1x2
+ODDS_MAX_DC = 5.0                  # Odd máxima válida para Dupla Chance (1X, X2)
 ODDS_MAX_OU = 6.0                  # Odd máxima válida para Over/Under 2.5
 ODDS_MAX_BTTS = 4.0                # Odd máxima válida para BTTS
 ODDS_MAX_CORNERS = 5.0             # Odd máxima válida para Corners

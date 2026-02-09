@@ -27,11 +27,12 @@ from models import predict_corners, predict_cards
 # ═══════════════════════════════════════════════════════
 
 _ODDS_LIMITS = {
-    "1x2":     (config.ODDS_MIN_VALID, config.ODDS_MAX_1X2),
-    "O/U 2.5": (config.ODDS_MIN_VALID, config.ODDS_MAX_OU),
-    "BTTS":    (config.ODDS_MIN_VALID, config.ODDS_MAX_BTTS),
-    "Corners": (config.ODDS_MIN_VALID, config.ODDS_MAX_CORNERS),
-    "Cartões": (config.ODDS_MIN_VALID, config.ODDS_MAX_CARDS),
+    "1x2":          (config.ODDS_MIN_VALID, config.ODDS_MAX_1X2),
+    "Dupla Chance": (config.ODDS_MIN_VALID, config.ODDS_MAX_DC),
+    "O/U 2.5":      (config.ODDS_MIN_VALID, config.ODDS_MAX_OU),
+    "BTTS":         (config.ODDS_MIN_VALID, config.ODDS_MAX_BTTS),
+    "Corners":      (config.ODDS_MIN_VALID, config.ODDS_MAX_CORNERS),
+    "Cartões":      (config.ODDS_MIN_VALID, config.ODDS_MAX_CARDS),
 }
 
 
@@ -398,7 +399,12 @@ def generate_reasoning(match: MatchAnalysis, market: str,
 
     # ── 8. CONCLUSÃO ──
     lines.append("✅ CONCLUSÃO:")
-    if "1x2" in market:
+    if "Dupla Chance" in market:
+        if "1X" in market or "Casa" in market:
+            lines.append(f"  O modelo atribui {model_prob*100:.1f}% de chance de {home.team_name} vencer ou empatar,")
+        elif "X2" in market or "Fora" in market:
+            lines.append(f"  O modelo atribui {model_prob*100:.1f}% de chance de {away.team_name} vencer ou empatar,")
+    elif "1x2" in market:
         if "Casa" in market:
             lines.append(f"  O modelo atribui {model_prob*100:.1f}% de chance de vitória ao {home.team_name},")
         elif "Fora" in market:
@@ -439,7 +445,7 @@ def _is_model_sane(model_prob: float, total_xg: float, market: str) -> bool:
 
     # xG total muito baixo ou muito alto (modelo sem dados)
     # Aplicar apenas para mercados baseados em gols
-    if market in ("1x2", "O/U 2.5", "BTTS"):
+    if market in ("1x2", "Dupla Chance", "O/U 2.5", "BTTS"):
         if total_xg < config.MIN_XG_TOTAL:
             return False
         if total_xg > config.MAX_XG_TOTAL:
@@ -453,7 +459,8 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     Escaneia TODOS os mercados de uma partida buscando valor (+EV).
 
     Mercados analisados:
-        - 1x2 (Vitória Casa, Empate, Vitória Fora)
+        - 1x2 (Vitória Casa, Vitória Fora — sem empate isolado)
+        - Dupla Chance (Casa ou Empate 1X, Fora ou Empate X2)
         - Over/Under 2.5 Gols
         - BTTS (Ambas Marcam)
         - Over/Under 9.5 Escanteios
@@ -547,6 +554,78 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 home_team=match.home_team.team_name,
                 away_team=match.away_team.team_name,
                 market="1x2",
+                selection=label,
+                market_odd=market_o,
+                fair_odd=fair_odd,
+                model_prob=round(model_p, 4),
+                implied_prob=round(implied_p, 4),
+                edge=round(edge, 4),
+                edge_pct=f"+{edge*100:.1f}%",
+                kelly_fraction=round(kelly, 4),
+                kelly_bet_pct=f"{kelly*100:.2f}%",
+                confidence=conf,
+                reasoning=reasoning,
+                home_xg=match.model_home_xg,
+                away_xg=match.model_away_xg,
+                weather_note=match.weather.description,
+                fatigue_note=("Casa em fadiga" if match.home_fatigue
+                              else "Fora em fadiga" if match.away_fatigue else "N/A"),
+                urgency_home=match.league_urgency_home,
+                urgency_away=match.league_urgency_away,
+                bookmaker=match.odds.bookmaker,
+                data_quality=match.data_quality_score,
+            ))
+
+    # ── MERCADO DUPLA CHANCE (Casa ou Empate / Fora ou Empate) ──
+    # Probabilidades do modelo: P(1X) = P(Home) + P(Draw), P(X2) = P(Away) + P(Draw)
+    model_prob_1x = match.model_prob_home + match.model_prob_draw
+    model_prob_x2 = match.model_prob_away + match.model_prob_draw
+
+    # Odds da API (se disponíveis) ou calculadas a partir do 1x2
+    dc_1x_odd = odds.double_chance_1x
+    dc_x2_odd = odds.double_chance_x2
+
+    # Se a API não forneceu odds de Dupla Chance, calcular a partir do 1x2
+    if dc_1x_odd <= 0 and odds.home_win > 1.0 and odds.draw > 1.0:
+        # Aproximação: 1 / (1/home + 1/draw) — harmônica
+        dc_1x_odd = round(1.0 / (1.0/odds.home_win + 1.0/odds.draw), 2)
+    if dc_x2_odd <= 0 and odds.away_win > 1.0 and odds.draw > 1.0:
+        dc_x2_odd = round(1.0 / (1.0/odds.away_win + 1.0/odds.draw), 2)
+
+    dc_entries = [
+        ("Casa ou Empate (1X)", model_prob_1x, dc_1x_odd),
+        ("Fora ou Empate (X2)", model_prob_x2, dc_x2_odd),
+    ]
+
+    for label, model_p, market_o in dc_entries:
+        if market_o <= 1.0:
+            continue
+        if not _is_odd_valid(market_o, "Dupla Chance"):
+            continue
+        if not _is_model_sane(model_p, total_xg, "Dupla Chance"):
+            continue
+
+        edge = calculate_edge(model_p, market_o)
+
+        if edge >= config.MAX_EDGE_SANE:
+            continue
+
+        if edge >= config.MIN_EDGE_THRESHOLD:
+            fair_odd = round(1.0 / max(0.01, model_p), 2)
+            implied_p = 1.0 / market_o if market_o > 0 else 0
+            kelly = fractional_kelly(model_p, market_o)
+            conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
+            reasoning = generate_reasoning(match, f"Dupla Chance - {label}", edge, model_p)
+
+            opportunities.append(ValueOpportunity(
+                match_id=match.match_id,
+                league_name=match.league_name,
+                league_country=match.league_country,
+                match_date=match.match_date,
+                match_time=match.match_time,
+                home_team=match.home_team.team_name,
+                away_team=match.away_team.team_name,
+                market="Dupla Chance",
                 selection=label,
                 market_odd=market_o,
                 fair_odd=fair_odd,
