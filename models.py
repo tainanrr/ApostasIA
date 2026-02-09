@@ -498,10 +498,10 @@ def predict_shots(match: MatchAnalysis) -> tuple[float, float, float, float, dic
 
     # ── Usar parâmetros α/β do modelo Dixon-Coles (home/away específicos, com regressão) ──
     # Estes são mais precisos que attack_strength/defense_strength (que são totais)
-    h_alpha = getattr(match, 'model_home_alpha', None) or home.attack_strength
-    a_alpha = getattr(match, 'model_away_alpha', None) or away.attack_strength
-    h_beta = getattr(match, 'model_home_beta', None) or home.defense_strength
-    a_beta = getattr(match, 'model_away_beta', None) or away.defense_strength
+    h_alpha = getattr(match, 'model_alpha_h', None) or home.attack_strength
+    a_alpha = getattr(match, 'model_alpha_a', None) or away.attack_strength
+    h_beta = getattr(match, 'model_beta_h', None) or home.defense_strength
+    a_beta = getattr(match, 'model_beta_a', None) or away.defense_strength
 
     # ── Finalizações Totais por time ──
     # Base proporcional à força de ataque do modelo (α)
