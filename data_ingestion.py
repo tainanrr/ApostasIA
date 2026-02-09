@@ -228,16 +228,22 @@ def _fetch_fixtures(date: str) -> list[dict]:
 
 
 def _fetch_standings(league_id: int, season: int) -> list[dict]:
-    """Busca classificação de uma liga/temporada."""
+    """Busca classificação de uma liga/temporada.
+    Unifica TODOS os grupos (conferências, grupos de fase, etc.)
+    para garantir que todos os times sejam encontrados."""
     data = _api_football_request("standings", {"league": league_id, "season": season})
     response = data.get("response", [])
     if not response:
         return []
     league_data = response[0].get("league", {})
     standings_groups = league_data.get("standings", [])
-    # standings pode ter múltiplos grupos (ex: conferência), pegar o primeiro
+    # Unificar TODOS os grupos em uma única lista
+    # (Ex: Carioca Grupo A + Grupo B, Conferência Leste + Oeste, etc.)
     if standings_groups and isinstance(standings_groups[0], list):
-        return standings_groups[0]
+        all_teams = []
+        for group in standings_groups:
+            all_teams.extend(group)
+        return all_teams
     return standings_groups
 
 
