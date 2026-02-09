@@ -898,6 +898,12 @@ function buildAllMarketsOdds(m) {
         "win_both_halves": "💪 Vencer Ambos Tempos",
         "both_halves_score": "⚽ Gol em Ambos Tempos",
         "result_total": "📊 Resultado & Total",
+        "sot_1x2": "🎯 Finaliz. Gol 1x2",
+        "shots_1x2": "🎯 Finalizações 1x2",
+        "sot_ou": "🎯 Finaliz. Gol O/U",
+        "shots_ou": "🎯 Finalizações O/U",
+        "home_shots_ou": "🏠 Finaliz. Casa O/U",
+        "away_shots_ou": "✈️ Finaliz. Fora O/U",
     };
     const _SEL_LABELS = {
         "home": "Casa", "draw": "Empate", "away": "Fora",
@@ -911,20 +917,44 @@ function buildAllMarketsOdds(m) {
     if (!markets["goals_ou"]) markets["goals_ou"] = {over_2_5: m.odds_over25, under_2_5: m.odds_under25};
     if (!markets["btts"]) markets["btts"] = {yes: m.odds_btts_yes, no: m.odds_btts_no};
 
+    // Helper: BOOKMAKER_COLORS
+    const _BK_COLORS = {
+        "bet365": "#007b5e", "pinnacle": "#e74c3c", "1xbet": "#1a5276",
+        "betway": "#00a0e3", "bwin": "#ffcc00", "william hill": "#003b2f",
+        "marathonbet": "#1e4d8c", "unibet": "#147b45", "betfair": "#ffb80c",
+        "888sport": "#1a1a1a", "sportingbet": "#006e33", "betano": "#ff6600",
+    };
+    const bkColor = (name) => {
+        const k = (name || '').toLowerCase();
+        for (const [bk, c] of Object.entries(_BK_COLORS)) { if (k.includes(bk)) return c; }
+        return '#3b82f6';
+    };
+
     let html = '';
     const orderedKeys = ["1x2","double_chance","goals_ou","btts","home_goals_ou","away_goals_ou",
         "ht_result","ht_goals_ou","h2_goals_ou","cs_home","cs_away","wtn_home","wtn_away","odd_even",
-        "corners_ou","cards_ou","exact_score","asian_handicap","ht_ft","win_both_halves","both_halves_score","result_total"];
+        "corners_ou","cards_ou","sot_1x2","shots_1x2","sot_ou","shots_ou","home_shots_ou","away_shots_ou",
+        "exact_score","asian_handicap","ht_ft","win_both_halves","both_halves_score","result_total"];
     const allKeys = new Set([...orderedKeys, ...Object.keys(markets)]);
     for (const mk of allKeys) {
         const mkt = markets[mk];
         if (!mkt || typeof mkt !== 'object') continue;
-        const entries = Object.entries(mkt).filter(([k,v]) => v && v > 1.0);
+        const bkData = mkt._bookmakers || {};
+        const bkNames = Object.keys(bkData);
+        const hasMultiBk = bkNames.length > 1;
+        const entries = Object.entries(mkt).filter(([k,v]) => typeof v === 'number' && v > 1.0);
         if (!entries.length) continue;
         const label = _MARKET_LABELS[mk] || mk.replace(/_/g,' ').toUpperCase();
-        html += `<div style="margin-top:12px"><div style="font-size:12px;font-weight:700;color:var(--accent-cyan);margin-bottom:6px">${label}</div><div class="odds-grid">`;
+        const sourceNote = mkt._source ? ` <span style="font-size:10px;color:var(--text-muted)">(${mkt._source})</span>` : '';
+        const multiBkBadge = hasMultiBk ? ` <span style="font-size:9px;padding:2px 6px;background:rgba(59,130,246,0.15);color:var(--accent-cyan);border-radius:4px;font-weight:700">${bkNames.length} casas</span>` : '';
+
+        html += `<div style="margin-top:14px">
+            <div style="font-size:12px;font-weight:700;color:var(--accent-cyan);margin-bottom:6px">${label}${sourceNote}${multiBkBadge}</div>
+            <div class="odds-grid">`;
+
+        // ── Odds do bookmaker principal ──
         for (const [sk, odd] of entries) {
-            const selLabel = _SEL_LABELS[sk] || sk.replace(/_/g,' ').replace(/over /i,'O').replace(/under /i,'U');
+            const selLabel = _SEL_LABELS[sk] || sk.replace(/_/g,' ').replace(/over_/i,'O ').replace(/under_/i,'U ');
             const probKey = `${mk}__${sk}`;
             const modelP = probs[probKey];
             const probStr = modelP ? `<div class="odds-card-prob">Modelo: ${(modelP*100).toFixed(1)}%</div>` : '';
@@ -938,7 +968,67 @@ function buildAllMarketsOdds(m) {
                 ${isEV ? '<div style="font-size:9px;color:var(--accent-green);font-weight:700;margin-top:2px">✓ EV+</div>' : ''}
             </div>`;
         }
-        html += '</div></div>';
+        html += '</div>';
+
+        // ── Comparativo multi-bookmaker ──
+        if (hasMultiBk) {
+            // Coletar todas as seleções disponíveis (chaves numéricas/string)
+            const allSels = new Set();
+            for (const bkn of bkNames) {
+                for (const [k, v] of Object.entries(bkData[bkn])) {
+                    if (typeof v === 'number' && v > 1.0) allSels.add(k);
+                }
+            }
+            const selsArr = [...allSels].sort();
+            if (selsArr.length > 0 && selsArr.length <= 30) {
+                html += `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:10px;color:var(--accent-cyan);font-weight:700;padding:2px 0">▶ Comparar ${bkNames.length} casas de apostas</summary>`;
+                html += `<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;font-size:11px;border-collapse:collapse">
+                    <thead><tr style="border-bottom:1px solid var(--border)">
+                        <th style="text-align:left;padding:4px 8px;color:var(--text-secondary);font-weight:600;min-width:110px">Casa</th>`;
+                for (const sel of selsArr) {
+                    const selLbl = _SEL_LABELS[sel] || sel.replace(/_/g,' ').replace(/over_/i,'O ').replace(/under_/i,'U ');
+                    html += `<th style="text-align:center;padding:4px 6px;color:var(--text-secondary);font-weight:600;white-space:nowrap">${selLbl}</th>`;
+                }
+                html += `</tr></thead><tbody>`;
+
+                // Para cada seleção, encontrar a melhor odd
+                const bestOdds = {};
+                for (const sel of selsArr) {
+                    let best = 0;
+                    for (const bkn of bkNames) {
+                        const val = bkData[bkn][sel];
+                        if (typeof val === 'number' && val > best) best = val;
+                    }
+                    bestOdds[sel] = best;
+                }
+
+                for (const bkn of bkNames) {
+                    const c = bkColor(bkn);
+                    const info = getBookmakerInfo(bkn);
+                    const link = info.footballUrl;
+                    const nameHtml = link
+                        ? `<a href="${link}" target="_blank" rel="noopener" style="color:${c};text-decoration:none;font-weight:700" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${info.name}</a>`
+                        : `<span style="color:${c};font-weight:700">${bkn}</span>`;
+                    html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+                        <td style="padding:5px 8px">${nameHtml}</td>`;
+                    for (const sel of selsArr) {
+                        const val = bkData[bkn][sel];
+                        const isNum = typeof val === 'number' && val > 1.0;
+                        const isBest = isNum && val === bestOdds[sel] && bkNames.length > 1;
+                        const probKey2 = `${mk}__${sel}`;
+                        const mp = probs[probKey2];
+                        const isEV2 = mp && isNum && (mp * val - 1) > 0.03;
+                        const cellStyle = isBest
+                            ? 'font-weight:800;color:var(--accent-green);background:rgba(46,213,115,0.06)'
+                            : isEV2 ? 'font-weight:700;color:var(--accent-green)' : 'color:var(--text-primary)';
+                        html += `<td style="text-align:center;padding:5px 6px;${cellStyle};font-family:'JetBrains Mono',monospace">${isNum ? val.toFixed(2) : '-'}${isBest ? ' ★' : ''}${isEV2 && !isBest ? ' ✓' : ''}</td>`;
+                    }
+                    html += '</tr>';
+                }
+                html += '</tbody></table></div></details>';
+            }
+        }
+        html += '</div>';
     }
     return html || '<div style="color:var(--text-muted);padding:16px">Nenhuma odd disponível para este jogo</div>';
 }
@@ -1381,6 +1471,20 @@ function renderOpportunities(data) {
         const probWidth = Math.min(100, o.model_prob);
         const probColor = o.model_prob > 50 ? "var(--accent-green)" : o.model_prob > 30 ? "var(--accent-blue)" : "var(--accent-yellow)";
         
+        // Contar bookmakers alternativos para este mercado
+        const altBkCount = (() => {
+            const matchData = allMatches.find(x => x.match_id === o.match_id);
+            if (!matchData || !matchData.all_markets) return 0;
+            const oppMkt = o.market.toLowerCase();
+            const mktMap = {'1x2':'1x2','dupla chance':'double_chance','gols o/u':'goals_ou','btts':'btts','ambas marcam':'btts','escanteios':'corners_ou','cartões':'cards_ou','cartoes':'cards_ou','gols casa':'home_goals_ou','gols fora':'away_goals_ou','finaliz. gol 1x2':'sot_1x2','finaliz. 1x2':'shots_1x2','finaliz. gol o/u':'sot_ou','finaliz. totais o/u':'shots_ou','clean sheet casa':'cs_home','clean sheet fora':'cs_away','par/impar':'odd_even','1o tempo':'ht_result'};
+            let mk = null;
+            for (const [label, key] of Object.entries(mktMap)) { if (oppMkt.includes(label)) { mk = key; break; } }
+            if (!mk) for (const k of Object.keys(matchData.all_markets)) { if (oppMkt.includes(k.replace(/_/g,' '))) { mk = k; break; } }
+            if (!mk || !matchData.all_markets[mk] || !matchData.all_markets[mk]._bookmakers) return 0;
+            return Object.keys(matchData.all_markets[mk]._bookmakers).length;
+        })();
+        const multiBkBadge = altBkCount > 1 ? ` <span title="${altBkCount} casas oferecem este mercado — clique para comparar" style="font-size:9px;padding:1px 5px;background:rgba(59,130,246,0.15);color:var(--accent-cyan);border-radius:3px;font-weight:700;vertical-align:middle">+${altBkCount - 1}</span>` : '';
+
         const suspectBadge = o.odds_suspect ? ' <span title="Possivel inversao Casa/Fora na API — modelo usou stats neutras" style="cursor:help;color:var(--accent-yellow);font-size:13px">⚠️</span>' : '';
         return `<tr onclick="showOppDetail(${allOpps.indexOf(o)})" style="cursor:pointer${o.odds_suspect ? ';border-left:3px solid var(--accent-yellow)' : ''}">
             <td style="color:var(--text-muted);font-weight:600">${i+1}</td>
@@ -1389,7 +1493,7 @@ function renderOpportunities(data) {
             <td style="font-size:11px;color:var(--text-secondary)">${o.match_date}<br>${o.match_time}</td>
             <td><span class="market-tag ${marketClass}">${o.market}</span></td>
             <td style="font-weight:700;font-size:12px;color:var(--accent-green)">▶ ${o.selection}</td>
-            <td>${isModelOnly ? '<span style="font-size:10px;padding:3px 8px;background:rgba(255,69,0,0.15);color:#ff4500;border-radius:5px;white-space:nowrap;border:1px solid rgba(255,69,0,0.3)" title="Odd justa do modelo — verifique a odd real no bookmaker (Bet365)">🎯 Fair Odds</span>' : bookmakerBadgeHtml(o.bookmaker, o.home_team, o.away_team, o.market, o.selection, true, o.league_country, o.league_name)}</td>
+            <td>${isModelOnly ? '<span style="font-size:10px;padding:3px 8px;background:rgba(255,69,0,0.15);color:#ff4500;border-radius:5px;white-space:nowrap;border:1px solid rgba(255,69,0,0.3)" title="Odd justa do modelo — verifique a odd real no bookmaker (Bet365)">🎯 Fair Odds</span>' : bookmakerBadgeHtml(o.bookmaker, o.home_team, o.away_team, o.market, o.selection, true, o.league_country, o.league_name)}${multiBkBadge}</td>
             <td class="odd-cell" ${isModelOnly ? 'title="Odd justa do modelo (sem margem bookmaker)" style="color:#ff4500"' : ''}>${o.market_odd.toFixed(2)}</td>
             <td class="odd-cell" style="color:var(--accent-green)">${o.fair_odd.toFixed(2)}</td>
             <td class="edge-cell ${edgeClass}">${o.edge_pct}</td>
@@ -1923,7 +2027,7 @@ function showOppDetail(idx) {
             </div>
 
             ${m ? `
-            <div class="m-section">📋 Todas as Odds & Probabilidades do Modelo (${m.bookmaker})</div>
+            <div class="m-section">📋 Todas as Odds & Probabilidades do Modelo (Principal: ${m.bookmaker})</div>
             ${buildAllMarketsOdds(m)}
             ` : ''}
 
@@ -1939,7 +2043,101 @@ function showOppDetail(idx) {
                         return '';
                     })()}
                 </div>
-                <div style="padding:10px 14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px;font-size:12px">
+                ${(() => {
+                    // Mostrar odds alternativas de outras casas para este mesmo mercado
+                    if (!m) return '';
+                    const mkts = m.all_markets || {};
+                    // Tentar encontrar o market key baseado no nome do mercado da oportunidade
+                    const oppMkt = o.market.toLowerCase();
+                    let foundMk = null;
+                    const mktMapping = {
+                        '1x2': '1x2', 'dupla chance': 'double_chance',
+                        'gols o/u': 'goals_ou', 'btts': 'btts', 'ambas marcam': 'btts',
+                        'escanteios': 'corners_ou', 'cartoes': 'cards_ou', 'cartões': 'cards_ou',
+                        'gols casa': 'home_goals_ou', 'gols fora': 'away_goals_ou',
+                        'clean sheet casa': 'cs_home', 'clean sheet fora': 'cs_away',
+                        'vit. s/ sofrer casa': 'wtn_home', 'vit. s/ sofrer fora': 'wtn_away',
+                        'par/impar': 'odd_even', '1o tempo': 'ht_result',
+                        'finaliz. gol 1x2': 'sot_1x2', 'finaliz. 1x2': 'shots_1x2',
+                        'finaliz. gol o/u': 'sot_ou', 'finaliz. totais o/u': 'shots_ou',
+                    };
+                    for (const [label, key] of Object.entries(mktMapping)) {
+                        if (oppMkt.includes(label)) { foundMk = key; break; }
+                    }
+                    // Fallback: buscar por chave em all_markets que contenha parte do nome
+                    if (!foundMk) {
+                        for (const k of Object.keys(mkts)) {
+                            if (oppMkt.includes(k.replace(/_/g,' '))) { foundMk = k; break; }
+                        }
+                    }
+                    if (!foundMk || !mkts[foundMk]) return '';
+                    const bkData = mkts[foundMk]._bookmakers;
+                    if (!bkData || Object.keys(bkData).length <= 1) return '';
+                    const probs = (m && m.model_probs) || {};
+
+                    // Encontrar a seleção correspondente
+                    const selLower = o.selection.toLowerCase();
+                    const selMapping = {
+                        'vitória casa': 'home', 'vitória fora': 'away', 'empate': 'draw',
+                        'casa ou empate': 'home/draw', 'fora ou empate': 'draw/away',
+                        'sim': 'yes', 'não': 'no', 'over': 'over', 'under': 'under',
+                    };
+                    let selKey = null;
+                    for (const [label, key] of Object.entries(selMapping)) {
+                        if (selLower.includes(label)) { selKey = key; break; }
+                    }
+                    // Para O/U, buscar a linha específica (ex: "Over 2.5" -> "over_2.5")
+                    if (!selKey) {
+                        selKey = selLower.replace(/ /g, '_');
+                    }
+
+                    let altHtml = '<div style="margin-top:10px;padding:10px 14px;background:rgba(46,213,115,0.04);border:1px solid rgba(46,213,115,0.15);border-radius:8px">';
+                    altHtml += '<div style="font-size:11px;font-weight:700;color:var(--accent-green);margin-bottom:8px">📊 Mesma aposta em outras casas:</div>';
+                    altHtml += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+                    let hasAlts = false;
+
+                    // Ordenar por melhor odd
+                    const entries = [];
+                    for (const [bkn, vals] of Object.entries(bkData)) {
+                        // Buscar o valor para a seleção
+                        let val = vals[selKey];
+                        if (!val) {
+                            // Tentar match parcial
+                            for (const [k2, v2] of Object.entries(vals)) {
+                                if (typeof v2 === 'number' && k2.includes(selKey)) { val = v2; break; }
+                                if (typeof v2 === 'number' && selKey.includes(k2)) { val = v2; break; }
+                            }
+                        }
+                        if (typeof val === 'number' && val > 1.0) {
+                            entries.push([bkn, val]);
+                        }
+                    }
+                    entries.sort((a, b) => b[1] - a[1]);
+                    const bestVal = entries.length > 0 ? entries[0][1] : 0;
+
+                    for (const [bkn, val] of entries) {
+                        if (bkn === o.bookmaker) continue; // Não repetir o bookmaker principal
+                        hasAlts = true;
+                        const info2 = getBookmakerInfo(bkn);
+                        const link2 = info2.footballUrl;
+                        const isBest = val === bestVal;
+                        const borderColor = isBest ? 'var(--accent-green)' : 'var(--border)';
+                        const mp = probs[`${foundMk}__${selKey}`];
+                        const isEV3 = mp && (mp * val - 1) > 0.03;
+                        altHtml += `<div style="padding:6px 12px;background:var(--bg-primary);border:1px solid ${borderColor};border-radius:8px;text-align:center;min-width:90px">`;
+                        if (link2) {
+                            altHtml += `<a href="${link2}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:11px;font-weight:700;color:${info2.color || 'var(--accent-cyan)'};text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${info2.name}</a>`;
+                        } else {
+                            altHtml += `<div style="font-size:11px;font-weight:700;color:var(--text-secondary)">${bkn}</div>`;
+                        }
+                        altHtml += `<div style="font-size:16px;font-weight:800;color:${isBest ? 'var(--accent-green)' : 'var(--text-primary)'};font-family:'JetBrains Mono',monospace;margin-top:2px">${val.toFixed(2)}${isBest ? ' ★' : ''}</div>`;
+                        if (isEV3) altHtml += `<div style="font-size:9px;color:var(--accent-green);font-weight:700">EV+</div>`;
+                        altHtml += '</div>';
+                    }
+                    altHtml += '</div></div>';
+                    return hasAlts ? altHtml : '';
+                })()}
+                <div style="padding:10px 14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px;font-size:12px;margin-top:10px">
                     <div style="color:var(--accent-cyan);font-weight:700;margin-bottom:4px">Como encontrar:</div>
                     <div style="color:var(--text-secondary);line-height:1.6">
                         Futebol → <strong style="color:var(--accent-yellow)">${o.league_country || '?'}</strong> → <strong style="color:var(--accent-yellow)">${o.league_name || '?'}</strong> → <strong style="color:var(--text-primary)">${o.home_team} vs ${o.away_team}</strong> → <strong style="color:var(--accent-green)">${o.market}: ${o.selection}</strong>

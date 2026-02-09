@@ -93,7 +93,7 @@ MAX_ODDS_FIXTURES = 500            # PRO: buscar odds para TODOS os fixtures
 MAX_STANDINGS_LEAGUES = 80         # PRO: buscar standings para até 80 ligas
 MAX_INJURIES_FIXTURES = 300        # PRO: buscar lesões para até 300 fixtures
 PREFERRED_BOOKMAKERS = [           # Bookmakers preferidos (ordem de prioridade)
-    "Pinnacle", "Bet365", "1xBet", "Unibet",
+    "Bet365", "Pinnacle", "1xBet", "Unibet",
     "Marathonbet", "Betway", "Bwin", "William Hill",
 ]
 

@@ -614,13 +614,93 @@ def _build_team_from_standings(team_id: int, team_name: str,
     )
 
 
+def _bet_to_market_key(bet_id: int, bet_name: str) -> str | None:
+    """Classifica um bet da API em uma chave de mercado all_markets."""
+    bn = bet_name.lower()
+
+    if bet_id == 1 or "match winner" in bn:
+        return "1x2"
+    if bet_id == 5 or \
+       ("goals" in bn and "over" in bn and "half" not in bn and "second" not in bn) or \
+       ("over/under" in bn and "half" not in bn and "team" not in bn):
+        return "goals_ou"
+    if bet_id in (6, 25) or ("first half" in bn and "over" in bn) or ("1st half" in bn and "over" in bn):
+        return "ht_goals_ou"
+    if bet_id in (7, 26) or ("second half" in bn and "over" in bn) or ("2nd half" in bn and "over" in bn):
+        return "h2_goals_ou"
+    if bet_id == 34 or ("both teams" in bn and "first half" in bn):
+        return "btts_ht"
+    if bet_id == 35 or ("both teams" in bn and "second half" in bn):
+        return "btts_h2"
+    if bet_id == 24 or ("result" in bn and "both teams" in bn):
+        return "result_btts"
+    if bet_id == 49 or ("total" in bn and "both teams" in bn):
+        return "total_btts"
+    if bet_id == 8 or bn in ("both teams score", "both teams to score"):
+        return "btts"
+    if bet_id == 9 or "exact score" in bn:
+        return "exact_score"
+    if bet_id == 11 or ("half time" in bn and "full time" in bn):
+        return "ht_ft"
+    if bet_id == 23 or ("double chance" in bn and "half" in bn):
+        return "ht_double_chance"
+    if bet_id == 12 or "double chance" in bn:
+        return "double_chance"
+    if bet_id == 13 or "first half winner" in bn:
+        return "ht_result"
+    if bet_id in (14, 63) or ("home" in bn and "goal" in bn and "over" in bn):
+        return "home_goals_ou"
+    if bet_id in (15, 64) or ("away" in bn and "goal" in bn and "over" in bn):
+        return "away_goals_ou"
+    if bet_id in (16, 21) or ("odd/even" in bn and "half" not in bn and "home" not in bn and "away" not in bn):
+        return "odd_even"
+    if bet_id == 17 or ("clean sheet" in bn and "home" in bn):
+        return "cs_home"
+    if bet_id == 18 or ("clean sheet" in bn and "away" in bn):
+        return "cs_away"
+    if bet_id == 19 or ("win to nil" in bn and "home" in bn):
+        return "wtn_home"
+    if bet_id == 20 or ("win to nil" in bn and "away" in bn):
+        return "wtn_away"
+    if bet_id == 22 or "win both halves" in bn:
+        return "win_both_halves"
+    if bet_id == 27 or ("both halves" in bn and "score" in bn):
+        return "both_halves_score"
+    if bet_id == 28 or ("result" in bn and "total" in bn):
+        return "result_total"
+    if bet_id == 4 or "asian" in bn or "handicap" in bn:
+        return "asian_handicap"
+    if "corner" in bn:
+        return "corners_ou"
+    if "card" in bn:
+        return "cards_ou"
+    # Shots markets
+    if bet_id == 87 or ("shotongoal" in bn.replace(" ", "") and "1x2" not in bn):
+        return "sot_ou"
+    if bet_id == 176 or ("shotontarget" in bn.replace(" ", "") and "1x2" in bn):
+        return "sot_1x2"
+    if bet_id == 340 or ("shots" in bn and "1x2" in bn):
+        return "shots_1x2"
+    if "shot" in bn and "over" in bn and "player" not in bn and "target" not in bn and "goal" not in bn:
+        return "shots_ou"
+    if "shot" in bn and "target" in bn and "over" in bn and "player" not in bn and "1x2" not in bn:
+        return "sot_ou"
+    if "home" in bn and "shot" in bn:
+        return "home_shots_ou"
+    if "away" in bn and "shot" in bn:
+        return "away_shots_ou"
+    if "player" in bn and "shot" in bn:
+        return "player_shots_ou"
+    return None
+
+
 def _parse_odds_response(odds_raw: dict) -> MarketOdds:
     """Converte resposta de odds da API em MarketOdds."""
     bookmakers = odds_raw.get("bookmakers", [])
     if not bookmakers:
         return MarketOdds()
 
-    # Escolher bookmaker preferido
+    # Escolher bookmaker preferido (Bet365 é prioridade)
     chosen = None
     for pref in config.PREFERRED_BOOKMAKERS:
         for bk in bookmakers:
@@ -883,8 +963,8 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
 
     # ═══════════════════════════════════════════════════════════════════
     # SEGUNDA PASSAGEM: Mercados especializados de OUTROS bookmakers
-    # Ex: Bet365 fornece Shots 1x2, ShotOnGoal O/U que Pinnacle não tem
-    # Apenas preencher mercados que NÃO existem no bookmaker principal
+    # Ex: Pinnacle pode ter Shots 1x2, ShotOnGoal O/U que Bet365 não tem
+    # (ou vice-versa) — preencher mercados que NÃO existem no bookmaker principal
     # ═══════════════════════════════════════════════════════════════════
     _SPECIALIZED_BET_IDS = {87, 176, 340, 212, 213, 214, 215}  # shots, player props
     
@@ -923,7 +1003,7 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
                         "home": val_map.get("home", 0),
                         "draw": val_map.get("draw", 0),
                         "away": val_map.get("away", 0),
-                        "_source": bk.get("name", "Bet365"),
+                        "_source": bk.get("name", "?"),
                     }
             
             # Shots.1x2 (bet id 340)
@@ -933,8 +1013,39 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
                         "home": val_map.get("home", 0),
                         "draw": val_map.get("draw", 0),
                         "away": val_map.get("away", 0),
-                        "_source": bk.get("name", "Bet365"),
+                        "_source": bk.get("name", "?"),
                     }
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TERCEIRA PASSAGEM: Coletar odds de TODOS os bookmakers por mercado
+    # Armazena em all_markets[mkt]["_bookmakers"] = {bk_name: {sel: odd}}
+    # Permite comparação de odds entre casas no frontend
+    # ═══════════════════════════════════════════════════════════════════
+    for bk in bookmakers:
+        current_bk = bk.get("name", "Desconhecido")
+        for bet in bk.get("bets", []):
+            bet_id = bet.get("id", 0)
+            bet_name_raw = bet.get("name", "")
+            mk = _bet_to_market_key(bet_id, bet_name_raw)
+            if not mk:
+                continue
+
+            values = bet.get("values", [])
+            val_map = {}
+            for v in values:
+                val_map[str(v.get("value", "")).lower().replace(" ", "_")] = float(v.get("odd", 0))
+            if not val_map:
+                continue
+
+            # Só adicionar bookmaker data para mercados que existem em all_markets
+            if mk not in odds.all_markets:
+                continue
+
+            # Inicializar sub-dict _bookmakers se não existe
+            if "_bookmakers" not in odds.all_markets[mk]:
+                odds.all_markets[mk]["_bookmakers"] = {}
+
+            odds.all_markets[mk]["_bookmakers"][current_bk] = val_map
 
     return odds
 
@@ -1988,6 +2099,51 @@ def _safe_int(val) -> int | None:
         return int(float(val))
     except (ValueError, TypeError):
         return None
+
+
+def enrich_multi_bookmaker(match_id: int) -> dict:
+    """
+    Carrega as odds brutas do cache da API para um fixture e retorna
+    o dict _bookmakers por mercado.  Não faz chamadas reais à API.
+    
+    Retorna: {market_key: {bk_name: {sel: odd, ...}, ...}, ...}
+    """
+    raw = _api_football_request("odds", {"fixture": match_id}, cache_only=True)
+    if not raw:
+        return {}
+    
+    response = raw.get("response", [])
+    if not response:
+        return {}
+    
+    odds_raw = response[0] if isinstance(response, list) else response
+    bookmakers = odds_raw.get("bookmakers", [])
+    if not bookmakers:
+        return {}
+    
+    result = {}  # {market_key: {bk_name: {sel: odd}}}
+    
+    for bk in bookmakers:
+        current_bk = bk.get("name", "Desconhecido")
+        for bet in bk.get("bets", []):
+            bet_id = bet.get("id", 0)
+            bet_name_raw = bet.get("name", "")
+            mk = _bet_to_market_key(bet_id, bet_name_raw)
+            if not mk:
+                continue
+            
+            values = bet.get("values", [])
+            val_map = {}
+            for v in values:
+                val_map[str(v.get("value", "")).lower().replace(" ", "_")] = float(v.get("odd", 0))
+            if not val_map:
+                continue
+            
+            if mk not in result:
+                result[mk] = {}
+            result[mk][current_bk] = val_map
+    
+    return result
 
 
 def _generate_estimated_odds(match: MatchAnalysis):
