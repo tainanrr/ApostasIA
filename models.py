@@ -496,17 +496,24 @@ def predict_shots(match: MatchAnalysis) -> tuple[float, float, float, float, dic
     home = match.home_team
     away = match.away_team
 
-    # ── Finalizações Totais por time ──
-    # Média base de finalizações totais (tipicamente 10-14 por time)
-    h_shots_base = getattr(home, 'shots_total_avg', home.shots_on_target_avg * 2.8)
-    a_shots_base = getattr(away, 'shots_total_avg', away.shots_on_target_avg * 2.8)
+    # ── Usar parâmetros α/β do modelo Dixon-Coles (home/away específicos, com regressão) ──
+    # Estes são mais precisos que attack_strength/defense_strength (que são totais)
+    h_alpha = getattr(match, 'model_home_alpha', None) or home.attack_strength
+    a_alpha = getattr(match, 'model_away_alpha', None) or away.attack_strength
+    h_beta = getattr(match, 'model_home_beta', None) or home.defense_strength
+    a_beta = getattr(match, 'model_away_beta', None) or away.defense_strength
 
-    # Ajustes: defesa adversária e forma recente
-    # defense_strength: ALTO = defesa fraca (sofre mais gols), BAIXO = defesa forte (sofre menos)
-    # Contra defesa FRACA (alto) → time finaliza MAIS
-    # Contra defesa FORTE (baixo) → time finaliza MENOS
-    defense_factor_h = max(0.6, min(1.5, 0.7 + away.defense_strength * 0.3))
-    defense_factor_a = max(0.6, min(1.5, 0.7 + home.defense_strength * 0.3))
+    # ── Finalizações Totais por time ──
+    # Base proporcional à força de ataque do modelo (α)
+    # Média Serie A: ~11 shots/time/jogo, ~4 SoT/time/jogo
+    h_shots_base = h_alpha * 10.5   # α=1.0 → ~10.5 shots
+    a_shots_base = a_alpha * 10.5
+
+    # Ajuste pela defesa adversária (β do modelo Dixon-Coles)
+    # β ALTO (>1) = defesa fraca → adversário finaliza MAIS
+    # β BAIXO (<1) = defesa forte → adversário finaliza MENOS
+    defense_factor_h = max(0.6, min(1.5, 0.7 + a_beta * 0.3))   # Roma chuta vs defesa Cagliari
+    defense_factor_a = max(0.6, min(1.5, 0.7 + h_beta * 0.3))   # Cagliari chuta vs defesa Roma
 
     form_factor_h = 0.85 + home.form_points * 0.30
     form_factor_a = 0.85 + away.form_points * 0.30
@@ -518,9 +525,9 @@ def predict_shots(match: MatchAnalysis) -> tuple[float, float, float, float, dic
     a_shots_mu = max(5.0, min(20.0, a_shots_base * defense_factor_a * form_factor_a))
 
     # ── Finalizações No Gol (SoT) por time ──
-    # Tipicamente ~35-40% das finalizações totais são no gol
-    h_sot_base = home.shots_on_target_avg
-    a_sot_base = away.shots_on_target_avg
+    # Base proporcional a α, ~35-40% das finalizações totais são no gol
+    h_sot_base = h_alpha * 3.8
+    a_sot_base = a_alpha * 3.8
 
     h_sot_mu = max(2.0, min(10.0, h_sot_base * defense_factor_h * form_factor_h * home_adv))
     a_sot_mu = max(2.0, min(10.0, a_sot_base * defense_factor_a * form_factor_a))
