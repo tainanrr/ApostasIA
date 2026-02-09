@@ -598,7 +598,7 @@
                             <th><input class="col-filter" type="text" id="cf-selection" placeholder="Seleção..." oninput="applyColumnFilters()"></th>
                             <th><input class="col-filter" type="text" id="cf-bookmaker" placeholder="Casa..." oninput="applyColumnFilters()"></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-odd-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-odd-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
-                            <th></th>
+                            <th><div class="col-filter-num"><input type="number" id="cf-fair-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-fair-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-edge-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-edge-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-kelly-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-kelly-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-prob-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-prob-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
@@ -1192,6 +1192,8 @@ function applyColumnFilters() {
     const bookmaker = (document.getElementById('cf-bookmaker')?.value || '').toLowerCase();
     const oddMin = parseFloat(document.getElementById('cf-odd-min')?.value) || null;
     const oddMax = parseFloat(document.getElementById('cf-odd-max')?.value) || null;
+    const fairMin = parseFloat(document.getElementById('cf-fair-min')?.value) || null;
+    const fairMax = parseFloat(document.getElementById('cf-fair-max')?.value) || null;
     const edgeMin = parseFloat(document.getElementById('cf-edge-min')?.value) || null;
     const edgeMax = parseFloat(document.getElementById('cf-edge-max')?.value) || null;
     const kellyMin = parseFloat(document.getElementById('cf-kelly-min')?.value) || null;
@@ -1211,6 +1213,8 @@ function applyColumnFilters() {
         if (bookmaker && !(o.bookmaker || '').toLowerCase().includes(bookmaker)) return false;
         if (oddMin !== null && o.market_odd < oddMin) return false;
         if (oddMax !== null && o.market_odd > oddMax) return false;
+        if (fairMin !== null && o.fair_odd < fairMin) return false;
+        if (fairMax !== null && o.fair_odd > fairMax) return false;
         if (edgeMin !== null && o.edge < edgeMin) return false;
         if (edgeMax !== null && o.edge > edgeMax) return false;
         const kellyVal = parseFloat((o.kelly_bet_pct || '0').replace('%', ''));
@@ -1251,7 +1255,7 @@ function applyColumnFilters() {
 
 function clearAllFilters() {
     ['cf-team', 'cf-selection', 'cf-bookmaker', 'cf-odd-min', 'cf-odd-max',
-     'cf-edge-min', 'cf-edge-max', 'cf-kelly-min', 'cf-kelly-max',
+     'cf-fair-min', 'cf-fair-max', 'cf-edge-min', 'cf-edge-max', 'cf-kelly-min', 'cf-kelly-max',
      'cf-prob-min', 'cf-prob-max', 'cf-dq-min', 'cf-dq-max'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
