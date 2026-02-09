@@ -2337,7 +2337,7 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
     const thStyle = 'padding:6px 8px;text-align:left;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)';
     const tdStyle = 'padding:6px 8px;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.04)';
 
-    const matchRow = (m) => {
+    const matchRowBase = (m, showLeague) => {
         const rc = m.result === 'W' ? 'var(--accent-green)' : m.result === 'L' ? 'var(--accent-red)' : 'var(--accent-yellow)';
         const rl = m.result === 'W' ? 'V' : m.result === 'L' ? 'D' : 'E';
         const hac = m.is_home ? 'var(--accent-green)' : 'var(--accent-blue)';
@@ -2348,8 +2348,10 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
         const esc = s.total_corners != null ? s.total_corners : '-';
         const cart = s.total_cards != null ? s.total_cards : '-';
         const xi = m.lineup_type === 'disponivel' ? '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(0,255,136,0.1);color:var(--accent-green)">XI</span>' : '';
+        const leagueCol = showLeague ? `<td style="${tdStyle};font-size:10px;color:var(--text-muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.league_name || ''}">${m.league_name || '-'}</td>` : '';
         return `<tr>
             <td style="${tdStyle};color:var(--text-muted);white-space:nowrap">${m.date}</td>
+            ${leagueCol}
             <td style="${tdStyle};text-align:center"><span style="color:${hac};font-weight:700;font-size:10px">${ha}</span></td>
             <td style="${tdStyle};max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.opponent}">${m.opponent}${fav}</td>
             <td style="${tdStyle};text-align:center;font-weight:800;font-family:'JetBrains Mono'"><span style="color:${rc}">${m.score_home}-${m.score_away}</span></td>
@@ -2360,10 +2362,26 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
             <td style="${tdStyle};text-align:center">${xi}</td>
         </tr>`;
     };
+    const matchRow = (m) => matchRowBase(m, false);
+    const matchRowFull = (m) => matchRowBase(m, true);
 
     const tableWrap = (rows) => `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:600px">
         <thead><tr>
             <th style="${thStyle}">Data</th>
+            <th style="${thStyle};text-align:center">C/F</th>
+            <th style="${thStyle}">Adversario</th>
+            <th style="${thStyle};text-align:center">Placar</th>
+            <th style="${thStyle};text-align:center">Res</th>
+            <th style="${thStyle};text-align:center">O/U</th>
+            <th style="${thStyle};text-align:center">Esc</th>
+            <th style="${thStyle};text-align:center">Cart</th>
+            <th style="${thStyle};text-align:center">XI</th>
+        </tr></thead><tbody>${rows}</tbody></table></div>`;
+
+    const tableWrapFull = (rows) => `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:700px">
+        <thead><tr>
+            <th style="${thStyle}">Data</th>
+            <th style="${thStyle}">Campeonato</th>
             <th style="${thStyle};text-align:center">C/F</th>
             <th style="${thStyle}">Adversario</th>
             <th style="${thStyle};text-align:center">Placar</th>
@@ -2391,7 +2409,7 @@ function renderTeamHistory(homeData, awayData, h2hData, leagueId, homeName, away
         if (all.length > 0) {
             html += subTitle('Todas as Competicoes (ultimos ' + all.length + ')');
             html += summaryBadges(calcSummary(all));
-            html += tableWrap(all.map(matchRow).join(''));
+            html += tableWrapFull(all.map(matchRowFull).join(''));
         }
         if (!lg.length && !all.length) {
             html += '<div style="color:var(--text-muted);padding:12px;text-align:center">Sem dados historicos disponiveis</div>';
