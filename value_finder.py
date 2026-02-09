@@ -47,6 +47,8 @@ _ODDS_LIMITS = {
     "Finaliz. Fora O/U": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
     "SoT Casa O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
     "SoT Fora O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Fin. Jogador":     (config.ODDS_MIN_VALID, config.ODDS_MAX_PLAYER_SHOTS),
+    "SoT Jogador":      (config.ODDS_MIN_VALID, config.ODDS_MAX_PLAYER_SHOTS),
     # Backward compatibility
     "O/U 2.5":          (config.ODDS_MIN_VALID, config.ODDS_MAX_OU),
     "Corners":          (config.ODDS_MIN_VALID, config.ODDS_MAX_CORNERS),

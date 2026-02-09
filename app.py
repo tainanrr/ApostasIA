@@ -44,12 +44,16 @@ from datetime import datetime
 from flask import Flask, render_template, jsonify
 
 import config
-from data_ingestion import ingest_all_fixtures, _check_api_plan, _api_call_count
+from data_ingestion import (
+    ingest_all_fixtures, _check_api_plan, _api_call_count,
+    MatchAnalysis, TeamStats, WeatherData, RefereeStats, MarketOdds,
+    get_cached_player_shots,
+)
 from models import run_models_batch
 from context_engine import apply_context_batch
 from value_finder import find_all_value, ValueOpportunity
-from data_ingestion import MatchAnalysis
 import supabase_client
+import numpy as np
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
@@ -344,6 +348,323 @@ def run_engine():
 
 
 # ═══════════════════════════════════════════════
+# RECALCULAR (sem API calls — usa dados em cache)
+# ═══════════════════════════════════════════════
+
+def deserialize_match(d: dict) -> MatchAnalysis:
+    """Reconstrói um MatchAnalysis a partir de um dict serializado."""
+    home = TeamStats(
+        team_id=d.get("home_team_id", 0),
+        team_name=d.get("home_team", "Casa"),
+        attack_strength=d.get("home_attack", 1.0),
+        defense_strength=d.get("home_defense", 1.0),
+        home_goals_scored_avg=d.get("home_goals_scored_avg", 1.3),
+        home_goals_conceded_avg=d.get("home_goals_conceded_avg", 1.1),
+        away_goals_scored_avg=d.get("away_goals_scored_avg", 1.0),
+        away_goals_conceded_avg=d.get("away_goals_conceded_avg", 1.3),
+        shots_total_avg=d.get("home_shots_total_avg", d.get("home_shots_on_target_avg", 4.0) * 2.8),
+        shots_on_target_avg=d.get("home_shots_on_target_avg", 4.0),
+        shots_blocked_avg=d.get("home_shots_blocked_avg", 3.0),
+        corners_avg=d.get("home_corners_avg", 5.0),
+        cards_avg=d.get("home_cards_avg", 2.0),
+        fouls_avg=d.get("home_fouls_avg", 12.0),
+        possession_final_third=d.get("home_possession", 30.0),
+        form_last10=d.get("home_form", []),
+        form_points=d.get("home_form_points", 0.0),
+        league_position=d.get("home_league_pos", 0),
+        league_points=d.get("home_league_pts", 0),
+        games_played=d.get("home_games_played", 0),
+        games_remaining=d.get("home_games_remaining", 0),
+        points_to_title=d.get("home_points_to_title", 99),
+        points_to_relegation=d.get("home_points_to_relegation", 99),
+        has_real_data=d.get("home_has_real_data", False),
+    )
+    away = TeamStats(
+        team_id=d.get("away_team_id", 0),
+        team_name=d.get("away_team", "Fora"),
+        attack_strength=d.get("away_attack", 1.0),
+        defense_strength=d.get("away_defense", 1.0),
+        home_goals_scored_avg=d.get("home_goals_scored_avg", 1.3),
+        home_goals_conceded_avg=d.get("home_goals_conceded_avg", 1.1),
+        away_goals_scored_avg=d.get("away_goals_scored_avg", 1.0),
+        away_goals_conceded_avg=d.get("away_goals_conceded_avg", 1.3),
+        shots_total_avg=d.get("away_shots_total_avg", d.get("away_shots_on_target_avg", 4.0) * 2.8),
+        shots_on_target_avg=d.get("away_shots_on_target_avg", 4.0),
+        shots_blocked_avg=d.get("away_shots_blocked_avg", 3.0),
+        corners_avg=d.get("away_corners_avg", 5.0),
+        cards_avg=d.get("away_cards_avg", 2.0),
+        fouls_avg=d.get("away_fouls_avg", 12.0),
+        possession_final_third=d.get("away_possession", 30.0),
+        form_last10=d.get("away_form", []),
+        form_points=d.get("away_form_points", 0.0),
+        league_position=d.get("away_league_pos", 0),
+        league_points=d.get("away_league_pts", 0),
+        games_played=d.get("away_games_played", 0),
+        games_remaining=d.get("away_games_remaining", 0),
+        points_to_title=d.get("away_points_to_title", 99),
+        points_to_relegation=d.get("away_points_to_relegation", 99),
+        has_real_data=d.get("away_has_real_data", False),
+    )
+    weather = WeatherData(
+        temperature_c=d.get("weather_temp", 20.0),
+        wind_speed_kmh=d.get("weather_wind", 5.0),
+        rain_mm=d.get("weather_rain", 0.0),
+        humidity_pct=50.0,
+        description=d.get("weather_desc", "N/D"),
+    )
+    ref = RefereeStats(
+        name=d.get("referee", "Desconhecido"),
+        cards_per_game_avg=d.get("referee_cards_avg", 4.0),
+        fouls_per_game_avg=d.get("referee_fouls_avg", 25.0),
+    )
+    odds = MarketOdds(
+        home_win=d.get("odds_home", 2.0),
+        draw=d.get("odds_draw", 3.3),
+        away_win=d.get("odds_away", 3.5),
+        over_25=d.get("odds_over25", 1.85) if "odds_over25" in d else 1.85,
+        under_25=d.get("odds_under25", 1.95),
+        btts_yes=d.get("odds_btts_yes", 1.80),
+        btts_no=d.get("odds_btts_no", 2.00),
+        over_95_corners=d.get("odds_corners_over", 1.90),
+        under_95_corners=d.get("odds_corners_under", 1.90),
+        over_35_cards=d.get("odds_cards_over", 1.85),
+        under_35_cards=d.get("odds_cards_under", 1.95),
+        double_chance_1x=d.get("odds_1x", 0.0),
+        double_chance_x2=d.get("odds_x2", 0.0),
+        asian_handicap_line=d.get("odds_ah_line", -0.5),
+        asian_handicap_home=d.get("odds_ah_home", 1.90),
+        asian_handicap_away=d.get("odds_ah_away", 1.90),
+        bookmaker=d.get("bookmaker", "N/D"),
+        all_markets=d.get("all_markets", {}),
+    )
+
+    match = MatchAnalysis(
+        match_id=d.get("match_id", 0),
+        league_id=d.get("league_id", 0),
+        league_name=d.get("league_name", "?"),
+        league_country=d.get("league_country", "?"),
+        match_date=d.get("match_date", ""),
+        match_time=d.get("match_time", ""),
+        venue_name=d.get("venue", ""),
+        home_team=home,
+        away_team=away,
+        weather=weather,
+        referee=ref,
+        odds=odds,
+        league_urgency_home=d.get("urgency_home", 0.5),
+        league_urgency_away=d.get("urgency_away", 0.5),
+        home_fatigue=d.get("home_fatigue", False),
+        away_fatigue=d.get("away_fatigue", False),
+        injuries_home=d.get("injuries_home", []),
+        injuries_away=d.get("injuries_away", []),
+        has_real_odds=d.get("has_real_odds", False),
+        has_real_standings=d.get("has_real_standings", False),
+        has_real_weather=d.get("has_real_weather", False),
+        data_quality_score=d.get("data_quality", 0.0),
+        odds_home_away_suspect=d.get("odds_home_away_suspect", False),
+    )
+    return match
+
+
+def recalculate_engine():
+    """
+    Recalcula TUDO (modelo + scanner de valor) usando dados JÁ em cache.
+    ZERO requisições à API — apenas reprocessa com o código atualizado.
+    """
+    _force_utf8()
+    start = time.time()
+
+    # ── 1. Obter matches serializados do cache ──
+    serialized_matches = None
+
+    # Prioridade: cache local > Supabase
+    if _cache.get("matches") in ("FROM_DISK", "FROM_SUPABASE"):
+        serialized_matches = _cache.get("_serialized_matches", [])
+    elif _cache.get("matches") and isinstance(_cache["matches"], list):
+        # Já são objetos MatchAnalysis — serializar primeiro
+        serialized_matches = [serialize_match(m) for m in _cache["matches"]]
+
+    if not serialized_matches:
+        # Tentar carregar do disco
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            serialized_matches = data.get("matches", [])
+
+    if not serialized_matches:
+        raise ValueError("Nenhum dado em cache para recalcular. Execute o pipeline primeiro.")
+
+    print(f"[RECALC] Reconstruindo {len(serialized_matches)} partidas do cache...")
+
+    # ── 2. Deserializar → objetos MatchAnalysis ──
+    matches = []
+    for d in serialized_matches:
+        try:
+            match = deserialize_match(d)
+            matches.append(match)
+        except Exception as e:
+            print(f"[RECALC] Erro ao deserializar match {d.get('match_id', '?')}: {e}")
+
+    print(f"[RECALC] {len(matches)} partidas reconstruidas")
+
+    # ── 3. Re-executar MODELOS (inclui novos mercados de finalizações) ──
+    print("[RECALC] Executando modelos estatisticos (Dixon-Coles + NB Shots)...")
+    matches = run_models_batch(matches)
+    matches = apply_context_batch(matches)
+
+    # ── 4. Re-executar SCANNER DE VALOR (inclui novos mercados) ──
+    print("[RECALC] Escaneando oportunidades +EV...")
+    opportunities = find_all_value(matches)
+
+    # ── 5. PLAYER SHOTS — Buscar dados de jogadores em CACHE (0 API calls) ──
+    print("[RECALC] Buscando dados de jogadores em cache (finalizacoes)...")
+    teams_checked = set()
+    player_opps_count = 0
+    for match in matches:
+        for team_side, team in [("Casa", match.home_team), ("Fora", match.away_team)]:
+            if team.team_id in teams_checked:
+                continue
+            teams_checked.add(team.team_id)
+            player_data = get_cached_player_shots(team.team_id)
+            if not player_data:
+                continue
+
+            for p in player_data[:5]:  # Top 5 jogadores por time
+                # Gerar oportunidades de finalizações por jogador
+                for line_key, v in p.get("shots_lines", {}).items():
+                    if v["pct"] < 40 or v["sample"] < 3:
+                        continue
+                    fair_odd = v["fair_odd"]
+                    if fair_odd <= 1.02 or fair_odd > 15.0:
+                        continue
+                    model_p = 1.0 / fair_odd
+                    opportunities.append(ValueOpportunity(
+                        match_id=match.match_id,
+                        league_name=match.league_name,
+                        league_country=match.league_country,
+                        match_date=match.match_date,
+                        match_time=match.match_time,
+                        home_team=match.home_team.team_name,
+                        away_team=match.away_team.team_name,
+                        market="Fin. Jogador",
+                        selection=f"{p['name']} {line_key.replace('over_', 'Over ')} Fin.",
+                        market_odd=fair_odd,
+                        fair_odd=fair_odd,
+                        model_prob=round(model_p, 4),
+                        implied_prob=round(model_p, 4),
+                        edge=0.0,
+                        edge_pct="Fair",
+                        kelly_fraction=0.0,
+                        kelly_bet_pct="N/A",
+                        confidence="MODELO",
+                        reasoning=f"Baseado em {v['sample']} jogos: {p['name']} teve {line_key.replace('over_', '+')} finalizacoes em {v['pct']:.0f}% das partidas. Media: {p['avg_shots']}/jogo. Fair odd: {fair_odd:.2f}. Verifique odd real no bookmaker.",
+                        home_xg=match.model_home_xg,
+                        away_xg=match.model_away_xg,
+                        weather_note=match.weather.description,
+                        fatigue_note="",
+                        urgency_home=match.league_urgency_home,
+                        urgency_away=match.league_urgency_away,
+                        bookmaker="Fair Odds (modelo)",
+                        data_quality=match.data_quality_score,
+                        odds_suspect=False,
+                    ))
+                    player_opps_count += 1
+
+                # Finalizações ao gol (SoT) por jogador
+                for line_key, v in p.get("sot_lines", {}).items():
+                    if v["pct"] < 40 or v["sample"] < 3:
+                        continue
+                    fair_odd = v["fair_odd"]
+                    if fair_odd <= 1.02 or fair_odd > 15.0:
+                        continue
+                    model_p = 1.0 / fair_odd
+                    opportunities.append(ValueOpportunity(
+                        match_id=match.match_id,
+                        league_name=match.league_name,
+                        league_country=match.league_country,
+                        match_date=match.match_date,
+                        match_time=match.match_time,
+                        home_team=match.home_team.team_name,
+                        away_team=match.away_team.team_name,
+                        market="SoT Jogador",
+                        selection=f"{p['name']} {line_key.replace('over_', 'Over ')} Fin. Gol",
+                        market_odd=fair_odd,
+                        fair_odd=fair_odd,
+                        model_prob=round(model_p, 4),
+                        implied_prob=round(model_p, 4),
+                        edge=0.0,
+                        edge_pct="Fair",
+                        kelly_fraction=0.0,
+                        kelly_bet_pct="N/A",
+                        confidence="MODELO",
+                        reasoning=f"Baseado em {v['sample']} jogos: {p['name']} teve {line_key.replace('over_', '+')} finalizacoes ao gol em {v['pct']:.0f}% das partidas. Media SoT: {p['avg_sot']}/jogo. Fair odd: {fair_odd:.2f}. Verifique odd real no bookmaker.",
+                        home_xg=match.model_home_xg,
+                        away_xg=match.model_away_xg,
+                        weather_note=match.weather.description,
+                        fatigue_note="",
+                        urgency_home=match.league_urgency_home,
+                        urgency_away=match.league_urgency_away,
+                        bookmaker="Fair Odds (modelo)",
+                        data_quality=match.data_quality_score,
+                        odds_suspect=False,
+                    ))
+                    player_opps_count += 1
+
+    print(f"[RECALC] {player_opps_count} oportunidades de jogadores geradas ({len(teams_checked)} times verificados)")
+
+    # Reordenar por edge (maior primeiro)
+    opportunities.sort(key=lambda o: o.edge, reverse=True)
+
+    elapsed = round(time.time() - start, 2)
+    n_leagues = len(set(m.league_name for m in matches))
+
+    print(f"[RECALC] Concluido em {elapsed}s | {len(matches)} jogos | {len(opportunities)} oportunidades")
+
+    # ── 5. Atualizar cache ──
+    now = datetime.now()
+    _cache["matches"] = matches
+    _cache["opportunities"] = opportunities
+    _cache["run_time"] = elapsed
+    _cache["last_run_at"] = now.strftime("%d/%m/%Y %H:%M:%S")
+    # Manter api_calls_used anterior (não fez nenhuma call nova)
+
+    _cache["stats"] = {
+        "total_matches": len(matches),
+        "total_leagues": n_leagues,
+        "total_opportunities": len(opportunities),
+        "high_conf": sum(1 for o in opportunities if o.confidence == "ALTO"),
+        "med_conf": sum(1 for o in opportunities if o.confidence == "MÉDIO"),
+        "low_conf": sum(1 for o in opportunities if o.confidence == "BAIXO"),
+        "model_conf": sum(1 for o in opportunities if o.confidence == "MODELO"),
+        "avg_edge": round(sum(o.edge for o in opportunities) / max(1, len(opportunities)) * 100, 2),
+        "max_edge": round(opportunities[0].edge * 100, 1) if opportunities else 0,
+        "max_edge_match": (f"{opportunities[0].home_team} vs {opportunities[0].away_team}"
+                           if opportunities else ""),
+        "max_edge_selection": opportunities[0].selection if opportunities else "",
+        "run_time": elapsed,
+        "analysis_dates": config.ANALYSIS_DATES,
+        "mode": "Recalculo (sem API calls)",
+        "last_run_at": _cache["last_run_at"],
+        "api_calls_this_run": 0,
+    }
+
+    # Persistir em disco
+    _save_cache_to_disk()
+
+    # Persistir no Supabase
+    print("[RECALC] Salvando no Supabase...")
+    try:
+        serialized_opps = [serialize_opportunity(o) for o in opportunities]
+        serialized_matches_new = [serialize_match(m) for m in matches]
+        supabase_client.save_full_run(_cache["stats"], serialized_opps, serialized_matches_new)
+        print("[RECALC] Dados salvos no Supabase com sucesso")
+    except Exception as e:
+        print(f"[RECALC] Erro ao salvar no Supabase: {e}")
+
+    return _cache
+
+
+# ═══════════════════════════════════════════════
 # SERIALIZAÇÃO
 # ═══════════════════════════════════════════════
 
@@ -517,6 +838,29 @@ def api_run():
         "ok": True,
         "last_run_at": _cache["last_run_at"],
         "api_calls_this_run": _cache["api_calls_used"],
+    })
+
+
+@app.route("/api/recalculate", methods=["POST"])
+def api_recalculate():
+    """
+    Recalcula modelos e scanner usando dados JÁ em cache.
+    ZERO requisicoes a API — apenas reprocessa com codigo atualizado.
+    Ideal para aplicar novos mercados/modelos sem gastar creditos.
+    """
+    try:
+        recalculate_engine()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    return jsonify({
+        "ok": True,
+        "last_run_at": _cache["last_run_at"],
+        "api_calls_this_run": 0,
+        "total_opportunities": _cache["stats"]["total_opportunities"],
+        "mode": "Recalculo (0 API calls)",
     })
 
 

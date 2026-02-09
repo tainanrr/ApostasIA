@@ -275,9 +275,10 @@ _api_cache_hits = 0
 _api_cache_misses = 0
 
 
-def _api_football_request(endpoint: str, params: dict) -> dict:
+def _api_football_request(endpoint: str, params: dict, cache_only: bool = False) -> dict:
     """Chamada genérica com rate-limiting e CACHE à API-Football v3.
-    Verifica cache local antes de fazer chamada real."""
+    Verifica cache local antes de fazer chamada real.
+    Se cache_only=True, retorna {} se cache miss (sem chamada real à API)."""
     global _api_call_count, _api_cache_hits, _api_cache_misses
 
     # ── VERIFICAR CACHE PRIMEIRO ──
@@ -291,6 +292,10 @@ def _api_football_request(endpoint: str, params: dict) -> dict:
             if _api_cache_hits % 50 == 1 or _api_cache_hits <= 5:
                 print(f"    [CACHE] {endpoint}({params}) -> HIT (economia de 1 request)")
             return cached
+
+    # Se cache_only, não fazer chamada real — retornar vazio
+    if cache_only:
+        return {}
 
     _api_cache_misses += 1
     # ── CHAMADA REAL À API ──
@@ -653,7 +658,8 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
             }
 
         # ═══ Goals Over/Under — TODAS as linhas (bet id 5) ═══
-        elif bet_id == 5 or ("goals" in bet_name and "over" in bet_name) or \
+        elif bet_id == 5 or \
+             ("goals" in bet_name and "over" in bet_name and "half" not in bet_name and "second" not in bet_name) or \
              ("over/under" in bet_name and "half" not in bet_name and "team" not in bet_name):
             odds.over_25 = val_map.get("over 2.5", odds.over_25)
             odds.under_25 = val_map.get("under 2.5", odds.under_25)
@@ -678,8 +684,27 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
                 h2_ou[k.replace(" ", "_")] = v
             odds.all_markets["h2_goals_ou"] = h2_ou
 
-        # ═══ BTTS — Both Teams Score (bet id 8) ═══
-        elif bet_id == 8 or "both teams" in bet_name:
+        # ═══ BTTS 1° Tempo — Both Teams Score First Half (bet id 34) ═══
+        elif bet_id == 34 or ("both teams" in bet_name and "first half" in bet_name):
+            odds.all_markets["btts_ht"] = {"yes": val_map.get("yes", 0), "no": val_map.get("no", 0)}
+
+        # ═══ BTTS 2° Tempo — Both Teams Score Second Half (bet id 35) ═══
+        elif bet_id == 35 or ("both teams" in bet_name and "second half" in bet_name):
+            odds.all_markets["btts_h2"] = {"yes": val_map.get("yes", 0), "no": val_map.get("no", 0)}
+
+        # ═══ Resultado + BTTS — Results/Both Teams Score (bet id 24) ═══
+        elif bet_id == 24 or ("result" in bet_name and "both teams" in bet_name):
+            odds.all_markets["result_btts"] = dict(val_map)
+
+        # ═══ Total Gols + BTTS — Total Goals/Both Teams To Score (bet id 49) ═══
+        elif bet_id == 49 or ("total" in bet_name and "both teams" in bet_name):
+            odds.all_markets["total_btts"] = dict(val_map)
+
+        # ═══ BTTS — Both Teams Score (bet id 8) — PARTIDA COMPLETA ═══
+        # IMPORTANTE: este bloco deve ficar DEPOIS dos mercados BTTS
+        # derivados (1° Tempo, 2° Tempo, Result/BTTS) para evitar que
+        # a condição genérica "both teams" capture mercados errados.
+        elif bet_id == 8 or bet_name in ("both teams score", "both teams to score"):
             odds.btts_yes = val_map.get("yes", odds.btts_yes)
             odds.btts_no = val_map.get("no", odds.btts_no)
             odds.all_markets["btts"] = {"yes": val_map.get("yes", 0), "no": val_map.get("no", 0)}
@@ -720,8 +745,8 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
                 ag_ou[k.replace(" ", "_")] = v
             odds.all_markets["away_goals_ou"] = ag_ou
 
-        # ═══ Odd/Even (bet id 16) ═══
-        elif bet_id == 16 or "odd/even" in bet_name:
+        # ═══ Odd/Even (bet id 16 / 21) ═══
+        elif bet_id in (16, 21) or ("odd/even" in bet_name and "half" not in bet_name and "home" not in bet_name and "away" not in bet_name):
             odds.all_markets["odd_even"] = {"odd": val_map.get("odd", 0), "even": val_map.get("even", 0)}
 
         # ═══ Clean Sheet Home (bet id 17) ═══
@@ -1162,6 +1187,100 @@ def _ingest_real_data() -> list[MatchAnalysis]:
     print(f"[ETL] =======================================")
 
     return all_matches
+
+
+def get_cached_player_shots(team_id: int, n_last: int = 10) -> list[dict]:
+    """
+    Tenta obter dados de finalizações de jogadores do CACHE (sem API calls).
+    Retorna lista de top jogadores com avg_shots, avg_sot, e linhas O/U.
+    Retorna [] se não houver dados em cache.
+    """
+    # Tentar buscar últimos fixtures do time (cache only)
+    fixtures_data = _api_football_request(
+        "fixtures", {"team": team_id, "last": n_last, "status": "FT"},
+        cache_only=True
+    )
+    fixtures = fixtures_data.get("response", [])
+    if not fixtures:
+        return []
+
+    # Coletar dados de jogadores de cada fixture (cache only)
+    player_map = {}
+    games_found = 0
+    for fix in fixtures[:n_last]:
+        fix_id = fix.get("fixture", {}).get("id", 0)
+        if not fix_id:
+            continue
+
+        players_data = _api_football_request(
+            "fixtures/players", {"fixture": fix_id},
+            cache_only=True
+        )
+        players_response = players_data.get("response", [])
+        if not players_response:
+            continue
+
+        games_found += 1
+        for team_block in players_response:
+            tid = team_block.get("team", {}).get("id", 0)
+            if tid != team_id:
+                continue
+            for p in team_block.get("players", []):
+                pi = p.get("player", {})
+                for ps in p.get("statistics", []):
+                    shots_info = ps.get("shots", {}) or {}
+                    games_info = ps.get("games", {}) or {}
+                    minutes = games_info.get("minutes", 0) or 0
+                    if minutes < 1:
+                        continue
+                    total_shots = shots_info.get("total") or 0
+                    shots_on = shots_info.get("on") or 0
+                    key = pi.get("name", "?")
+                    if key not in player_map:
+                        player_map[key] = {
+                            "id": pi.get("id"), "name": key,
+                            "position": games_info.get("position", "?"),
+                            "matches": 0, "total_shots": 0, "total_sot": 0,
+                            "_shots_h": [], "_sot_h": [],
+                        }
+                    pl = player_map[key]
+                    pl["matches"] += 1
+                    pl["total_shots"] += total_shots
+                    pl["total_sot"] += shots_on
+                    pl["_shots_h"].append(total_shots)
+                    pl["_sot_h"].append(shots_on)
+
+    if games_found < 2:
+        return []
+
+    # Calcular rankings e fair odds
+    rankings = sorted(
+        [p for p in player_map.values() if p["matches"] >= 2],
+        key=lambda p: p["total_shots"] / max(1, p["matches"]),
+        reverse=True
+    )[:10]
+
+    for p in rankings:
+        nm = p["matches"]
+        p["avg_shots"] = round(p["total_shots"] / nm, 1)
+        p["avg_sot"] = round(p["total_sot"] / nm, 1)
+        p["shots_lines"] = {}
+        for line in [0.5, 1.5, 2.5, 3.5]:
+            oc = sum(1 for s in p["_shots_h"] if s > line)
+            pct = round(oc / nm * 100, 0)
+            fair = round(nm / max(1, oc), 2) if oc > 0 else 99.0
+            p["shots_lines"][f"over_{line}"] = {"pct": pct, "fair_odd": fair, "sample": nm}
+        p["sot_lines"] = {}
+        for line in [0.5, 1.5, 2.5]:
+            oc = sum(1 for s in p["_sot_h"] if s > line)
+            pct = round(oc / nm * 100, 0)
+            fair = round(nm / max(1, oc), 2) if oc > 0 else 99.0
+            p["sot_lines"][f"over_{line}"] = {"pct": pct, "fair_odd": fair, "sample": nm}
+        # Limpar dados temporários
+        del p["_shots_h"]
+        del p["_sot_h"]
+
+    return rankings
 
 
 # ═══════════════════════════════════════════════════════════════

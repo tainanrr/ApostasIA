@@ -100,6 +100,15 @@
         .btn-run:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(0,230,138,0.3); }
         .btn-run:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
         .btn-run.running { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .btn-recalc, .btn-recalc-big {
+            background: linear-gradient(135deg, #3b82f6, #2563eb); border: none; color: #fff;
+            padding: 8px 16px; border-radius: 8px; font-size: 12px;
+            font-weight: 700; cursor: pointer; transition: all 0.2s;
+            font-family: 'Inter', sans-serif; margin-left: 6px;
+        }
+        .btn-recalc:hover, .btn-recalc-big:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(59,130,246,0.4); }
+        .btn-recalc:disabled, .btn-recalc-big:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-recalc-big { padding: 14px 28px; font-size: 15px; margin-top: 10px; display: block; }
 
         /* ── MAIN ── */
         main { max-width: 1440px; margin: 0 auto; padding: 24px 32px 60px; }
@@ -290,6 +299,7 @@
         .market-oe { background: rgba(255,105,180,0.18); color: #ff69b4; }
         .market-exact { background: rgba(34,139,34,0.18); color: #228b22; }
         .market-shots { background: rgba(255,69,0,0.18); color: #ff4500; }
+        .market-player-shots { background: rgba(186,85,211,0.18); color: #ba55d3; }
         .market-team-ou { background: rgba(255,215,0,0.18); color: #daa520; }
 
         /* ── SORTABLE TABLE HEADERS ── */
@@ -611,6 +621,7 @@
         </div>
         <div class="header-badge" id="badge-status">● Aguardando</div>
         <button class="btn-run" id="btn-run" onclick="executeEngine()">▶ Executar Análise</button>
+        <button class="btn-recalc" id="btn-recalc" onclick="recalculateEngine()" title="Recalcular modelos usando dados já em cache (0 API calls)">🔄 Recalcular</button>
     </div>
 </header>
 
@@ -643,7 +654,8 @@
             </div>
         </div>
         <button class="btn-run-big" id="btn-run-big" onclick="executeEngine()">▶ Executar Análise Completa</button>
-        <div class="welcome-cost">Custo estimado: ~620 requests por execução</div>
+        <button class="btn-recalc-big" id="btn-recalc-big" onclick="recalculateEngine()">🔄 Recalcular (0 API calls)</button>
+        <div class="welcome-cost">Custo estimado: ~620 requests por execução | Recalcular: 0 requests</div>
         <div id="w-last-run" style="margin-top:16px;font-size:13px;color:var(--text-muted)"></div>
     </div>
 
@@ -730,6 +742,8 @@
                                 <option value="Finaliz. Fora O/U">Finaliz. Fora O/U</option>
                                 <option value="SoT Casa O/U">SoT Casa O/U</option>
                                 <option value="SoT Fora O/U">SoT Fora O/U</option>
+                                <option value="Fin. Jogador">Fin. Jogador</option>
+                                <option value="SoT Jogador">SoT Jogador (Gol)</option>
                                 <option value="O/U 2.5">O/U 2.5 (legado)</option>
                                 <option value="Corners">Escanteios (legado)</option>
                             </select></th>
@@ -844,6 +858,7 @@ function getMarketClass(market) {
     if (m.includes('1o tempo') || m.includes('1° tempo')) return 'market-ht';
     if (m.includes('par/impar') || m.includes('par') || m.includes('impar')) return 'market-oe';
     if (m.includes('placar exato')) return 'market-exact';
+    if (m.includes('fin. jogador') || m.includes('sot jogador')) return 'market-player-shots';
     if (m.includes('finaliz') || m.includes('sot')) return 'market-shots';
     if (m.includes('escanteio') || m.includes('corners')) return 'market-corners';
     if (m.includes('cart')) return 'market-cards';
@@ -1186,6 +1201,82 @@ async function executeEngine() {
         document.getElementById("badge-status").style.borderColor = "var(--accent-green)";
     }
 }
+
+async function recalculateEngine() {
+    if (engineRunning) return;
+
+    if (!confirm('Recalcular modelos e oportunidades usando dados já em cache?\n\n✅ ZERO requisições à API (0 créditos)\n✅ Aplica novos mercados (finalizações, etc.)\n✅ Recalcula todas as probabilidades\n\n⏱️ Estimativa: 15-60 segundos')) {
+        return;
+    }
+
+    engineRunning = true;
+
+    // Mostrar progresso
+    document.getElementById("progress-overlay").classList.add("show");
+    document.getElementById("btn-run").disabled = true;
+    document.getElementById("btn-recalc").disabled = true;
+    document.getElementById("badge-status").textContent = "● RECALCULANDO";
+    document.getElementById("badge-status").style.color = "var(--accent-blue)";
+    document.getElementById("badge-status").style.borderColor = "var(--accent-blue)";
+
+    let seconds = 0;
+    timerInterval = setInterval(() => {
+        seconds++;
+        const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+        const s = String(seconds % 60).padStart(2, '0');
+        document.getElementById("progress-timer").textContent = `${m}:${s}`;
+
+        if (seconds < 3) document.getElementById("progress-phase").textContent = "Carregando dados do cache...";
+        else if (seconds < 10) document.getElementById("progress-phase").textContent = "Reconstruindo partidas...";
+        else if (seconds < 30) document.getElementById("progress-phase").textContent = "Executando modelos (Dixon-Coles + Finalizações)...";
+        else if (seconds < 50) document.getElementById("progress-phase").textContent = "Escaneando oportunidades +EV...";
+        else document.getElementById("progress-phase").textContent = "Salvando resultados...";
+    }, 1000);
+
+    try {
+        const res = await fetch("/api/recalculate", { method: "POST" });
+        const data = await res.json();
+
+        clearInterval(timerInterval);
+
+        if (!data.ok) {
+            alert("Erro ao recalcular: " + (data.error || "desconhecido"));
+            return;
+        }
+
+        // Recarregar dados
+        const [statsRes, oppsRes, matchesRes, leaguesRes] = await Promise.all([
+            fetch("/api/stats").then(r => r.json()),
+            fetch("/api/opportunities").then(r => r.json()),
+            fetch("/api/matches").then(r => r.json()),
+            fetch("/api/leagues").then(r => r.json()),
+        ]);
+
+        stats = statsRes;
+        allOpps = oppsRes;
+        allMatches = matchesRes;
+        allLeagues = leaguesRes;
+
+        renderAll();
+        showDashboard();
+
+        alert(`✅ Recalculo concluido!\n\n${data.total_opportunities} oportunidades encontradas\n0 requisicoes a API`);
+
+    } catch (e) {
+        clearInterval(timerInterval);
+        console.error(e);
+        alert("Erro: " + e.message);
+    } finally {
+        engineRunning = false;
+        document.getElementById("progress-overlay").classList.remove("show");
+        document.getElementById("btn-run").disabled = false;
+        document.getElementById("btn-recalc").disabled = false;
+        document.getElementById("badge-status").textContent = "● PRONTO";
+        document.getElementById("badge-status").style.color = "var(--accent-green)";
+        document.getElementById("badge-status").style.borderColor = "var(--accent-green)";
+    }
+}
+
 
 // ═══════════════════════════════════════════
 // RENDER ALL
