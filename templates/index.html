@@ -1450,27 +1450,43 @@ function showOppDetail(idx) {
     
     const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
     const marketClass = o.market === '1x2' ? 'market-1x2' : o.market === 'Dupla Chance' ? 'market-dc' : o.market === 'O/U 2.5' ? 'market-ou' : o.market === 'BTTS' ? 'market-btts' : o.market === 'Corners' ? 'market-corners' : 'market-cards';
-    const dq = o.data_quality || 0;
+    // Helper: valor seguro (trata null/undefined mas mantém 0 como válido)
+    const v = (val, fallback = 'N/D') => (val !== null && val !== undefined) ? val : fallback;
+    const dq = o.data_quality ?? 0;
     const dqPct = (dq * 100).toFixed(0);
     const dqColor = dq >= 0.80 ? 'var(--accent-green)' : dq >= 0.60 ? 'var(--accent-blue)' : dq >= 0.40 ? 'var(--accent-yellow)' : 'var(--accent-red)';
     const dqLabel = dq >= 0.80 ? 'EXCELENTE' : dq >= 0.60 ? 'BOA' : dq >= 0.40 ? 'MODERADA' : 'BAIXA';
 
     // Helper: stat comparison bar
     function statBar(homeVal, awayVal, label, suffix = '', decimals = 1) {
-        const hv = parseFloat(homeVal) || 0;
-        const av = parseFloat(awayVal) || 0;
-        const total = hv + av || 1;
-        const hPct = ((hv / total) * 100).toFixed(0);
-        const aPct = ((av / total) * 100).toFixed(0);
-        const hColor = hv > av ? 'var(--accent-green)' : hv === av ? 'var(--text-secondary)' : 'var(--text-muted)';
-        const aColor = av > hv ? 'var(--accent-blue)' : av === hv ? 'var(--text-secondary)' : 'var(--text-muted)';
+        const hRaw = homeVal;
+        const aRaw = awayVal;
+        const hv = parseFloat(hRaw);
+        const av = parseFloat(aRaw);
+        const hValid = hRaw !== null && hRaw !== undefined && !isNaN(hv);
+        const aValid = aRaw !== null && aRaw !== undefined && !isNaN(av);
+        // Se ambos são inválidos ou ambos são 0 e vieram de cache sem dados, exibir N/D
+        if (!hValid && !aValid) {
+            return `<div class="stat-row">
+                <div class="stat-row-val home" style="color:var(--text-muted)">N/D</div>
+                <div style="text-align:center"><div class="stat-row-label">${label}</div><div class="stat-bar-wrap"></div></div>
+                <div class="stat-row-val away" style="color:var(--text-muted)">N/D</div>
+            </div>`;
+        }
+        const h = hValid ? hv : 0;
+        const a = aValid ? av : 0;
+        const total = h + a || 1;
+        const hPct = ((h / total) * 100).toFixed(0);
+        const aPct = ((a / total) * 100).toFixed(0);
+        const hColor = h > a ? 'var(--accent-green)' : h === a ? 'var(--text-secondary)' : 'var(--text-muted)';
+        const aColor = a > h ? 'var(--accent-blue)' : a === h ? 'var(--text-secondary)' : 'var(--text-muted)';
         return `<div class="stat-row">
-            <div class="stat-row-val home" style="color:${hColor}">${typeof hv === 'number' ? hv.toFixed(decimals) : hv}${suffix}</div>
+            <div class="stat-row-val home" style="color:${hColor}">${hValid ? h.toFixed(decimals) : 'N/D'}${hValid ? suffix : ''}</div>
             <div style="text-align:center">
                 <div class="stat-row-label">${label}</div>
                 <div class="stat-bar-wrap"><div class="stat-bar-home" style="width:${hPct}%"></div><div class="stat-bar-away" style="width:${aPct}%"></div></div>
             </div>
-            <div class="stat-row-val away" style="color:${aColor}">${typeof av === 'number' ? av.toFixed(decimals) : av}${suffix}</div>
+            <div class="stat-row-val away" style="color:${aColor}">${aValid ? a.toFixed(decimals) : 'N/D'}${aValid ? suffix : ''}</div>
         </div>`;
     }
 
@@ -1518,7 +1534,7 @@ function showOppDetail(idx) {
             <div class="team-compare">
                 <div class="team-col team-col-home">
                     <div class="team-name-lg" style="color:var(--accent-green)">${o.home_team}</div>
-                    <div class="team-badge-info">${m ? (m.home_league_pos ? m.home_league_pos + '° lugar' : '') + (m.home_league_pts ? ' • ' + m.home_league_pts + ' pts' : '') + (m.home_games_played ? ' • ' + m.home_games_played + ' jogos' : '') : 'N/D'}</div>
+                    <div class="team-badge-info">${m ? (v(m.home_league_pos,'') ? m.home_league_pos + '° lugar' : '') + (v(m.home_league_pts,'') !== '' ? ' • ' + m.home_league_pts + ' pts' : '') + (v(m.home_games_played,'') !== '' ? ' • ' + m.home_games_played + ' jogos' : '') : 'N/D'}</div>
                     <div style="margin-bottom:6px"><span style="font-size:10px;color:var(--text-muted)">FORMA RECENTE</span></div>
                     <div class="form-dots" style="justify-content:flex-end">${m ? formHtml(m.home_form) : 'N/D'}</div>
                     <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${m ? formSummary(m.home_form) : ''}</div>
@@ -1526,7 +1542,7 @@ function showOppDetail(idx) {
                 <div class="team-col-vs">VS</div>
                 <div class="team-col team-col-away">
                     <div class="team-name-lg" style="color:var(--accent-blue)">${o.away_team}</div>
-                    <div class="team-badge-info">${m ? (m.away_league_pos ? m.away_league_pos + '° lugar' : '') + (m.away_league_pts ? ' • ' + m.away_league_pts + ' pts' : '') + (m.away_games_played ? ' • ' + m.away_games_played + ' jogos' : '') : 'N/D'}</div>
+                    <div class="team-badge-info">${m ? (v(m.away_league_pos,'') ? m.away_league_pos + '° lugar' : '') + (v(m.away_league_pts,'') !== '' ? ' • ' + m.away_league_pts + ' pts' : '') + (v(m.away_games_played,'') !== '' ? ' • ' + m.away_games_played + ' jogos' : '') : 'N/D'}</div>
                     <div style="margin-bottom:6px"><span style="font-size:10px;color:var(--text-muted)">FORMA RECENTE</span></div>
                     <div class="form-dots">${m ? formHtml(m.away_form) : 'N/D'}</div>
                     <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${m ? formSummary(m.away_form) : ''}</div>
@@ -1540,12 +1556,12 @@ function showOppDetail(idx) {
                 ${statBar(m.home_goals_scored_avg, m.away_goals_scored_avg, 'Gols Marcados/Jogo', '')}
                 ${statBar(m.home_goals_conceded_avg, m.away_goals_conceded_avg, 'Gols Sofridos/Jogo', '')}
                 ${statBar(m.home_xg, m.away_xg, 'xG Esperado (Modelo)', '')}
-                ${statBar(m.home_shots_on_target_avg || 0, m.away_shots_on_target_avg || 0, 'Finalizações no Gol/Jogo', '')}
-                ${statBar(m.home_corners_avg || 0, m.away_corners_avg || 0, 'Escanteios/Jogo', '')}
-                ${statBar(m.home_cards_avg || 0, m.away_cards_avg || 0, 'Cartões/Jogo', '')}
-                ${statBar(m.home_fouls_avg || 0, m.away_fouls_avg || 0, 'Faltas/Jogo', '')}
-                ${statBar(m.home_possession || 0, m.away_possession || 0, 'Posse Terço Final', '')}
-                ${statBar(m.home_form_points || 0, m.away_form_points || 0, 'Pontos de Forma', '', 2)}
+                ${statBar(m.home_shots_on_target_avg, m.away_shots_on_target_avg, 'Finalizações no Gol/Jogo', '')}
+                ${statBar(m.home_corners_avg, m.away_corners_avg, 'Escanteios/Jogo', '')}
+                ${statBar(m.home_cards_avg, m.away_cards_avg, 'Cartões/Jogo', '')}
+                ${statBar(m.home_fouls_avg, m.away_fouls_avg, 'Faltas/Jogo', '')}
+                ${statBar(m.home_possession, m.away_possession, 'Posse Terço Final', '')}
+                ${statBar(m.home_form_points, m.away_form_points, 'Pontos de Forma', '', 2)}
             </div>
             ` : '<div style="color:var(--text-muted);padding:16px;text-align:center">Dados da partida não disponíveis no cache</div>'}
 
@@ -1738,7 +1754,7 @@ function showOppDetail(idx) {
                     <div class="ctx-card-title">👨‍⚖️ Árbitro</div>
                     <div class="ctx-card-body">
                         ${m && m.referee && m.referee !== 'Desconhecido' ? m.referee : '<span style="color:var(--text-muted)">Não identificado</span>'}
-                        ${m && m.referee_cards_avg ? '<br><span style="font-size:11px;color:var(--text-muted)">' + m.referee_cards_avg + ' cartões/jogo • ' + (m.referee_fouls_avg || '?') + ' faltas/jogo</span>' : ''}
+                        ${m && m.referee_cards_avg != null ? '<br><span style="font-size:11px;color:var(--text-muted)">' + m.referee_cards_avg + ' cartões/jogo • ' + (m.referee_fouls_avg ?? '?') + ' faltas/jogo</span>' : ''}
                     </div>
                 </div>
                 <div class="ctx-card">
@@ -1761,21 +1777,21 @@ function showOppDetail(idx) {
                 <div class="ctx-card">
                     <div class="ctx-card-title" style="color:var(--accent-green)">${o.home_team}</div>
                     <div class="ctx-card-body">
-                        <div style="margin-bottom:6px"><strong>${m.home_league_pos || '?'}° lugar</strong> — ${m.home_league_pts || '?'} pts</div>
-                        <div style="margin-bottom:4px">Jogos: ${m.home_games_played || '?'} disputados, ${m.home_games_remaining || '?'} restantes</div>
-                        <div style="margin-bottom:4px">Distância p/ título: <strong style="color:${m.home_points_to_title <= 10 ? 'var(--accent-green)' : 'var(--text-secondary)'}">${m.home_points_to_title !== 99 ? m.home_points_to_title + ' pts' : 'N/D'}</strong></div>
-                        <div>Distância p/ rebaixamento: <strong style="color:${m.home_points_to_relegation <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}">${m.home_points_to_relegation !== 99 ? m.home_points_to_relegation + ' pts' : 'N/D'}</strong></div>
-                        <div style="margin-top:6px">Urgência: <strong>${m.urgency_home?.toFixed(1) || '?'}</strong>/1.0</div>
+                        <div style="margin-bottom:6px"><strong>${v(m.home_league_pos, '?')}° lugar</strong> — ${v(m.home_league_pts, '?')} pts</div>
+                        <div style="margin-bottom:4px">Jogos: ${v(m.home_games_played, '?')} disputados, ${v(m.home_games_remaining, '?')} restantes</div>
+                        <div style="margin-bottom:4px">Distância p/ título: <strong style="color:${(v(m.home_points_to_title, 99) <= 10) ? 'var(--accent-green)' : 'var(--text-secondary)'}">${v(m.home_points_to_title, 99) !== 99 ? m.home_points_to_title + ' pts' : 'N/D'}</strong></div>
+                        <div>Distância p/ rebaixamento: <strong style="color:${(v(m.home_points_to_relegation, 99) <= 5) ? 'var(--accent-red)' : 'var(--text-secondary)'}">${v(m.home_points_to_relegation, 99) !== 99 ? m.home_points_to_relegation + ' pts' : 'N/D'}</strong></div>
+                        <div style="margin-top:6px">Urgência: <strong>${v(m.urgency_home, 0).toFixed ? m.urgency_home.toFixed(1) : v(m.urgency_home, '?')}</strong>/1.0</div>
                     </div>
                 </div>
                 <div class="ctx-card">
                     <div class="ctx-card-title" style="color:var(--accent-blue)">${o.away_team}</div>
                     <div class="ctx-card-body">
-                        <div style="margin-bottom:6px"><strong>${m.away_league_pos || '?'}° lugar</strong> — ${m.away_league_pts || '?'} pts</div>
-                        <div style="margin-bottom:4px">Jogos: ${m.away_games_played || '?'} disputados, ${m.away_games_remaining || '?'} restantes</div>
-                        <div style="margin-bottom:4px">Distância p/ título: <strong style="color:${m.away_points_to_title <= 10 ? 'var(--accent-green)' : 'var(--text-secondary)'}">${m.away_points_to_title !== 99 ? m.away_points_to_title + ' pts' : 'N/D'}</strong></div>
-                        <div>Distância p/ rebaixamento: <strong style="color:${m.away_points_to_relegation <= 5 ? 'var(--accent-red)' : 'var(--text-secondary)'}">${m.away_points_to_relegation !== 99 ? m.away_points_to_relegation + ' pts' : 'N/D'}</strong></div>
-                        <div style="margin-top:6px">Urgência: <strong>${m.urgency_away?.toFixed(1) || '?'}</strong>/1.0</div>
+                        <div style="margin-bottom:6px"><strong>${v(m.away_league_pos, '?')}° lugar</strong> — ${v(m.away_league_pts, '?')} pts</div>
+                        <div style="margin-bottom:4px">Jogos: ${v(m.away_games_played, '?')} disputados, ${v(m.away_games_remaining, '?')} restantes</div>
+                        <div style="margin-bottom:4px">Distância p/ título: <strong style="color:${(v(m.away_points_to_title, 99) <= 10) ? 'var(--accent-green)' : 'var(--text-secondary)'}">${v(m.away_points_to_title, 99) !== 99 ? m.away_points_to_title + ' pts' : 'N/D'}</strong></div>
+                        <div>Distância p/ rebaixamento: <strong style="color:${(v(m.away_points_to_relegation, 99) <= 5) ? 'var(--accent-red)' : 'var(--text-secondary)'}">${v(m.away_points_to_relegation, 99) !== 99 ? m.away_points_to_relegation + ' pts' : 'N/D'}</strong></div>
+                        <div style="margin-top:6px">Urgência: <strong>${v(m.urgency_away, 0).toFixed ? m.urgency_away.toFixed(1) : v(m.urgency_away, '?')}</strong>/1.0</div>
                     </div>
                 </div>
             </div>
@@ -1912,28 +1928,28 @@ function buildDetailedAnalysis(o) {
         
         L.push(`  ${o.home_team} (CASA):`);
         if (homeHasReal) {
-            L.push(`    ├─ Ataque (α):     ${m.home_attack || 'N/D'}`);
-            L.push(`    ├─ Defesa (β):     ${m.home_defense || 'N/D'}`);
-            L.push(`    ├─ Gols/jogo (casa):  marcados ${m.home_goals_scored_avg || 'N/D'} | sofridos ${m.home_goals_conceded_avg || 'N/D'}`);
-            L.push(`    ├─ Posição:        ${m.home_league_pos || 'N/D'}° (${m.home_league_pts || 'N/D'} pts)`);
-            L.push(`    └─ Forma (pontos): ${m.home_form_points || 'N/D'}`);
+            L.push(`    ├─ Ataque (α):     ${m.home_attack ?? 'N/D'}`);
+            L.push(`    ├─ Defesa (β):     ${m.home_defense ?? 'N/D'}`);
+            L.push(`    ├─ Gols/jogo (casa):  marcados ${m.home_goals_scored_avg ?? 'N/D'} | sofridos ${m.home_goals_conceded_avg ?? 'N/D'}`);
+            L.push(`    ├─ Posição:        ${m.home_league_pos ?? 'N/D'}° (${m.home_league_pts ?? 'N/D'} pts)`);
+            L.push(`    └─ Forma (pontos): ${m.home_form_points ?? 'N/D'}`);
         } else {
             L.push(`    ⚠️  DADOS ESTIMADOS (não reais da API) - análise não confiável`);
-            L.push(`    ├─ Ataque (α):     ${m.home_attack || 'N/D'} (estimado)`);
-            L.push(`    ├─ Defesa (β):     ${m.home_defense || 'N/D'} (estimado)`);
+            L.push(`    ├─ Ataque (α):     ${m.home_attack ?? 'N/D'} (estimado)`);
+            L.push(`    ├─ Defesa (β):     ${m.home_defense ?? 'N/D'} (estimado)`);
         }
         L.push("");
         L.push(`  ${o.away_team} (FORA):`);
         if (awayHasReal) {
-            L.push(`    ├─ Ataque (α):     ${m.away_attack || 'N/D'}`);
-            L.push(`    ├─ Defesa (β):     ${m.away_defense || 'N/D'}`);
-            L.push(`    ├─ Gols/jogo (fora):  marcados ${m.away_goals_scored_avg || 'N/D'} | sofridos ${m.away_goals_conceded_avg || 'N/D'}`);
-            L.push(`    ├─ Posição:        ${m.away_league_pos || 'N/D'}° (${m.away_league_pts || 'N/D'} pts)`);
-            L.push(`    └─ Forma (pontos): ${m.away_form_points || 'N/D'}`);
+            L.push(`    ├─ Ataque (α):     ${m.away_attack ?? 'N/D'}`);
+            L.push(`    ├─ Defesa (β):     ${m.away_defense ?? 'N/D'}`);
+            L.push(`    ├─ Gols/jogo (fora):  marcados ${m.away_goals_scored_avg ?? 'N/D'} | sofridos ${m.away_goals_conceded_avg ?? 'N/D'}`);
+            L.push(`    ├─ Posição:        ${m.away_league_pos ?? 'N/D'}° (${m.away_league_pts ?? 'N/D'} pts)`);
+            L.push(`    └─ Forma (pontos): ${m.away_form_points ?? 'N/D'}`);
         } else {
             L.push(`    ⚠️  DADOS ESTIMADOS (não reais da API) - análise não confiável`);
-            L.push(`    ├─ Ataque (α):     ${m.away_attack || 'N/D'} (estimado)`);
-            L.push(`    ├─ Defesa (β):     ${m.away_defense || 'N/D'} (estimado)`);
+            L.push(`    ├─ Ataque (α):     ${m.away_attack ?? 'N/D'} (estimado)`);
+            L.push(`    ├─ Defesa (β):     ${m.away_defense ?? 'N/D'} (estimado)`);
         }
     } else {
         L.push(`  ⚠️ Dados da partida não encontrados no cache`);
@@ -1964,18 +1980,18 @@ function buildDetailedAnalysis(o) {
     L.push("    μ (Fora) = α_fora × β_casa × fator_forma");
     L.push("");
     if (m) {
-        const hFormFactor = (0.85 + (m.home_form_points || 0.5) * 0.30).toFixed(2);
-        const aFormFactor = (0.85 + (m.away_form_points || 0.5) * 0.30).toFixed(2);
+        const hFormFactor = (0.85 + (m.home_form_points ?? 0.5) * 0.30).toFixed(2);
+        const aFormFactor = (0.85 + (m.away_form_points ?? 0.5) * 0.30).toFixed(2);
         const homeHasReal = m.home_has_real_data !== false;
         const awayHasReal = m.away_has_real_data !== false;
         
         if (homeHasReal && awayHasReal) {
             L.push(`  Cálculo λ (${o.home_team}):`);
-            L.push(`    = ${m.home_attack || 'N/D'} × ${m.away_defense || 'N/D'} × 1.08 × ${hFormFactor}`);
+            L.push(`    = ${m.home_attack ?? 'N/D'} × ${m.away_defense ?? 'N/D'} × 1.08 × ${hFormFactor}`);
             L.push(`    → xG Casa = ${o.home_xg.toFixed(2)}`);
             L.push("");
             L.push(`  Cálculo μ (${o.away_team}):`);
-            L.push(`    = ${m.away_attack || 'N/D'} × ${m.home_defense || 'N/D'} × ${aFormFactor}`);
+            L.push(`    = ${m.away_attack ?? 'N/D'} × ${m.home_defense ?? 'N/D'} × ${aFormFactor}`);
             L.push(`    → xG Fora = ${o.away_xg.toFixed(2)}`);
         } else {
             L.push(`  ⚠️  Cálculo de xG baseado em dados ESTIMADOS (não reais)`);
@@ -2012,8 +2028,8 @@ function buildDetailedAnalysis(o) {
     L.push("═══════════════════════════════════════════════════════");
     if (m) {
         L.push(`  1x2:    Casa=${m.odds_home}  |  Empate=${m.odds_draw}  |  Fora=${m.odds_away}`);
-        L.push(`  O/U 2.5: Over=${m.odds_over25 || '?'}  |  Under=${m.odds_under25 || '?'}`);
-        L.push(`  BTTS:   Sim=${m.odds_btts_yes || '?'}  |  Não=${m.odds_btts_no || '?'}`);
+        L.push(`  O/U 2.5: Over=${m.odds_over25 ?? '?'}  |  Under=${m.odds_under25 ?? '?'}`);
+        L.push(`  BTTS:   Sim=${m.odds_btts_yes ?? '?'}  |  Não=${m.odds_btts_no ?? '?'}`);
     }
     L.push("");
 
@@ -2050,7 +2066,7 @@ function buildDetailedAnalysis(o) {
 
     // Clima
     if (m && m.weather_desc && m.weather_desc !== "N/D") {
-        L.push(`  ☁️ Clima: ${m.weather_desc} | ${m.weather_temp?.toFixed(0) || '?'}°C | Vento: ${m.weather_wind?.toFixed(0) || '?'} km/h${m.weather_rain > 0 ? ' | Chuva: ' + m.weather_rain + 'mm' : ''}`);
+        L.push(`  ☁️ Clima: ${m.weather_desc ?? 'N/D'} | ${m.weather_temp != null ? m.weather_temp.toFixed(0) : '?'}°C | Vento: ${m.weather_wind != null ? m.weather_wind.toFixed(0) : '?'} km/h${m.weather_rain > 0 ? ' | Chuva: ' + m.weather_rain + 'mm' : ''}`);
         if (m.weather_wind > 20)
             L.push("    → Penalidade: xG reduzido ~8% (degradação de passes longos/bolas paradas)");
         if (m.weather_rain > 5)
@@ -2093,7 +2109,7 @@ function buildDetailedAnalysis(o) {
     // Árbitro
     if (m && m.referee && m.referee !== "Desconhecido") {
         L.push(`  👨‍⚖️ Árbitro: ${m.referee}`);
-        L.push(`     Média: ${m.referee_cards_avg} cartões/jogo | ${m.referee_fouls_avg || '?'} faltas/jogo`);
+        L.push(`     Média: ${m.referee_cards_avg ?? '?'} cartões/jogo | ${m.referee_fouls_avg ?? '?'} faltas/jogo`);
     }
     L.push("");
 
