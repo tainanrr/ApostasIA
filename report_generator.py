@@ -21,7 +21,7 @@ def generate_report(matches: list[MatchAnalysis],
     Gera o relatório diário completo em Markdown.
     """
     lines = []
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(config.BR_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
     # ═══════════════════════════════════════════════
     # CABEÇALHO

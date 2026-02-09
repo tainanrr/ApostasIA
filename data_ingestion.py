@@ -1087,12 +1087,13 @@ def _parse_fixture_to_match(
         league_name = league.get("name", "Desconhecida")
         league_country = league.get("country", "N/D")
 
-        # Data e hora
+        # Data e hora (converter UTC → Brasília)
         date_str = fixture.get("date", "")
         try:
             dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            match_date = dt.strftime("%Y-%m-%d")
-            match_time = dt.strftime("%H:%M")
+            dt_br = dt.astimezone(config.BR_TIMEZONE)
+            match_date = dt_br.strftime("%Y-%m-%d")
+            match_time = dt_br.strftime("%H:%M")
         except (ValueError, TypeError):
             match_date = config.TODAY
             match_time = "00:00"
@@ -1219,13 +1220,13 @@ def _check_api_plan() -> dict:
     return {"plan": plan, "limit": limit, "used": current, "available": limit - current}
 
 
-def _ingest_real_data() -> list[MatchAnalysis]:
+def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
     """
     Pipeline COMPLETO de ingestão — Plano PRO.
     7.500 req/dia | 300 req/min | ALL endpoints | ALL seasons.
 
       1. Status da conta
-      2. Fixtures globais (T e T+1)
+      2. Fixtures globais (datas solicitadas)
       3. Standings REAIS (season atual) para TODAS as ligas
       4. Odds REAIS (Pinnacle/Bet365) para TODOS os fixtures
       5. Lesões REAIS para todos os fixtures
@@ -1233,6 +1234,9 @@ def _ingest_real_data() -> list[MatchAnalysis]:
     """
     global _api_call_count
     _api_call_count = 0
+
+    if analysis_dates is None:
+        analysis_dates = config.ANALYSIS_DATES
 
     # ── PASSO 0: Verificar plano ──
     print("[ETL] ═══ PASSO 0: Verificando status da conta ═══")
@@ -1253,8 +1257,8 @@ def _ingest_real_data() -> list[MatchAnalysis]:
     all_fixtures_raw = []
 
     # ── PASSO 1: Fixtures globais ──
-    print("[ETL] ═══ PASSO 1: Buscando fixtures globais ═══")
-    for date in config.ANALYSIS_DATES:
+    print(f"[ETL] ═══ PASSO 1: Buscando fixtures globais ({len(analysis_dates)} datas) ═══")
+    for date in analysis_dates:
         fixes = _fetch_fixtures(date)
         all_fixtures_raw.extend(fixes)
 
@@ -1829,8 +1833,9 @@ def fetch_team_history(team_id: int, league_id: int = None, last: int = 10) -> d
         date_str = fixture.get("date", "")
         try:
             dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            match_date = dt.strftime("%Y-%m-%d")
-            match_time = dt.strftime("%H:%M")
+            dt_br = dt.astimezone(config.BR_TIMEZONE)
+            match_date = dt_br.strftime("%Y-%m-%d")
+            match_time = dt_br.strftime("%H:%M")
         except (ValueError, TypeError):
             match_date = "N/D"
             match_time = "N/D"
@@ -2078,7 +2083,8 @@ def fetch_h2h(team1_id: int, team2_id: int, last: int = 10) -> list[dict]:
         date_str = fixture.get("date", "")
         try:
             dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            match_date = dt.strftime("%Y-%m-%d")
+            dt_br = dt.astimezone(config.BR_TIMEZONE)
+            match_date = dt_br.strftime("%Y-%m-%d")
         except (ValueError, TypeError):
             match_date = "N/D"
 
@@ -2157,6 +2163,54 @@ def enrich_multi_bookmaker(match_id: int) -> dict:
             result[mk][current_bk] = val_map
     
     return result
+
+
+def fetch_finished_fixtures(match_ids: list[int]) -> dict:
+    """
+    Busca resultado FINAL de jogos pelo fixture_id.
+    Retorna dict {match_id: {"status": "FT"|..., "home_goals": int, "away_goals": int, "score": "2-1"}}.
+    Usa cache — se já tem resultado FT em cache, não busca de novo.
+    """
+    results = {}
+    if not match_ids:
+        return results
+
+    for mid in match_ids:
+        # Tentar cache primeiro (fixtures retorna dados completos)
+        cached = _get_cached_response("fixtures", {"id": mid})
+        raw = cached or _api_football_request("fixtures", {"id": mid})
+        if not raw:
+            continue
+        response = raw.get("response", [])
+        if not response:
+            continue
+        fix = response[0]
+        fix_data = fix.get("fixture", {})
+        goals = fix.get("goals", {})
+        status_short = fix_data.get("status", {}).get("short", "?")
+        score = fix.get("score", {})
+
+        home_goals = goals.get("home")
+        away_goals = goals.get("away")
+
+        finished = status_short in ("FT", "AET", "PEN")
+
+        if finished and home_goals is not None and away_goals is not None:
+            results[mid] = {
+                "status": status_short,
+                "home_goals": home_goals,
+                "away_goals": away_goals,
+                "score": f"{home_goals}-{away_goals}",
+                "ht_home": (score.get("halftime", {}) or {}).get("home"),
+                "ht_away": (score.get("halftime", {}) or {}).get("away"),
+            }
+            # Salvar no cache para não buscar de novo
+            if not cached:
+                _save_to_cache("fixtures", {"id": mid}, raw)
+        elif not finished:
+            results[mid] = {"status": status_short, "home_goals": None, "away_goals": None, "score": None}
+
+    return results
 
 
 ## _generate_estimated_odds REMOVIDA — sistema usa apenas odds reais de casas de apostas
@@ -2260,15 +2314,19 @@ def generate_synthetic_fixtures(date: str) -> list[MatchAnalysis]:
 # INTERFACE PÚBLICA
 # ═══════════════════════════════════════════════════════
 
-def ingest_all_fixtures() -> list[MatchAnalysis]:
+def ingest_all_fixtures(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
     """
     Pipeline principal de ingestão de dados.
     Escolhe automaticamente entre API real e dados sintéticos.
+    Aceita lista de datas customizada; default = config.ANALYSIS_DATES.
     """
+    if analysis_dates is None:
+        analysis_dates = config.ANALYSIS_DATES
+
     if config.USE_MOCK_DATA:
         print("[ETL] Modo: DADOS SINTÉTICOS (Demo)")
         all_matches = []
-        for date in config.ANALYSIS_DATES:
+        for date in analysis_dates:
             print(f"[ETL] Gerando dados sintéticos para {date}...")
             matches = generate_synthetic_fixtures(date)
             all_matches.extend(matches)
@@ -2277,9 +2335,10 @@ def ingest_all_fixtures() -> list[MatchAnalysis]:
         return all_matches
     else:
         print("[ETL] Modo: API REAL (Produção)")
+        print(f"[ETL] Datas solicitadas: {analysis_dates}")
         print(f"[ETL] API Key: {config.API_FOOTBALL_KEY[:8]}...{config.API_FOOTBALL_KEY[-4:]}")
         print(f"[ETL] Weather: {'Configurado' if config.OPENWEATHER_KEY else 'Não configurado'}")
-        return _ingest_real_data()
+        return _ingest_real_data(analysis_dates=analysis_dates)
 
 
 if __name__ == "__main__":

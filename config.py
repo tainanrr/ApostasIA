@@ -3,10 +3,15 @@ Configurações Globais do Sistema de Análise Quantitativa Esportiva.
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ═══════════════════════════════════════════════════════
+# FUSO HORÁRIO — BRASIL (Brasília, UTC-3)
+# ═══════════════════════════════════════════════════════
+BR_TIMEZONE = timezone(timedelta(hours=-3))
 
 # ═══════════════════════════════════════════════════════
 # CHAVES DE API
@@ -16,11 +21,38 @@ API_FOOTBALL_HOST = "v3.football.api-sports.io"
 OPENWEATHER_KEY = os.getenv("OPENWEATHER_KEY", "")
 
 # ═══════════════════════════════════════════════════════
-# DATAS DE ANÁLISE
+# DATAS DE ANÁLISE (usando fuso de Brasília)
 # ═══════════════════════════════════════════════════════
-TODAY = datetime.now().strftime("%Y-%m-%d")
-TOMORROW = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-ANALYSIS_DATES = [TODAY, TOMORROW]
+TODAY = datetime.now(BR_TIMEZONE).strftime("%Y-%m-%d")
+TOMORROW = (datetime.now(BR_TIMEZONE) + timedelta(days=1)).strftime("%Y-%m-%d")
+ANALYSIS_DATES = [TODAY, TOMORROW]          # Default — pode ser sobrescrito via /api/run
+
+
+def get_default_dates() -> list[str]:
+    """Retorna as datas padrão (hoje e amanhã em Brasília)."""
+    now = datetime.now(BR_TIMEZONE)
+    return [
+        now.strftime("%Y-%m-%d"),
+        (now + timedelta(days=1)).strftime("%Y-%m-%d"),
+    ]
+
+
+def build_date_range(date_from: str, date_to: str) -> list[str]:
+    """Gera lista de datas YYYY-MM-DD entre date_from e date_to (inclusive)."""
+    from datetime import date as _date
+    try:
+        start = _date.fromisoformat(date_from)
+        end = _date.fromisoformat(date_to)
+    except (ValueError, TypeError):
+        return get_default_dates()
+    if end < start:
+        start, end = end, start
+    dates = []
+    current = start
+    while current <= end:
+        dates.append(current.isoformat())
+        current += timedelta(days=1)
+    return dates or get_default_dates()
 
 # ═══════════════════════════════════════════════════════
 # PARÂMETROS DO MODELO DIXON-COLES

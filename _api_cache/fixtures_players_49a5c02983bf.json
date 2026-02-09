@@ -1,0 +1,1 @@
+{"_cached_at": "2026-02-09T15:58:17.690808", "_endpoint": "fixtures/players", "_params": {"fixture": 1447144}, "data": {"get": "fixtures/players", "parameters": {"fixture": "1447144"}, "errors": [], "results": 0, "paging": {"current": 1, "total": 1}, "response": []}}

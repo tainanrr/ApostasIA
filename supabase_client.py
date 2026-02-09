@@ -512,3 +512,168 @@ def update_bet_info(opp_id: str, amount: float, bet_return: float = None, notes:
     except Exception as e:
         print(f"[SUPABASE] Erro ao registrar aposta: {e}")
         return False
+
+
+# ═══════════════════════════════════════════════════════════════
+#  CONSULTAS DE RESULTADOS — Jogos terminados
+# ═══════════════════════════════════════════════════════════════
+
+def get_pending_opportunities() -> list[dict]:
+    """
+    Retorna oportunidades com result_status='PENDENTE' cujos jogos
+    já devem ter terminado (match_date <= hoje).
+    Inclui match_id, selection, market para resolver o resultado.
+    """
+    sb = get_client()
+    if not sb:
+        return []
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        result = (
+            sb.table("opportunities")
+            .select("id, match_id, market, selection, match_date, match_time, home_team, away_team, market_odd, model_prob, edge, confidence, league_name, league_country, bookmaker")
+            .eq("result_status", "PENDENTE")
+            .lte("match_date", today)
+            .order("match_date", desc=True)
+            .limit(500)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        print(f"[SUPABASE] Erro ao buscar oportunidades pendentes: {e}")
+        return []
+
+
+def get_resolved_match_ids() -> set:
+    """
+    Retorna set de match_ids que JÁ tiveram resultado resolvido.
+    Evita buscar dados de jogos que já foram processados.
+    """
+    sb = get_client()
+    if not sb:
+        return set()
+    try:
+        result = (
+            sb.table("opportunities")
+            .select("match_id")
+            .neq("result_status", "PENDENTE")
+            .execute()
+        )
+        return {r["match_id"] for r in (result.data or [])}
+    except Exception:
+        return set()
+
+
+def batch_update_results(updates: list[dict]) -> int:
+    """
+    Atualiza resultado de múltiplas oportunidades de uma vez.
+    updates: [{"id": uuid, "result_status": "GREEN"|"RED"|"VOID", "result_score": "2-1"}, ...]
+    Retorna número de atualizações bem sucedidas.
+    """
+    sb = get_client()
+    if not sb:
+        return 0
+    count = 0
+    now = datetime.now().isoformat()
+    for u in updates:
+        try:
+            data = {
+                "result_status": u["result_status"],
+                "result_score": u.get("result_score", ""),
+                "result_updated_at": now,
+            }
+            # Calcular retorno assumindo 1 unidade apostada
+            if u["result_status"] == "GREEN":
+                data["bet_amount"] = 1.0
+                data["bet_return"] = u.get("market_odd", 0)
+                data["bet_profit"] = data["bet_return"] - 1.0
+            elif u["result_status"] == "RED":
+                data["bet_amount"] = 1.0
+                data["bet_return"] = 0.0
+                data["bet_profit"] = -1.0
+            elif u["result_status"] == "VOID":
+                data["bet_amount"] = 1.0
+                data["bet_return"] = 1.0
+                data["bet_profit"] = 0.0
+
+            result = sb.table("opportunities").update(data).eq("id", u["id"]).execute()
+            if result.data:
+                count += 1
+        except Exception as e:
+            print(f"[SUPABASE] Erro ao atualizar {u.get('id', '?')}: {e}")
+    return count
+
+
+# ═══════════════════════════════════════════════════════════════
+#  DASHBOARD — Consultas de performance completas
+# ═══════════════════════════════════════════════════════════════
+
+def get_all_resolved_opportunities() -> list[dict]:
+    """
+    Retorna TODAS as oportunidades já resolvidas (GREEN/RED/VOID),
+    incluindo todos os campos necessários para o dashboard.
+    """
+    sb = get_client()
+    if not sb:
+        return []
+    try:
+        result = (
+            sb.table("opportunities")
+            .select("*")
+            .in_("result_status", ["GREEN", "RED", "VOID"])
+            .order("match_date", desc=True)
+            .limit(5000)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        print(f"[SUPABASE] Erro ao buscar oportunidades resolvidas: {e}")
+        return []
+
+
+def get_run_dates_history() -> list[dict]:
+    """
+    Retorna todas as datas de análise já executadas, com stats resumidos.
+    Permite ao frontend mostrar quais datas já foram rodadas.
+    """
+    sb = get_client()
+    if not sb:
+        return []
+    try:
+        result = (
+            sb.table("pipeline_runs")
+            .select("id, executed_at, analysis_dates, total_matches, total_opportunities, mode")
+            .order("executed_at", desc=True)
+            .limit(50)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        print(f"[SUPABASE] Erro ao buscar datas de execução: {e}")
+        return []
+
+
+def get_all_opportunities_for_dashboard(limit: int = 10000) -> list[dict]:
+    """
+    Retorna TODAS as oportunidades (PENDENTE + GREEN + RED + VOID)
+    para o dashboard completo.
+    """
+    sb = get_client()
+    if not sb:
+        return []
+    try:
+        result = (
+            sb.table("opportunities")
+            .select("id, match_id, market, selection, match_date, match_time, "
+                     "home_team, away_team, league_name, league_country, bookmaker, "
+                     "market_odd, fair_odd, model_prob, implied_prob, edge, "
+                     "kelly_fraction, confidence, result_status, result_score, "
+                     "bet_amount, bet_return, bet_profit")
+            .order("match_date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        print(f"[SUPABASE] Erro ao buscar dashboard: {e}")
+        return []

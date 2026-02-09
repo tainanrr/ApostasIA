@@ -141,7 +141,209 @@ WHERE result_status IN ('GREEN', 'RED')
 GROUP BY confidence
 ORDER BY confidence;
 
--- 7. RLS (Row Level Security)
+-- 7. VIEW: Performance por mercado
+CREATE OR REPLACE VIEW v_performance_by_market AS
+SELECT 
+    market,
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE result_status = 'GREEN') AS greens,
+    COUNT(*) FILTER (WHERE result_status = 'RED') AS reds,
+    COUNT(*) FILTER (WHERE result_status = 'VOID') AS voids,
+    COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')) AS decididos,
+    ROUND(
+        COUNT(*) FILTER (WHERE result_status = 'GREEN')::NUMERIC / 
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS hit_rate_pct,
+    ROUND(AVG(market_odd) FILTER (WHERE result_status IN ('GREEN','RED')), 2) AS odd_media,
+    ROUND(AVG(edge * 100) FILTER (WHERE result_status IN ('GREEN','RED')), 2) AS edge_medio,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0)
+    , 2) AS lucro_unidades,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0) /
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS roi_pct
+FROM opportunities
+WHERE result_status IN ('GREEN', 'RED', 'VOID')
+GROUP BY market
+ORDER BY lucro_unidades DESC;
+
+-- 8. VIEW: Performance por faixa de odds
+CREATE OR REPLACE VIEW v_performance_by_odds_range AS
+SELECT 
+    CASE 
+        WHEN market_odd < 1.30 THEN '1.00-1.30'
+        WHEN market_odd < 1.50 THEN '1.30-1.50'
+        WHEN market_odd < 1.80 THEN '1.50-1.80'
+        WHEN market_odd < 2.00 THEN '1.80-2.00'
+        WHEN market_odd < 2.50 THEN '2.00-2.50'
+        WHEN market_odd < 3.00 THEN '2.50-3.00'
+        WHEN market_odd < 5.00 THEN '3.00-5.00'
+        ELSE '5.00+'
+    END AS faixa_odds,
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE result_status = 'GREEN') AS greens,
+    COUNT(*) FILTER (WHERE result_status = 'RED') AS reds,
+    ROUND(
+        COUNT(*) FILTER (WHERE result_status = 'GREEN')::NUMERIC / 
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS hit_rate_pct,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0)
+    , 2) AS lucro_unidades,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0) /
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS roi_pct
+FROM opportunities
+WHERE result_status IN ('GREEN', 'RED')
+GROUP BY faixa_odds
+ORDER BY faixa_odds;
+
+-- 9. VIEW: Performance por faixa de edge
+CREATE OR REPLACE VIEW v_performance_by_edge_range AS
+SELECT 
+    CASE 
+        WHEN edge * 100 < 3  THEN '0-3%'
+        WHEN edge * 100 < 5  THEN '3-5%'
+        WHEN edge * 100 < 10 THEN '5-10%'
+        WHEN edge * 100 < 20 THEN '10-20%'
+        WHEN edge * 100 < 50 THEN '20-50%'
+        ELSE '50%+'
+    END AS faixa_edge,
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE result_status = 'GREEN') AS greens,
+    COUNT(*) FILTER (WHERE result_status = 'RED') AS reds,
+    ROUND(
+        COUNT(*) FILTER (WHERE result_status = 'GREEN')::NUMERIC / 
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS hit_rate_pct,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0)
+    , 2) AS lucro_unidades,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0) /
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS roi_pct
+FROM opportunities
+WHERE result_status IN ('GREEN', 'RED')
+GROUP BY faixa_edge
+ORDER BY faixa_edge;
+
+-- 10. VIEW: Performance por liga
+CREATE OR REPLACE VIEW v_performance_by_league AS
+SELECT 
+    league_name,
+    league_country,
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE result_status = 'GREEN') AS greens,
+    COUNT(*) FILTER (WHERE result_status = 'RED') AS reds,
+    ROUND(
+        COUNT(*) FILTER (WHERE result_status = 'GREEN')::NUMERIC / 
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS hit_rate_pct,
+    ROUND(AVG(market_odd) FILTER (WHERE result_status IN ('GREEN','RED')), 2) AS odd_media,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0)
+    , 2) AS lucro_unidades,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0) /
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS roi_pct
+FROM opportunities
+WHERE result_status IN ('GREEN', 'RED')
+GROUP BY league_name, league_country
+ORDER BY lucro_unidades DESC;
+
+-- 11. VIEW: Performance por país
+CREATE OR REPLACE VIEW v_performance_by_country AS
+SELECT 
+    league_country,
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE result_status = 'GREEN') AS greens,
+    COUNT(*) FILTER (WHERE result_status = 'RED') AS reds,
+    ROUND(
+        COUNT(*) FILTER (WHERE result_status = 'GREEN')::NUMERIC / 
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS hit_rate_pct,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0)
+    , 2) AS lucro_unidades,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0) /
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS roi_pct
+FROM opportunities
+WHERE result_status IN ('GREEN', 'RED')
+GROUP BY league_country
+ORDER BY lucro_unidades DESC;
+
+-- 12. VIEW: Performance diária
+CREATE OR REPLACE VIEW v_performance_daily AS
+SELECT 
+    match_date,
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE result_status = 'GREEN') AS greens,
+    COUNT(*) FILTER (WHERE result_status = 'RED') AS reds,
+    ROUND(
+        COUNT(*) FILTER (WHERE result_status = 'GREEN')::NUMERIC / 
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS hit_rate_pct,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0)
+    , 2) AS lucro_unidades,
+    ROUND(
+        SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED'))
+    , 2) AS lucro_acumulado
+FROM opportunities
+WHERE result_status IN ('GREEN', 'RED')
+GROUP BY match_date
+ORDER BY match_date DESC;
+
+-- 13. VIEW: Performance por confiança + mercado (cruzamento)
+CREATE OR REPLACE VIEW v_performance_confidence_market AS
+SELECT 
+    confidence,
+    market,
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE result_status = 'GREEN') AS greens,
+    COUNT(*) FILTER (WHERE result_status = 'RED') AS reds,
+    ROUND(
+        COUNT(*) FILTER (WHERE result_status = 'GREEN')::NUMERIC / 
+        NULLIF(COUNT(*) FILTER (WHERE result_status IN ('GREEN','RED')), 0) * 100
+    , 1) AS hit_rate_pct,
+    ROUND(
+        COALESCE(SUM(CASE WHEN result_status='GREEN' THEN market_odd - 1 ELSE -1 END) 
+            FILTER (WHERE result_status IN ('GREEN','RED')), 0)
+    , 2) AS lucro_unidades
+FROM opportunities
+WHERE result_status IN ('GREEN', 'RED')
+GROUP BY confidence, market
+HAVING COUNT(*) >= 3
+ORDER BY confidence, lucro_unidades DESC;
+
+-- 14. ÍNDICES ADICIONAIS para performance
+CREATE INDEX IF NOT EXISTS idx_opportunities_market ON opportunities(market);
+CREATE INDEX IF NOT EXISTS idx_opportunities_league ON opportunities(league_name);
+CREATE INDEX IF NOT EXISTS idx_opportunities_country ON opportunities(league_country);
+CREATE INDEX IF NOT EXISTS idx_opportunities_edge ON opportunities(edge);
+CREATE INDEX IF NOT EXISTS idx_opportunities_market_odd ON opportunities(market_odd);
+CREATE INDEX IF NOT EXISTS idx_matches_match_id ON matches(match_id);
+CREATE INDEX IF NOT EXISTS idx_opportunities_match_id ON opportunities(match_id);
+
+-- 15. RLS (Row Level Security)
 ALTER TABLE pipeline_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE opportunities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches ENABLE ROW LEVEL SECURITY;

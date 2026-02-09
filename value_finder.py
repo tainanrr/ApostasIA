@@ -243,6 +243,50 @@ def _is_odd_valid(odd: float, market: str) -> bool:
     return min_v <= odd <= max_v
 
 
+def _is_odd_cross_validated(market_o: float, all_markets: dict,
+                             market_key: str, sel_key: str,
+                             threshold: float = 1.5) -> bool:
+    """
+    Validação cruzada: compara a odd principal com a mediana das outras casas.
+    Retorna True se a odd é confiável, False se parece erro de dados da API.
+    
+    Exemplo: Bet365 oferece Under 3.5 a 2.20 mas TODAS as outras casas oferecem ~1.10.
+    Isso é quase certamente um erro de dados, não valor real.
+    
+    threshold=1.5 → rejeita se a odd é 50%+ acima da mediana das outras casas.
+    """
+    if not all_markets:
+        return True  # Sem dados para comparar → aceitar
+
+    mkt_data = all_markets.get(market_key, {})
+    bk_data = mkt_data.get("_bookmakers", {})
+    if not bk_data or len(bk_data) < 3:
+        return True  # Poucas casas para comparar → aceitar
+
+    cross_odds = []
+    for bk_vals in bk_data.values():
+        if not isinstance(bk_vals, dict):
+            continue
+        bk_o = bk_vals.get(sel_key, 0)
+        if isinstance(bk_o, (int, float)) and bk_o > 1.0:
+            cross_odds.append(bk_o)
+
+    if len(cross_odds) < 3:
+        return True  # Poucas odds encontradas → aceitar
+
+    cross_sorted = sorted(cross_odds)
+    median_o = cross_sorted[len(cross_sorted) // 2]
+
+    if median_o <= 1.0:
+        return True
+
+    # Se a odd principal é muito acima da mediana → provável erro de API
+    if market_o > median_o * threshold:
+        return False
+
+    return True
+
+
 # ═══════════════════════════════════════════════════════
 # ESTRUTURA DE OPORTUNIDADE
 # ═══════════════════════════════════════════════════════
@@ -738,7 +782,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     # 0.40 = odds reais (0.35) + mínimo adicional OU standings (0.20) + odds estimadas
     if match.data_quality_score < 0.40:
         return []
-    
+
     # Validar que pelo menos um time tem dados reais OU que a qualidade geral é suficiente
     # Se tem standings reais (has_real_standings=True), significa que pelo menos 1 time tem dados
     # Então não precisamos verificar has_real_data individualmente aqui
@@ -755,6 +799,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     opportunities = []
     odds = match.odds
     total_xg = match.model_home_xg + match.model_away_xg
+    all_markets_odds = getattr(odds, 'all_markets', {}) or {}
 
     # Condições meteorológicas e fadiga (para confiança)
     weather_stable = (match.weather.wind_speed_kmh <= config.WIND_SPEED_THRESHOLD_KMH
@@ -781,6 +826,11 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
 
         # Validar sanidade do modelo (prob/xG dentro de limites)
         if not _is_model_sane(model_p, total_xg, "1x2"):
+            continue
+
+        # Validação cruzada entre bookmakers
+        sel_1x2_keys = ["home", "draw", "away"]
+        if not _is_odd_cross_validated(market_o, all_markets_odds, "1x2", sel_1x2_keys[i]):
             continue
 
         edge = calculate_edge(model_p, market_o)
@@ -909,13 +959,16 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     btts_fair = devig_odds(btts_odds)
     model_btts = match.model_prob_btts
 
-    for label, model_p, market_o, implied_p in [
+    btts_sel_keys = ["yes", "no"]
+    for idx_btts, (label, model_p, market_o, implied_p) in enumerate([
         ("Ambas Marcam — Sim", model_btts, odds.btts_yes, btts_fair[0]),
         ("Ambas Marcam — Não", 1.0 - model_btts, odds.btts_no, btts_fair[1]),
-    ]:
+    ]):
         if not _is_odd_valid(market_o, "BTTS"):
             continue
         if not _is_model_sane(model_p, total_xg, "BTTS"):
+            continue
+        if not _is_odd_cross_validated(market_o, all_markets_odds, "btts", btts_sel_keys[idx_btts]):
             continue
         edge = calculate_edge(model_p, market_o)
         if edge >= config.MAX_EDGE_SANE:
@@ -961,7 +1014,6 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     # SCANNER GENÉRICO — TODOS OS MERCADOS (model_probs vs all_markets)
     # ═══════════════════════════════════════════════════════════
     model_probs = getattr(match, 'model_probs', {}) or {}
-    all_markets_odds = getattr(match.odds, 'all_markets', {}) or {}
 
     # Mercados de finalizações — gerar oportunidades MESMO sem odds da API
 
@@ -988,6 +1040,10 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 if not _is_odd_valid(market_o, market_label):
                     continue
                 if not _is_model_sane(model_p, total_xg, market_label):
+                    continue
+
+                # ── VALIDAÇÃO CRUZADA entre bookmakers ──
+                if not _is_odd_cross_validated(market_o, all_markets_odds, market_key, sel_key):
                     continue
 
                 edge = calculate_edge(model_p, market_o)

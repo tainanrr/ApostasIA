@@ -302,6 +302,109 @@
         .market-player-shots { background: rgba(186,85,211,0.18); color: #ba55d3; }
         .market-team-ou { background: rgba(255,215,0,0.18); color: #daa520; }
 
+        /* ── RESULT STATUS BADGES ── */
+        .result-green { background: var(--accent-green-dim); color: var(--accent-green); padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 800; display:inline-block; }
+        .result-red { background: var(--accent-red-dim); color: var(--accent-red); padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 800; display:inline-block; }
+        .result-void { background: rgba(107,114,128,0.2); color: #9ca3af; padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 800; display:inline-block; }
+        .result-pending { background: rgba(245,158,11,0.12); color: var(--accent-yellow); padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 700; display:inline-block; }
+
+        /* ── GAME STATUS BADGES ── */
+        .game-live {
+            background: linear-gradient(135deg, rgba(239,68,68,0.25), rgba(239,68,68,0.10));
+            color: #ff6b6b; padding: 2px 7px; border-radius: 4px; font-size: 9px;
+            font-weight: 800; display: inline-block; letter-spacing: 0.5px;
+            animation: livePulse 2s infinite; border: 1px solid rgba(239,68,68,0.35);
+        }
+        @keyframes livePulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.65; }
+        }
+        .game-finished {
+            background: rgba(107,114,128,0.15); color: #9ca3af; padding: 2px 7px;
+            border-radius: 4px; font-size: 9px; font-weight: 700; display: inline-block;
+        }
+        .game-upcoming {
+            background: rgba(59,130,246,0.12); color: var(--accent-blue); padding: 2px 7px;
+            border-radius: 4px; font-size: 9px; font-weight: 700; display: inline-block;
+        }
+
+        /* ── ROW HIGHLIGHTS BY GAME STATUS ── */
+        tr.row-live { background: rgba(239,68,68,0.04) !important; }
+        tr.row-live:hover { background: rgba(239,68,68,0.08) !important; }
+        tr.row-finished { opacity: 0.85; }
+        tr.row-green { background: rgba(0,230,138,0.03) !important; }
+        tr.row-green:hover { background: rgba(0,230,138,0.07) !important; }
+        tr.row-red { background: rgba(239,68,68,0.03) !important; }
+        tr.row-red:hover { background: rgba(239,68,68,0.07) !important; }
+
+        /* ── DATE PICKER ── */
+        .date-picker-group {
+            display: flex; align-items: center; gap: 8px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 8px; padding: 4px 12px;
+        }
+        .date-picker-group label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+        .date-picker-group input[type="date"] {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 5px; color: var(--text-primary); font-size: 12px;
+            padding: 4px 8px; font-family: 'JetBrains Mono', monospace;
+        }
+        .date-picker-group input[type="date"]:focus { border-color: var(--accent-green); outline: none; }
+
+        .btn-check-results {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed); border: none; color: #fff;
+            padding: 8px 16px; border-radius: 8px; font-size: 12px;
+            font-weight: 700; cursor: pointer; transition: all 0.2s;
+            font-family: 'Inter', sans-serif;
+        }
+        .btn-check-results:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(139,92,246,0.4); }
+        .btn-check-results:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        /* ── DASHBOARD ── */
+        .dashboard-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px; margin-bottom: 24px;
+        }
+        .dash-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 20px; overflow: hidden;
+        }
+        .dash-card-title {
+            font-size: 13px; font-weight: 700; color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .dash-summary-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px; margin-bottom: 24px;
+        }
+        .dash-summary-card {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 16px; text-align: center;
+        }
+        .dash-summary-card .num { font-size: 28px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+        .dash-summary-card .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; font-weight: 600; }
+        .dash-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .dash-table thead th {
+            padding: 8px 10px; font-size: 10px; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700;
+            text-align: left; border-bottom: 2px solid var(--border); white-space: nowrap;
+        }
+        .dash-table tbody td {
+            padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.03);
+            vertical-align: middle;
+        }
+        .dash-table tbody tr:hover { background: var(--bg-card-hover); }
+        .profit-positive { color: var(--accent-green); font-weight: 800; }
+        .profit-negative { color: var(--accent-red); font-weight: 800; }
+        .roi-positive { color: var(--accent-green); }
+        .roi-negative { color: var(--accent-red); }
+        .hit-rate-bar {
+            display: inline-block; width: 50px; height: 6px; background: var(--border);
+            border-radius: 3px; overflow: hidden; vertical-align: middle; margin-left: 6px;
+        }
+        .hit-rate-bar-fill { height: 100%; border-radius: 3px; }
+
         /* ── SORTABLE TABLE HEADERS ── */
         th.sortable {
             cursor: pointer;
@@ -613,15 +716,21 @@
         </div>
     </div>
     <div class="header-right">
-        <div class="header-badge" id="badge-dates">📅 Carregando...</div>
+        <div class="date-picker-group">
+            <label>De:</label>
+            <input type="date" id="date-start" title="Data início da análise">
+            <label>Até:</label>
+            <input type="date" id="date-end" title="Data fim da análise">
+        </div>
         <div class="api-quota" id="api-quota">
             <span>API:</span>
             <div class="api-quota-bar"><div class="api-quota-fill" id="api-quota-fill" style="width:0%;background:var(--accent-green)"></div></div>
             <span id="api-quota-text">--/--</span>
         </div>
         <div class="header-badge" id="badge-status">● Aguardando</div>
-        <button class="btn-run" id="btn-run" onclick="executeEngine()">▶ Executar Análise</button>
-        <button class="btn-recalc" id="btn-recalc" onclick="recalculateEngine()" title="Recalcular modelos usando dados já em cache (0 API calls)">🔄 Recalcular</button>
+        <button class="btn-run" id="btn-run" onclick="executeEngine()">▶ Executar</button>
+        <button class="btn-recalc" id="btn-recalc" onclick="recalculateEngine()" title="Recalcular modelos usando dados já em cache (0 API calls)">🔄 Recalc</button>
+        <button class="btn-check-results" id="btn-check-results" onclick="checkResults()" title="Verificar resultados de jogos finalizados">✅ Resultados</button>
     </div>
 </header>
 
@@ -653,10 +762,19 @@
                 <div class="lbl">Plano</div>
             </div>
         </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;justify-content:center">
+            <div class="date-picker-group" style="padding:8px 16px">
+                <label style="font-size:12px">📅 De:</label>
+                <input type="date" id="w-date-start" style="font-size:13px;padding:6px 10px">
+                <label style="font-size:12px">Até:</label>
+                <input type="date" id="w-date-end" style="font-size:13px;padding:6px 10px">
+            </div>
+        </div>
         <button class="btn-run-big" id="btn-run-big" onclick="executeEngine()">▶ Executar Análise Completa</button>
         <button class="btn-recalc-big" id="btn-recalc-big" onclick="recalculateEngine()">🔄 Recalcular (0 API calls)</button>
         <div class="welcome-cost">Custo estimado: ~620 requests por execução | Recalcular: 0 requests</div>
         <div id="w-last-run" style="margin-top:16px;font-size:13px;color:var(--text-muted)"></div>
+        <div id="w-run-history" style="margin-top:12px;font-size:11px;color:var(--text-muted)"></div>
     </div>
 
     <!-- DASHBOARD (aparece após execução) -->
@@ -683,6 +801,7 @@
             <button class="tab active" data-tab="opportunities" onclick="switchTab('opportunities')">🎯 Oportunidades +EV</button>
             <button class="tab" data-tab="matches" onclick="switchTab('matches')">⚽ Todos os Jogos</button>
             <button class="tab" data-tab="leagues" onclick="switchTab('leagues')">🏆 Ligas</button>
+            <button class="tab" data-tab="performance" onclick="switchTab('performance'); loadDashboard()">📊 Dashboard</button>
         </div>
 
         <!-- OPPORTUNITIES -->
@@ -704,57 +823,52 @@
                             <th class="sortable" data-sort="team" data-type="str" onclick="sortTable(this)">Jogo</th>
                             <th class="sortable" data-sort="league" data-type="str" onclick="sortTable(this)">Liga</th>
                             <th class="sortable" data-sort="date" data-type="str" onclick="sortTable(this)">Data</th>
+                            <th class="sortable" data-sort="game_status" data-type="num" onclick="sortTable(this)">Status</th>
+                            <th class="sortable" data-sort="result" data-type="str" onclick="sortTable(this)">Resultado</th>
                             <th class="sortable" data-sort="market" data-type="str" onclick="sortTable(this)">Mercado</th>
                             <th class="sortable" data-sort="selection" data-type="str" onclick="sortTable(this)">Seleção</th>
-                            <th class="sortable" data-sort="bookmaker" data-type="str" onclick="sortTable(this)">Casa</th>
                             <th class="sortable sort-desc" data-sort="odd" data-type="num" onclick="sortTable(this)">Odd</th>
-                            <th class="sortable" data-sort="fair_odd" data-type="num" onclick="sortTable(this)">Justa</th>
                             <th class="sortable sort-desc" data-sort="edge" data-type="num" onclick="sortTable(this)">Edge</th>
-                            <th class="sortable" data-sort="kelly" data-type="num" onclick="sortTable(this)">Kelly</th>
                             <th class="sortable" data-sort="prob" data-type="num" onclick="sortTable(this)">Prob.</th>
                             <th class="sortable" data-sort="confidence" data-type="str" onclick="sortTable(this)">Nível</th>
-                            <th class="sortable" data-sort="dq" data-type="num" onclick="sortTable(this)">Dados</th>
                         </tr>
                         <tr class="col-filter-row">
                             <th></th>
                             <th><input class="col-filter" type="text" id="cf-team" placeholder="Time..." oninput="applyColumnFilters()"></th>
                             <th><select class="col-filter" id="cf-league" onchange="applyColumnFilters()"><option value="">Todas</option></select></th>
                             <th><select class="col-filter" id="cf-date" onchange="applyColumnFilters()"><option value="">Todas</option></select></th>
+                            <th><select class="col-filter" id="cf-game-status" onchange="applyColumnFilters()">
+                                <option value="">Todos</option>
+                                <option value="LIVE">🔴 Ao Vivo</option>
+                                <option value="FINISHED">✔ Encerrado</option>
+                                <option value="UPCOMING">📅 Futuro</option>
+                            </select></th>
+                            <th><select class="col-filter" id="cf-result" onchange="applyColumnFilters()">
+                                <option value="">Todos</option>
+                                <option value="GREEN">✅ GREEN</option>
+                                <option value="RED">❌ RED</option>
+                                <option value="VOID">⬜ VOID</option>
+                                <option value="PENDENTE">⏳ PENDENTE</option>
+                            </select></th>
                             <th><select class="col-filter" id="cf-market" onchange="applyColumnFilters()">
                                 <option value="">Todos</option>
                                 <option value="1x2">1x2</option>
                                 <option value="Dupla Chance">Dupla Chance</option>
                                 <option value="Gols O/U">Gols O/U</option>
                                 <option value="BTTS">BTTS</option>
-                                <option value="Gols Casa O/U">Gols Casa O/U</option>
-                                <option value="Gols Fora O/U">Gols Fora O/U</option>
+                                <option value="Gols Casa O/U">Gols Casa</option>
+                                <option value="Gols Fora O/U">Gols Fora</option>
                                 <option value="Clean Sheet">Clean Sheet</option>
                                 <option value="Vit. s/ Sofrer">Vit s/ Sofrer</option>
                                 <option value="1o Tempo">1o Tempo</option>
-                                <option value="Gols 1o Tempo">Gols 1o Tempo</option>
                                 <option value="Par/Impar">Par/Impar</option>
-                                <option value="Escanteios O/U">Escanteios O/U</option>
-                                <option value="Cartoes O/U">Cartoes O/U</option>
-                                <option value="Placar Exato">Placar Exato</option>
-                                <option value="Finaliz. O/U">Finaliz. Totais O/U</option>
-                                <option value="Finaliz. Gol O/U">Finaliz. ao Gol O/U</option>
-                                <option value="Finaliz. Gol 1x2">Finaliz. Gol 1x2 (Bet365)</option>
-                                <option value="Finaliz. Totais 1x2">Finaliz. Totais 1x2 (Bet365)</option>
-                                <option value="Finaliz. Casa O/U">Finaliz. Casa O/U</option>
-                                <option value="Finaliz. Fora O/U">Finaliz. Fora O/U</option>
-                                <option value="SoT Casa O/U">SoT Casa O/U</option>
-                                <option value="SoT Fora O/U">SoT Fora O/U</option>
-                                <option value="Fin. Jogador">Fin. Jogador</option>
-                                <option value="SoT Jogador">SoT Jogador (Gol)</option>
-                                <option value="O/U 2.5">O/U 2.5 (legado)</option>
-                                <option value="Corners">Escanteios (legado)</option>
+                                <option value="Escanteios O/U">Escanteios</option>
+                                <option value="Cartoes O/U">Cartoes</option>
+                                <option value="Finaliz">Finalizações</option>
                             </select></th>
                             <th><input class="col-filter" type="text" id="cf-selection" placeholder="Seleção..." oninput="applyColumnFilters()"></th>
-                            <th><input class="col-filter" type="text" id="cf-bookmaker" placeholder="Casa..." oninput="applyColumnFilters()"></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-odd-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-odd-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
-                            <th><div class="col-filter-num"><input type="number" id="cf-fair-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-fair-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-edge-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-edge-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
-                            <th><div class="col-filter-num"><input type="number" id="cf-kelly-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-kelly-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-prob-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-prob-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
                             <th><select class="col-filter" id="cf-confidence" onchange="applyColumnFilters()">
                                 <option value="">Todos</option>
@@ -762,7 +876,6 @@
                                 <option value="MÉDIO">MÉDIO</option>
                                 <option value="BAIXO">BAIXO</option>
                             </select></th>
-                            <th><div class="col-filter-num"><input type="number" id="cf-dq-min" placeholder="Min" step="10" oninput="applyColumnFilters()"><input type="number" id="cf-dq-max" placeholder="Max" step="10" oninput="applyColumnFilters()"></div></th>
                         </tr>
                     </thead>
                     <tbody id="opp-tbody"></tbody>
@@ -816,6 +929,21 @@
             </div>
             <div class="league-grid" id="league-grid"></div>
         </div>
+
+        <!-- PERFORMANCE DASHBOARD -->
+        <div class="section" id="sec-performance">
+            <div class="section-title">
+                <span class="icon">📊</span> Dashboard de Performance
+                <span class="section-count" id="dash-total">0</span>
+                <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:8px">Análise completa de resultados — 1 unidade por aposta</span>
+            </div>
+            <div id="dashboard-content">
+                <div style="text-align:center;padding:40px;color:var(--text-muted)">
+                    <div style="font-size:40px;margin-bottom:12px">📊</div>
+                    <div style="font-size:14px">Clique em <strong>✅ Resultados</strong> para verificar jogos finalizados e popular o dashboard.</div>
+                </div>
+            </div>
+        </div>
     </div>
 </main>
 
@@ -844,6 +972,45 @@ let stats = {};
 let apiStatus = {};
 let engineRunning = false;
 let timerInterval = null;
+
+// ═══════════════════════════════════════════
+// GAME STATUS HELPER (LIVE / FINISHED / UPCOMING)
+// Considera 120 min para jogo em andamento e concluído
+// ═══════════════════════════════════════════
+function getGameStatus(matchDate, matchTime) {
+    const now = new Date();
+    // Construir datetime do jogo
+    const timeParts = (matchTime || '00:00').split(':');
+    const hh = parseInt(timeParts[0]) || 0;
+    const mm = parseInt(timeParts[1]) || 0;
+    
+    const dateParts = (matchDate || '').split('-');
+    if (dateParts.length < 3) return { status: 'UPCOMING', timeLabel: '?', minutesUntil: 0 };
+    
+    const matchDt = new Date(
+        parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]),
+        hh, mm, 0
+    );
+    
+    const diffMs = now - matchDt;
+    const diffMin = diffMs / 60000;
+    
+    if (diffMin < 0) {
+        // Jogo ainda não começou
+        const minUntil = Math.abs(diffMin);
+        let timeLabel;
+        if (minUntil < 60) timeLabel = Math.round(minUntil) + 'min';
+        else if (minUntil < 1440) timeLabel = Math.round(minUntil / 60) + 'h';
+        else timeLabel = Math.round(minUntil / 1440) + 'd';
+        return { status: 'UPCOMING', timeLabel: timeLabel, minutesUntil: minUntil };
+    } else if (diffMin <= 120) {
+        // Jogo em andamento (< 120 min desde o início)
+        return { status: 'LIVE', timeLabel: Math.round(diffMin) + "'", minutesUntil: 0 };
+    } else {
+        // Jogo encerrado (> 120 min desde o início)
+        return { status: 'FINISHED', timeLabel: 'FT', minutesUntil: 0 };
+    }
+}
 
 // ═══════════════════════════════════════════
 // MARKET CLASS HELPER
@@ -1107,21 +1274,57 @@ function bookmakerBadgeHtml(bkName, homeTeam, awayTeam, market, selection, small
 // INIT — NÃO roda pipeline, só carrega status
 // ═══════════════════════════════════════════
 async function init() {
+    // 0. Inicializar date pickers com hoje e amanhã
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const todayStr = today.toISOString().split('T')[0];
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    
+    document.getElementById("date-start").value = todayStr;
+    document.getElementById("date-end").value = tomorrowStr;
+    document.getElementById("w-date-start").value = todayStr;
+    document.getElementById("w-date-end").value = tomorrowStr;
+    
+    // Sincronizar date pickers header <-> welcome
+    document.getElementById("date-start").addEventListener("change", () => {
+        document.getElementById("w-date-start").value = document.getElementById("date-start").value;
+    });
+    document.getElementById("date-end").addEventListener("change", () => {
+        document.getElementById("w-date-end").value = document.getElementById("date-end").value;
+    });
+    document.getElementById("w-date-start").addEventListener("change", () => {
+        document.getElementById("date-start").value = document.getElementById("w-date-start").value;
+    });
+    document.getElementById("w-date-end").addEventListener("change", () => {
+        document.getElementById("date-end").value = document.getElementById("w-date-end").value;
+    });
+
     // 1. Buscar status da API (1 request apenas)
     try {
         const res = await fetch("/api/status");
         apiStatus = await res.json();
         updateApiQuotaDisplay();
-        
-        document.getElementById("badge-dates").textContent = 
-            `📅 ${apiStatus.analysis_dates[0]} → ${apiStatus.analysis_dates[1]}`;
-        document.getElementById("w-dates").textContent = 
-            `${apiStatus.analysis_dates[0]} / ${apiStatus.analysis_dates[1]}`;
     } catch(e) {
         console.error("Erro ao buscar status:", e);
     }
 
-    // 2. Se já tem dados em cache (servidor já rodou antes), carregar
+    // 2. Buscar histórico de runs para mostrar datas já analisadas
+    try {
+        const runsRes = await fetch("/api/run-dates");
+        const runs = await runsRes.json();
+        if (runs && runs.length > 0) {
+            const histHtml = runs.slice(0, 5).map(r => {
+                const dates = (r.analysis_dates || []).join(', ');
+                const dt = r.executed_at ? new Date(r.executed_at).toLocaleString('pt-BR') : '?';
+                return `<span style="background:var(--bg-card);padding:3px 10px;border-radius:5px;border:1px solid var(--border)">${dates} <span style="color:var(--text-muted)">(${dt})</span></span>`;
+            }).join(' ');
+            const histEl = document.getElementById("w-run-history");
+            if (histEl) histEl.innerHTML = `📋 Últimas análises: ${histHtml}`;
+        }
+    } catch(e) {}
+
+    // 3. Se já tem dados em cache (servidor já rodou antes), carregar
     if (apiStatus.has_data) {
         await loadCachedData();
     } else {
@@ -1245,7 +1448,13 @@ async function executeEngine() {
     }, 1000);
 
     try {
-        const runRes = await fetch("/api/run", { method: "POST" });
+        const startDate = document.getElementById("date-start").value;
+        const endDate = document.getElementById("date-end").value;
+        const runRes = await fetch("/api/run", { 
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ start_date: startDate, end_date: endDate })
+        });
         const runData = await runRes.json();
         
         clearInterval(timerInterval);
@@ -1369,6 +1578,178 @@ async function recalculateEngine() {
     }
 }
 
+// ═══════════════════════════════════════════
+// CHECK RESULTS — Verificar jogos finalizados
+// ═══════════════════════════════════════════
+async function checkResults() {
+    const btn = document.getElementById("btn-check-results");
+    btn.disabled = true;
+    btn.textContent = "⏳ Verificando...";
+    
+    try {
+        const res = await fetch("/api/check-results", { method: "POST" });
+        const data = await res.json();
+        
+        if (!data.ok) {
+            alert("Erro: " + (data.error || "desconhecido"));
+            return;
+        }
+        
+        let msg = `✅ Verificação concluída!\n\n`;
+        msg += `Jogos verificados: ${data.checked}\n`;
+        msg += `Jogos finalizados: ${data.finished}\n`;
+        msg += `Oportunidades resolvidas: ${data.resolved}\n`;
+        if (data.resolved > 0) {
+            msg += `\n🟢 GREEN: ${data.green}\n🔴 RED: ${data.red}\n⬜ VOID: ${data.void}`;
+        }
+        
+        alert(msg);
+        
+        // Recarregar dados para mostrar resultados atualizados
+        if (data.resolved > 0) {
+            await loadCachedData();
+            loadDashboard();
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Erro: " + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "✅ Resultados";
+    }
+}
+
+// ═══════════════════════════════════════════
+// DASHBOARD — Carregar e renderizar
+// ═══════════════════════════════════════════
+let dashboardData = null;
+let dashboardLoaded = false;
+
+async function loadDashboard() {
+    if (dashboardLoaded && dashboardData) {
+        renderDashboard(dashboardData);
+        return;
+    }
+    
+    const container = document.getElementById("dashboard-content");
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)"><div style="font-size:24px;animation:pulse 1.5s infinite">⏳</div><div style="margin-top:8px">Carregando dashboard...</div></div>';
+    
+    try {
+        const res = await fetch("/api/dashboard");
+        const result = await res.json();
+        
+        if (!result.ok || !result.data) {
+            container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)"><div style="font-size:40px;margin-bottom:12px">📊</div><div>Nenhum dado de performance ainda. Clique em <strong>✅ Resultados</strong> para verificar jogos.</div></div>';
+            return;
+        }
+        
+        dashboardData = result.data;
+        dashboardLoaded = true;
+        document.getElementById("dash-total").textContent = dashboardData.total_count || 0;
+        renderDashboard(dashboardData);
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = `<div style="color:var(--accent-red);padding:20px">Erro ao carregar dashboard: ${e.message}</div>`;
+    }
+}
+
+function renderDashboard(data) {
+    const s = data.summary || {};
+    const container = document.getElementById("dashboard-content");
+    
+    const profitClass = (v) => v >= 0 ? 'profit-positive' : 'profit-negative';
+    const roiClass = (v) => v >= 0 ? 'roi-positive' : 'roi-negative';
+    const hitColor = (hr) => hr >= 60 ? 'var(--accent-green)' : hr >= 45 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+    
+    let html = '';
+    
+    // ── SUMMARY CARDS ──
+    html += `<div class="dash-summary-grid">
+        <div class="dash-summary-card">
+            <div class="num" style="color:var(--accent-blue)">${s.total || 0}</div>
+            <div class="lbl">Total Resolvidas</div>
+        </div>
+        <div class="dash-summary-card">
+            <div class="num" style="color:var(--accent-green)">${s.green || 0}</div>
+            <div class="lbl">🟢 Greens</div>
+        </div>
+        <div class="dash-summary-card">
+            <div class="num" style="color:var(--accent-red)">${s.red || 0}</div>
+            <div class="lbl">🔴 Reds</div>
+        </div>
+        <div class="dash-summary-card">
+            <div class="num" style="color:${hitColor(s.hit_rate || 0)}">${s.hit_rate || 0}%</div>
+            <div class="lbl">Taxa de Acerto</div>
+        </div>
+        <div class="dash-summary-card">
+            <div class="num ${profitClass(s.profit || 0)}">${(s.profit || 0) >= 0 ? '+' : ''}${(s.profit || 0).toFixed(2)}u</div>
+            <div class="lbl">Lucro Total</div>
+        </div>
+        <div class="dash-summary-card">
+            <div class="num ${roiClass(s.roi || 0)}">${(s.roi || 0) >= 0 ? '+' : ''}${s.roi || 0}%</div>
+            <div class="lbl">ROI</div>
+        </div>
+        <div class="dash-summary-card">
+            <div class="num" style="color:var(--accent-yellow)">${data.pending_count || 0}</div>
+            <div class="lbl">⏳ Pendentes</div>
+        </div>
+        <div class="dash-summary-card">
+            <div class="num" style="color:var(--text-secondary)">${s.avg_odd || 0}</div>
+            <div class="lbl">Odd Média</div>
+        </div>
+    </div>`;
+    
+    // ── Tabela helper ──
+    function renderGroupTable(title, icon, items, extraCols) {
+        if (!items || !items.length) return '';
+        let h = `<div class="dash-card" style="grid-column: span 1">
+            <div class="dash-card-title">${icon} ${title}</div>
+            <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+            <table class="dash-table">
+                <thead><tr>
+                    <th>${extraCols || 'Categoria'}</th>
+                    <th style="text-align:center">Total</th>
+                    <th style="text-align:center">🟢</th>
+                    <th style="text-align:center">🔴</th>
+                    <th style="text-align:center">Acerto</th>
+                    <th style="text-align:right">Lucro</th>
+                    <th style="text-align:right">ROI</th>
+                </tr></thead>
+                <tbody>`;
+        items.forEach(item => {
+            const hr = item.hit_rate || 0;
+            h += `<tr>
+                <td style="font-weight:600;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis">${item.label || '?'}</td>
+                <td style="text-align:center">${item.total || 0}</td>
+                <td style="text-align:center;color:var(--accent-green);font-weight:700">${item.green || 0}</td>
+                <td style="text-align:center;color:var(--accent-red);font-weight:700">${item.red || 0}</td>
+                <td style="text-align:center">
+                    <span style="color:${hitColor(hr)};font-weight:700">${hr}%</span>
+                    <div class="hit-rate-bar"><div class="hit-rate-bar-fill" style="width:${hr}%;background:${hitColor(hr)}"></div></div>
+                </td>
+                <td style="text-align:right" class="${profitClass(item.profit || 0)}">${(item.profit || 0) >= 0 ? '+' : ''}${(item.profit || 0).toFixed(2)}u</td>
+                <td style="text-align:right" class="${roiClass(item.roi || 0)}">${(item.roi || 0) >= 0 ? '+' : ''}${item.roi || 0}%</td>
+            </tr>`;
+        });
+        h += '</tbody></table></div></div>';
+        return h;
+    }
+    
+    // ── GRIDS ──
+    html += '<div class="dashboard-grid">';
+    html += renderGroupTable('Por Mercado', '🎯', data.by_market, 'Mercado');
+    html += renderGroupTable('Por Confiança', '📈', data.by_confidence, 'Nível');
+    html += renderGroupTable('Por Faixa de Edge', '📐', data.by_edge_range, 'Faixa Edge');
+    html += renderGroupTable('Por Faixa de Odds', '💰', data.by_odds_range, 'Faixa Odds');
+    html += renderGroupTable('Por Liga', '🏆', data.by_league, 'Liga');
+    html += renderGroupTable('Por País', '🌍', data.by_country, 'País');
+    html += renderGroupTable('Por Casa de Apostas', '🏦', data.by_bookmaker, 'Bookmaker');
+    html += renderGroupTable('Por Data', '📅', (data.by_date || []).slice(0, 30), 'Data');
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
 
 // ═══════════════════════════════════════════
 // RENDER ALL
@@ -1380,15 +1761,13 @@ function renderAll() {
     renderMatches();
     renderLeagues();
     populateFilters();
-    
-    document.getElementById("badge-dates").textContent = 
-        `📅 ${stats.analysis_dates[0]} → ${stats.analysis_dates[1]}`;
 }
 
 function renderRunInfo() {
     document.getElementById("ri-last-run").textContent = stats.last_run_at || "--";
+    const dates = stats.analysis_dates || [];
     document.getElementById("ri-dates").textContent = 
-        stats.analysis_dates ? `${stats.analysis_dates[0]} → ${stats.analysis_dates[1]}` : "--";
+        dates.length >= 2 ? `${dates[0]} → ${dates[dates.length - 1]}` : (dates[0] || "--");
     document.getElementById("ri-runtime").textContent = stats.run_time ? `${stats.run_time}s` : "--";
     document.getElementById("ri-api-calls").textContent = stats.api_calls_this_run || "--";
 }
@@ -1417,7 +1796,7 @@ function renderStats() {
         <div class="stat-card">
             <div class="stat-label">Partidas Processadas</div>
             <div class="stat-value">${stats.total_matches}</div>
-            <div class="stat-sub">${stats.analysis_dates[0]} → ${stats.analysis_dates[1]}</div>
+            <div class="stat-sub">${(stats.analysis_dates||[])[0] || '?'} → ${(stats.analysis_dates||[]).slice(-1)[0] || '?'}</div>
         </div>
         <div class="stat-card">
             <div class="stat-label">Oportunidades +EV</div>
@@ -1464,44 +1843,50 @@ function renderOpportunities(data) {
         const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
         const edgeClass = o.edge > 15 ? "edge-high" : "edge-med";
         const marketClass = getMarketClass(o.market);
-        const probWidth = Math.min(100, o.model_prob);
-        const probColor = o.model_prob > 50 ? "var(--accent-green)" : o.model_prob > 30 ? "var(--accent-blue)" : "var(--accent-yellow)";
-        
-        // Contar bookmakers alternativos para este mercado
-        const altBkCount = (() => {
-            const matchData = allMatches.find(x => x.match_id === o.match_id);
-            if (!matchData || !matchData.all_markets) return 0;
-            const oppMkt = o.market.toLowerCase();
-            const mktMap = {'1x2':'1x2','dupla chance':'double_chance','gols o/u':'goals_ou','btts':'btts','ambas marcam':'btts','escanteios':'corners_ou','cartões':'cards_ou','cartoes':'cards_ou','gols casa':'home_goals_ou','gols fora':'away_goals_ou','finaliz. gol 1x2':'sot_1x2','finaliz. 1x2':'shots_1x2','finaliz. gol o/u':'sot_ou','finaliz. totais o/u':'shots_ou','clean sheet casa':'cs_home','clean sheet fora':'cs_away','par/impar':'odd_even','1o tempo':'ht_result'};
-            let mk = null;
-            for (const [label, key] of Object.entries(mktMap)) { if (oppMkt.includes(label)) { mk = key; break; } }
-            if (!mk) for (const k of Object.keys(matchData.all_markets)) { if (oppMkt.includes(k.replace(/_/g,' '))) { mk = k; break; } }
-            if (!mk || !matchData.all_markets[mk] || !matchData.all_markets[mk]._bookmakers) return 0;
-            return Object.keys(matchData.all_markets[mk]._bookmakers).length;
-        })();
-        const multiBkBadge = altBkCount > 1 ? ` <span title="${altBkCount} casas oferecem este mercado — clique para comparar" style="font-size:9px;padding:1px 5px;background:rgba(59,130,246,0.15);color:var(--accent-cyan);border-radius:3px;font-weight:700;vertical-align:middle">+${altBkCount - 1}</span>` : '';
 
-        const suspectBadge = o.odds_suspect ? ' <span title="Possivel inversao Casa/Fora na API — modelo usou stats neutras" style="cursor:help;color:var(--accent-yellow);font-size:13px">⚠️</span>' : '';
-        return `<tr onclick="showOppDetail(${allOpps.indexOf(o)})" style="cursor:pointer${o.odds_suspect ? ';border-left:3px solid var(--accent-yellow)' : ''}">
+        const suspectBadge = o.odds_suspect ? ' <span title="Possivel inversao Casa/Fora na API" style="cursor:help;color:var(--accent-yellow);font-size:13px">⚠️</span>' : '';
+        
+        // Game status (LIVE / FINISHED / UPCOMING)
+        const gs = getGameStatus(o.match_date, o.match_time);
+        const gameStatusBadge = gs.status === 'LIVE' 
+            ? '<span class="game-live">🔴 AO VIVO</span>'
+            : gs.status === 'FINISHED'
+            ? '<span class="game-finished">✔ Encerrado</span>'
+            : '<span class="game-upcoming">📅 ' + gs.timeLabel + '</span>';
+        
+        // Result status badge
+        const resultStatus = o.result_status || 'PENDENTE';
+        const resultBadge = (() => {
+            if (resultStatus === 'GREEN') return '<span class="result-green">✅ GREEN</span>';
+            if (resultStatus === 'RED') return '<span class="result-red">❌ RED</span>';
+            if (resultStatus === 'VOID') return '<span class="result-void">⬜ VOID</span>';
+            return '<span class="result-pending">⏳ Pend.</span>';
+        })();
+        const resultScore = o.result_score ? ` <span style="font-size:10px;color:var(--text-muted);font-family:'JetBrains Mono'">${o.result_score}</span>` : '';
+        
+        // Row class based on status
+        const rowClass = resultStatus === 'GREEN' ? 'row-green' 
+            : resultStatus === 'RED' ? 'row-red'
+            : gs.status === 'LIVE' ? 'row-live'
+            : gs.status === 'FINISHED' ? 'row-finished' : '';
+        const rowBorder = resultStatus === 'GREEN' ? ';border-left:3px solid var(--accent-green)' 
+            : resultStatus === 'RED' ? ';border-left:3px solid var(--accent-red)' 
+            : gs.status === 'LIVE' ? ';border-left:3px solid #ff6b6b'
+            : o.odds_suspect ? ';border-left:3px solid var(--accent-yellow)' : '';
+        
+        return `<tr class="${rowClass}" onclick="showOppDetail(${allOpps.indexOf(o)})" style="cursor:pointer${rowBorder}">
             <td style="color:var(--text-muted);font-weight:600">${i+1}</td>
             <td class="team-cell">${o.home_team} <span class="vs">vs</span> ${o.away_team}${suspectBadge}</td>
             <td style="font-size:11px">${o.league_name}</td>
             <td style="font-size:11px;color:var(--text-secondary)">${o.match_date}<br>${o.match_time}</td>
+            <td>${gameStatusBadge}</td>
+            <td>${resultBadge}${resultScore}</td>
             <td><span class="market-tag ${marketClass}">${o.market}</span></td>
-            <td style="font-weight:700;font-size:12px;color:var(--accent-green)">▶ ${o.selection}</td>
-            <td>${bookmakerBadgeHtml(o.bookmaker, o.home_team, o.away_team, o.market, o.selection, true, o.league_country, o.league_name)}${multiBkBadge}</td>
+            <td style="font-weight:600;font-size:11px;color:var(--accent-green);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.selection}">▶ ${o.selection}</td>
             <td class="odd-cell">${o.market_odd.toFixed(2)}</td>
-            <td class="odd-cell" style="color:var(--accent-green)">${o.fair_odd.toFixed(2)}</td>
             <td class="edge-cell ${edgeClass}">${o.edge_pct}</td>
-            <td style="font-family:'JetBrains Mono';font-size:11px">${o.kelly_bet_pct}</td>
             <td style="font-size:12px">${o.model_prob}%</td>
             <td><span class="badge ${confClass}">${o.confidence}</span></td>
-            <td>${(() => {
-                const dq = o.data_quality || 0;
-                const pct = (dq * 100).toFixed(0);
-                const color = dq >= 0.80 ? 'var(--accent-green)' : dq >= 0.60 ? 'var(--accent-blue)' : dq >= 0.40 ? 'var(--accent-yellow)' : 'var(--accent-red)';
-                return '<span style="font-size:11px;font-weight:700;color:' + color + '">' + pct + '%</span>';
-            })()}</td>
         </tr>`;
     }).join("");
 }
@@ -1607,6 +1992,11 @@ function getSortValue(o, key) {
         case 'prob': return o.model_prob || 0;
         case 'confidence': return o.confidence === 'ALTO' ? 3 : o.confidence === 'MÉDIO' ? 2 : 1;
         case 'dq': return (o.data_quality || 0) * 100;
+        case 'result': return o.result_status === 'GREEN' ? 3 : o.result_status === 'RED' ? 2 : o.result_status === 'VOID' ? 1 : 0;
+        case 'game_status': {
+            const gs = getGameStatus(o.match_date, o.match_time);
+            return gs.status === 'LIVE' ? 3 : gs.status === 'UPCOMING' ? 2 : 1;
+        }
         default: return 0;
     }
 }
@@ -1634,6 +2024,7 @@ function applyColumnFilters() {
     const confidence = document.getElementById('cf-confidence')?.value || '';
     const dqMin = parseFloat(document.getElementById('cf-dq-min')?.value) || null;
     const dqMax = parseFloat(document.getElementById('cf-dq-max')?.value) || null;
+    const resultFilter = document.getElementById('cf-result')?.value || '';
 
     let filtered = allOpps.filter(o => {
         if (team && !(o.home_team.toLowerCase().includes(team) || o.away_team.toLowerCase().includes(team))) return false;
@@ -1657,6 +2048,7 @@ function applyColumnFilters() {
         const dqVal = (o.data_quality || 0) * 100;
         if (dqMin !== null && dqVal < dqMin) return false;
         if (dqMax !== null && dqVal > dqMax) return false;
+        if (resultFilter && (o.result_status || 'PENDENTE') !== resultFilter) return false;
         return true;
     });
 
@@ -1691,7 +2083,7 @@ function clearAllFilters() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
-    ['cf-league', 'cf-date', 'cf-market', 'cf-confidence'].forEach(id => {
+    ['cf-league', 'cf-date', 'cf-market', 'cf-confidence', 'cf-result'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
