@@ -393,12 +393,18 @@ def save_full_run(stats: dict, opportunities: list[dict], matches: list[dict]):
     """
     Salva uma execução completa: run + oportunidades + partidas.
     Chamado automaticamente após cada pipeline.
+    ANTES de salvar: remove PENDENTES de runs anteriores para evitar duplicatas.
+    Oportunidades resolvidas (GREEN/RED/VOID) de qualquer run são preservadas.
     """
     if not is_configured():
         print("[SUPABASE] Não configurado — dados salvos apenas localmente")
         return
 
     print("[SUPABASE] Salvando execução no banco de dados...")
+
+    # ── Limpar pendentes de runs anteriores (evita duplicatas) ──
+    _cleanup_old_pending_opportunities()
+
     run_id = save_pipeline_run(stats)
     if not run_id:
         print("[SUPABASE] Falha ao criar pipeline_run — abortando")
@@ -407,6 +413,53 @@ def save_full_run(stats: dict, opportunities: list[dict], matches: list[dict]):
     save_opportunities(run_id, opportunities)
     save_matches(run_id, matches)
     print(f"[SUPABASE] Execução salva com sucesso (run_id: {run_id})")
+
+
+def _cleanup_old_pending_opportunities():
+    """
+    Remove oportunidades PENDENTES de runs anteriores.
+    Mantém resolvidas (GREEN/RED/VOID) de qualquer run.
+    Também remove runs vazias e matches de runs que serão limpas.
+    """
+    sb = get_client()
+    if not sb:
+        return
+    try:
+        # Obter a run mais recente
+        runs = (
+            sb.table("pipeline_runs")
+            .select("id")
+            .order("executed_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not runs.data:
+            return
+
+        latest_run_id = runs.data[0]["id"]
+
+        # Deletar PENDENTES que NÃO são da run mais recente
+        result = (
+            sb.table("opportunities")
+            .delete()
+            .eq("result_status", "PENDENTE")
+            .neq("run_id", latest_run_id)
+            .execute()
+        )
+        deleted = len(result.data) if result.data else 0
+        if deleted > 0:
+            print(f"[SUPABASE] Limpeza: {deleted} pendentes duplicadas removidas de runs antigas")
+
+        # Limpar runs que ficaram sem oportunidades (exceto a mais recente)
+        all_runs = sb.table("pipeline_runs").select("id").order("executed_at", desc=True).execute()
+        for run in (all_runs.data or [])[1:]:  # Skip a mais recente
+            r = sb.table("opportunities").select("id", count="exact").eq("run_id", run["id"]).execute()
+            if (r.count or 0) == 0:
+                sb.table("matches").delete().eq("run_id", run["id"]).execute()
+                sb.table("pipeline_runs").delete().eq("id", run["id"]).execute()
+
+    except Exception as e:
+        print(f"[SUPABASE] Aviso na limpeza: {e}")
 
 
 def get_run_history(limit: int = 10) -> list[dict]:
@@ -528,7 +581,9 @@ def get_pending_opportunities() -> list[dict]:
     if not sb:
         return []
     try:
-        today = datetime.now().strftime("%Y-%m-%d")
+        import pytz
+        br_tz = pytz.timezone("America/Sao_Paulo")
+        today = datetime.now(br_tz).strftime("%Y-%m-%d")
         result = (
             sb.table("opportunities")
             .select("id, match_id, market, selection, match_date, match_time, home_team, away_team, market_odd, model_prob, edge, confidence, league_name, league_country, bookmaker")
@@ -567,7 +622,8 @@ def get_resolved_match_ids() -> set:
 def batch_update_results(updates: list[dict]) -> int:
     """
     Atualiza resultado de múltiplas oportunidades de uma vez.
-    updates: [{"id": uuid, "result_status": "GREEN"|"RED"|"VOID", "result_score": "2-1"}, ...]
+    updates: [{"id": uuid, "result_status": "GREEN"|"RED"|"VOID", "result_score": "2-1",
+               "result_detail": {...}}, ...]
     Retorna número de atualizações bem sucedidas.
     """
     sb = get_client()
@@ -582,6 +638,25 @@ def batch_update_results(updates: list[dict]) -> int:
                 "result_score": u.get("result_score", ""),
                 "result_updated_at": now,
             }
+
+            # Dados detalhados do resultado (HT, corners, cards, shots)
+            # Campos diretos já formatados (vêm do app.py)
+            detail_fields = {}
+            if u.get("result_ht_score"):
+                detail_fields["result_ht_score"] = u["result_ht_score"]
+            if u.get("result_corners"):
+                detail_fields["result_corners"] = u["result_corners"]
+            if u.get("result_cards"):
+                detail_fields["result_cards"] = u["result_cards"]
+            if u.get("result_shots"):
+                detail_fields["result_shots"] = u["result_shots"]
+            if u.get("result_detail"):
+                import json
+                detail_fields["result_detail"] = json.dumps(u["result_detail"])
+            
+            if detail_fields:
+                data.update(detail_fields)
+
             # Calcular retorno assumindo 1 unidade apostada
             if u["result_status"] == "GREEN":
                 data["bet_amount"] = 1.0
@@ -653,27 +728,48 @@ def get_run_dates_history() -> list[dict]:
         return []
 
 
-def get_all_opportunities_for_dashboard(limit: int = 10000) -> list[dict]:
+def get_all_opportunities_for_dashboard() -> dict:
     """
-    Retorna TODAS as oportunidades (PENDENTE + GREEN + RED + VOID)
-    para o dashboard completo.
+    Retorna dados para o dashboard:
+    - 'resolved': TODAS as oportunidades com resultado (GREEN/RED/VOID)
+    - 'pending_count': contagem de oportunidades ainda PENDENTE
+    Busca resolvidas separadamente para não serem diluídas por pendentes.
     """
     sb = get_client()
     if not sb:
-        return []
+        return {"resolved": [], "pending_count": 0}
     try:
-        result = (
+        select_cols = (
+            "id, match_id, market, selection, match_date, match_time, "
+            "home_team, away_team, league_name, league_country, bookmaker, "
+            "market_odd, fair_odd, model_prob, implied_prob, edge, "
+            "kelly_fraction, confidence, result_status, result_score, "
+            "bet_amount, bet_return, bet_profit"
+        )
+
+        # 1. Buscar TODAS as resolvidas (sem limit — geralmente poucas centenas)
+        resolved_result = (
             sb.table("opportunities")
-            .select("id, match_id, market, selection, match_date, match_time, "
-                     "home_team, away_team, league_name, league_country, bookmaker, "
-                     "market_odd, fair_odd, model_prob, implied_prob, edge, "
-                     "kelly_fraction, confidence, result_status, result_score, "
-                     "bet_amount, bet_return, bet_profit")
+            .select(select_cols)
+            .neq("result_status", "PENDENTE")
             .order("match_date", desc=True)
-            .limit(limit)
+            .limit(10000)
             .execute()
         )
-        return result.data or []
+
+        # 2. Contar pendentes (sem trazer os dados)
+        pending_result = (
+            sb.table("opportunities")
+            .select("id", count="exact")
+            .eq("result_status", "PENDENTE")
+            .execute()
+        )
+
+        resolved = resolved_result.data or []
+        pending_count = pending_result.count or 0
+
+        print(f"[SUPABASE] Dashboard: {len(resolved)} resolvidas, {pending_count} pendentes")
+        return {"resolved": resolved, "pending_count": pending_count}
     except Exception as e:
         print(f"[SUPABASE] Erro ao buscar dashboard: {e}")
-        return []
+        return {"resolved": [], "pending_count": 0}

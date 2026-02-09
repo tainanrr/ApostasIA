@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS opportunities (
     urgency_away NUMERIC(3,1),
     result_status TEXT DEFAULT 'PENDENTE',
     result_score TEXT,
+    result_ht_score TEXT,
+    result_corners TEXT,
+    result_cards TEXT,
+    result_shots TEXT,
+    result_detail JSONB,
     result_updated_at TIMESTAMPTZ,
     bet_placed BOOLEAN DEFAULT FALSE,
     bet_amount NUMERIC(10,2),
@@ -97,7 +102,15 @@ CREATE TABLE IF NOT EXISTS matches (
     result_updated_at TIMESTAMPTZ
 );
 
--- 4. ÍNDICES
+-- 4. MIGRAÇÃO: Adicionar colunas de detalhe de resultado (executar se tabela já existe)
+-- Se a tabela já existe, executar estes ALTERs para adicionar as novas colunas:
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_ht_score TEXT;
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_corners TEXT;
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_cards TEXT;
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_shots TEXT;
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_detail JSONB;
+
+-- 5. ÍNDICES
 CREATE INDEX IF NOT EXISTS idx_opportunities_match_date ON opportunities(match_date);
 CREATE INDEX IF NOT EXISTS idx_opportunities_confidence ON opportunities(confidence);
 CREATE INDEX IF NOT EXISTS idx_opportunities_result ON opportunities(result_status);

@@ -285,16 +285,17 @@ _api_cache_hits = 0
 _api_cache_misses = 0
 
 
-def _api_football_request(endpoint: str, params: dict, cache_only: bool = False) -> dict:
+def _api_football_request(endpoint: str, params: dict, cache_only: bool = False, skip_cache: bool = False) -> dict:
     """Chamada genérica com rate-limiting e CACHE à API-Football v3.
     Verifica cache local antes de fazer chamada real.
-    Se cache_only=True, retorna {} se cache miss (sem chamada real à API)."""
+    Se cache_only=True, retorna {} se cache miss (sem chamada real à API).
+    Se skip_cache=True, ignora o cache e faz chamada real (para buscar dados atualizados)."""
     global _api_call_count, _api_cache_hits, _api_cache_misses
 
     # ── VERIFICAR CACHE PRIMEIRO ──
     # (não cachear "status" pois é sempre necessário em tempo real)
     use_cache = endpoint != "status"
-    if use_cache:
+    if use_cache and not skip_cache:
         cached = _get_cached_response(endpoint, params)
         if cached is not None:
             _api_cache_hits += 1
@@ -341,7 +342,7 @@ def _api_football_request(endpoint: str, params: dict, cache_only: bool = False)
                     print(f"    [API] Erros: {errors}")
                     return {}
 
-            # ── SALVAR NO CACHE ──
+            # ── SALVAR NO CACHE (sobrescreve cache antigo) ──
             if use_cache and data:
                 _save_to_cache(endpoint, params, data)
 
@@ -2168,12 +2169,63 @@ def enrich_multi_bookmaker(match_id: int) -> dict:
     return result
 
 
+def _extract_fixture_stats(mid: int) -> dict:
+    """
+    Busca estatísticas detalhadas de um jogo finalizado (cartões, escanteios, finalizações).
+    Usa cache se disponível, senão busca da API.
+    Retorna dict com totais.
+    """
+    stats_result = {"corners_home": None, "corners_away": None,
+                    "cards_home": None, "cards_away": None,
+                    "shots_home": None, "shots_away": None,
+                    "shots_on_home": None, "shots_on_away": None}
+
+    raw = _api_football_request("fixtures/statistics", {"fixture": mid})
+    if not raw:
+        return stats_result
+
+    response = raw.get("response", [])
+    if not response:
+        return stats_result
+
+    for team_data in response:
+        team_info = team_data.get("team", {})
+        stats_list = team_data.get("statistics", [])
+
+        # Determinar se é home ou away baseado na posição (0=home, 1=away)
+        idx = response.index(team_data)
+        suffix = "home" if idx == 0 else "away"
+
+        for stat in stats_list:
+            stype = (stat.get("type") or "").lower()
+            val = stat.get("value")
+            if val is None:
+                continue
+            # Converter para int se possível
+            try:
+                val = int(val)
+            except (ValueError, TypeError):
+                continue
+
+            if "corner" in stype:
+                stats_result[f"corners_{suffix}"] = val
+            elif stype in ("yellow cards", "yellow_cards"):
+                stats_result[f"cards_{suffix}"] = (stats_result.get(f"cards_{suffix}") or 0) + val
+            elif stype in ("red cards", "red_cards"):
+                stats_result[f"cards_{suffix}"] = (stats_result.get(f"cards_{suffix}") or 0) + val
+            elif stype in ("total shots", "shots total"):
+                stats_result[f"shots_home" if suffix == "home" else f"shots_away"] = val
+            elif stype in ("shots on goal", "shots on target"):
+                stats_result[f"shots_on_{suffix}"] = val
+
+    return stats_result
+
+
 def fetch_finished_fixtures(match_ids: list[int]) -> dict:
     """
     Busca resultado FINAL de jogos pelo fixture_id.
-    Retorna dict {match_id: {"status": "FT"|..., "home_goals": int, "away_goals": int, "score": "2-1"}}.
+    Retorna dict {match_id: {score, ht, corners, cards, shots, ...}}.
     Usa cache — se já tem resultado FT em cache, não busca de novo.
-    Primeiro verifica cache para resultados FT antes de ir à API.
     """
     results = {}
     if not match_ids:
@@ -2192,14 +2244,13 @@ def fetch_finished_fixtures(match_ids: list[int]) -> dict:
             if resp:
                 st = resp[0].get("fixture", {}).get("status", {}).get("short", "?")
                 if st in ("FT", "AET", "PEN"):
-                    # Cache já tem resultado final — usar sem chamar API
                     fix = resp[0]
                     goals = fix.get("goals", {})
                     score = fix.get("score", {})
                     hg = goals.get("home")
                     ag = goals.get("away")
                     if hg is not None and ag is not None:
-                        results[mid] = {
+                        entry = {
                             "status": st,
                             "home_goals": hg,
                             "away_goals": ag,
@@ -2207,11 +2258,15 @@ def fetch_finished_fixtures(match_ids: list[int]) -> dict:
                             "ht_home": (score.get("halftime", {}) or {}).get("home"),
                             "ht_away": (score.get("halftime", {}) or {}).get("away"),
                         }
+                        # Buscar stats detalhadas (usa cache se já tiver)
+                        stats = _extract_fixture_stats(mid)
+                        entry.update(stats)
+                        results[mid] = entry
                         from_cache += 1
                         continue
 
-        # 2. Cache não tem resultado FT — buscar da API
-        raw = _api_football_request("fixtures", {"id": mid})
+        # 2. Cache não tem resultado FT — buscar da API REAL (ignorar cache antigo)
+        raw = _api_football_request("fixtures", {"id": mid}, skip_cache=True)
         from_api += 1
         if not raw:
             continue
@@ -2230,7 +2285,7 @@ def fetch_finished_fixtures(match_ids: list[int]) -> dict:
         finished = status_short in ("FT", "AET", "PEN")
 
         if finished and home_goals is not None and away_goals is not None:
-            results[mid] = {
+            entry = {
                 "status": status_short,
                 "home_goals": home_goals,
                 "away_goals": away_goals,
@@ -2238,6 +2293,10 @@ def fetch_finished_fixtures(match_ids: list[int]) -> dict:
                 "ht_home": (score.get("halftime", {}) or {}).get("home"),
                 "ht_away": (score.get("halftime", {}) or {}).get("away"),
             }
+            # Buscar stats detalhadas
+            stats = _extract_fixture_stats(mid)
+            entry.update(stats)
+            results[mid] = entry
             # Salvar resultado FT no cache para não buscar de novo
             _save_to_cache("fixtures", {"id": mid}, raw)
         elif not finished:

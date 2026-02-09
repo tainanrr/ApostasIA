@@ -324,6 +324,10 @@ class ValueOpportunity:
     odds_suspect: bool = False  # True = possível inversão casa/fora
     result_status: str = "PENDENTE"  # GREEN, RED, VOID, PENDENTE
     result_score: str = ""           # ex: "2-1"
+    result_ht_score: str = ""        # ex: "1-0" (primeiro tempo)
+    result_corners: str = ""         # ex: "5-3"
+    result_cards: str = ""           # ex: "2-4"
+    result_shots: str = ""           # ex: "12-8 (5-3 gol)"
 
 
 # ═══════════════════════════════════════════════════════

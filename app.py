@@ -116,6 +116,63 @@ def _convert_cached_data_timezone(matches: list[dict], opps: list[dict]):
 # PERSISTÊNCIA JSON
 # ═══════════════════════════════════════════════
 
+def _save_results_to_disk_cache(updates: list[dict]):
+    """Atualiza APENAS os result_status/result_score no cache de disco, sem sobrescrever tudo."""
+    if not os.path.exists(CACHE_FILE) or not updates:
+        return
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        opps = data.get("opportunities", [])
+        if not opps:
+            return
+
+        # Mapear updates por id e match_id
+        update_by_id = {u["id"]: u for u in updates}
+        update_by_match = {}
+        for u in updates:
+            mid = u.get("match_id")
+            if mid is not None:
+                update_by_match.setdefault(mid, []).append(u)
+
+        count = 0
+        for opp in opps:
+            opp_id = opp.get("id")
+            mid = opp.get("match_id")
+
+            # Match por UUID
+            if opp_id and opp_id in update_by_id:
+                u = update_by_id[opp_id]
+                opp["result_status"] = u["result_status"]
+                opp["result_score"] = u["result_score"]
+                opp["result_ht_score"] = u.get("result_ht_score", "")
+                opp["result_corners"] = u.get("result_corners", "")
+                opp["result_cards"] = u.get("result_cards", "")
+                opp["result_shots"] = u.get("result_shots", "")
+                count += 1
+                continue
+
+            # Fallback por match_id
+            if mid in update_by_match:
+                for u in update_by_match[mid]:
+                    opp["result_status"] = u["result_status"]
+                    opp["result_score"] = u["result_score"]
+                    opp["result_ht_score"] = u.get("result_ht_score", "")
+                    opp["result_corners"] = u.get("result_corners", "")
+                    opp["result_cards"] = u.get("result_cards", "")
+                    opp["result_shots"] = u.get("result_shots", "")
+                    count += 1
+                    break
+
+        if count > 0:
+            with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            print(f"[CACHE] Resultados salvos no disco: {count} oportunidades atualizadas")
+    except Exception as e:
+        print(f"[CACHE] Erro ao salvar resultados no disco: {e}")
+
+
 def _save_cache_to_disk():
     """Salva resultados serializados em JSON para sobreviver a restarts."""
     try:
@@ -202,6 +259,10 @@ def _load_cache_from_disk() -> bool:
         _cache["opportunities"] = "FROM_DISK"
         print(f"[CACHE] Dados carregados de {CACHE_FILE} ({len(filtered_opps)} oportunidades)")
         print(f"[CACHE] Última execução: {_cache['last_run_at']}")
+
+        # ── Mesclar resultados do Supabase (fonte de verdade para GREEN/RED) ──
+        _merge_results_from_supabase(filtered_opps)
+
         return True
     except Exception as e:
         print(f"[CACHE] Erro ao carregar do disco: {e}")
@@ -209,6 +270,140 @@ def _load_cache_from_disk() -> bool:
         if _load_cache_from_supabase():
             return True
         return False
+
+
+def _preserve_existing_results(opportunities):
+    """
+    Preserva result_status/result_score de oportunidades já resolvidas no Supabase.
+    Chamado após recalculate ou run_engine para não perder GREEN/RED/VOID.
+    Funciona com objetos ValueOpportunity.
+    """
+    if not supabase_client.is_configured():
+        return
+    try:
+        sb = supabase_client.get_client()
+        if not sb:
+            return
+
+        try:
+            result = (
+                sb.table("opportunities")
+                .select("match_id, market, selection, result_status, result_score, result_ht_score, result_corners, result_cards, result_shots")
+                .neq("result_status", "PENDENTE")
+                .execute()
+            )
+        except Exception:
+            result = (
+                sb.table("opportunities")
+                .select("match_id, market, selection, result_status, result_score")
+                .neq("result_status", "PENDENTE")
+                .execute()
+            )
+        resolved = result.data or []
+        if not resolved:
+            return
+
+        # Mapa por (match_id, market_lower, selection_lower)
+        resolved_map = {}
+        for r in resolved:
+            key = (r.get("match_id"), (r.get("market") or "").lower(), (r.get("selection") or "").lower())
+            resolved_map[key] = r
+
+        count = 0
+        for opp in opportunities:
+            key = (opp.match_id, opp.market.lower(), opp.selection.lower())
+            if key in resolved_map:
+                r = resolved_map[key]
+                opp.result_status = r["result_status"]
+                opp.result_score = r.get("result_score", "")
+                opp.result_ht_score = r.get("result_ht_score", "")
+                opp.result_corners = r.get("result_corners", "")
+                opp.result_cards = r.get("result_cards", "")
+                opp.result_shots = r.get("result_shots", "")
+                count += 1
+
+        if count > 0:
+            print(f"[RECALC] ✅ Preservados {count} resultados existentes (GREEN/RED/VOID) do Supabase")
+    except Exception as e:
+        print(f"[RECALC] Aviso: Não foi possível preservar resultados: {e}")
+
+
+def _merge_results_from_supabase(opps: list[dict]):
+    """
+    Busca result_status/result_score do Supabase e mescla nas oportunidades locais.
+    O Supabase é a fonte de verdade para resultados de apostas.
+    """
+    if not supabase_client.is_configured():
+        return
+    try:
+        sb = supabase_client.get_client()
+        if not sb:
+            return
+
+        # Buscar APENAS oportunidades que já foram resolvidas (não PENDENTE)
+        # Tentar com colunas detalhadas, fallback para sem elas (caso migração ainda não foi executada)
+        try:
+            result = (
+                sb.table("opportunities")
+                .select("id, match_id, market, selection, result_status, result_score, result_ht_score, result_corners, result_cards, result_shots")
+                .neq("result_status", "PENDENTE")
+                .execute()
+            )
+        except Exception:
+            result = (
+                sb.table("opportunities")
+                .select("id, match_id, market, selection, result_status, result_score")
+                .neq("result_status", "PENDENTE")
+                .execute()
+            )
+        resolved = result.data or []
+        if not resolved:
+            print("[CACHE] Nenhum resultado resolvido no Supabase")
+            return
+
+        # Criar mapa por id e por (match_id, market, selection)
+        resolved_by_id = {r["id"]: r for r in resolved}
+        resolved_by_key = {}
+        for r in resolved:
+            key = (r.get("match_id"), (r.get("market") or "").lower(), (r.get("selection") or "").lower())
+            resolved_by_key[key] = r
+
+        count = 0
+        for opp in opps:
+            # Se já tem resultado, pular
+            if opp.get("result_status") and opp["result_status"] != "PENDENTE":
+                continue
+
+            opp_id = opp.get("id")
+            mid = opp.get("match_id")
+
+            def _apply_result(opp, r):
+                opp["result_status"] = r["result_status"]
+                opp["result_score"] = r.get("result_score", "")
+                opp["result_ht_score"] = r.get("result_ht_score", "")
+                opp["result_corners"] = r.get("result_corners", "")
+                opp["result_cards"] = r.get("result_cards", "")
+                opp["result_shots"] = r.get("result_shots", "")
+
+            # Match por UUID
+            if opp_id and opp_id in resolved_by_id:
+                _apply_result(opp, resolved_by_id[opp_id])
+                count += 1
+                continue
+
+            # Fallback por (match_id, market, selection)
+            key = (mid, (opp.get("market") or "").lower(), (opp.get("selection") or "").lower())
+            if key in resolved_by_key:
+                _apply_result(opp, resolved_by_key[key])
+                count += 1
+
+        if count > 0:
+            print(f"[CACHE] ✅ Mesclados {count} resultados do Supabase (GREEN/RED/VOID)")
+        else:
+            print("[CACHE] Sem resultados novos para mesclar do Supabase")
+
+    except Exception as e:
+        print(f"[CACHE] Aviso: Não foi possível mesclar resultados do Supabase: {e}")
 
 
 def _load_cache_from_supabase() -> bool:
@@ -355,6 +550,9 @@ def run_engine(analysis_dates: list[str] = None):
     matches = run_models_batch(matches)
     matches = apply_context_batch(matches)
     opportunities = find_all_value(matches)
+
+    # Preservar resultados já resolvidos no Supabase
+    _preserve_existing_results(opportunities)
 
     elapsed = round(time.time() - start, 2)
     n_leagues = len(set(m.league_name for m in matches))
@@ -647,6 +845,9 @@ def recalculate_engine():
     # Reordenar por edge (maior primeiro)
     opportunities.sort(key=lambda o: o.edge, reverse=True)
 
+    # ── 4b. Preservar resultados existentes do Supabase ──
+    _preserve_existing_results(opportunities)
+
     elapsed = round(time.time() - start, 2)
     n_leagues = len(set(m.league_name for m in matches))
 
@@ -730,6 +931,10 @@ def serialize_opportunity(o: ValueOpportunity) -> dict:
         "odds_suspect": getattr(o, 'odds_suspect', False),
         "result_status": getattr(o, 'result_status', 'PENDENTE'),
         "result_score": getattr(o, 'result_score', ''),
+        "result_ht_score": getattr(o, 'result_ht_score', ''),
+        "result_corners": getattr(o, 'result_corners', ''),
+        "result_cards": getattr(o, 'result_cards', ''),
+        "result_shots": getattr(o, 'result_shots', ''),
     }
 
 
@@ -1068,6 +1273,12 @@ def api_check_results():
     Busca resultados de jogos onde oportunidades foram mapeadas e o jogo já terminou.
     Só verifica jogos cujo horário + 120min < agora (status 'Encerrado').
     Resolve GREEN/RED/VOID automaticamente, salva no Supabase E atualiza o cache local.
+
+    IMPORTANTE:
+    - match_time no Supabase está em BRASÍLIA (convertido na ingestão).
+    - Não usa get_resolved_match_ids (causava falso-positivo entre runs).
+    - Agrupa por match_id direto das oportunidades pendentes elegíveis.
+    - Usa skip_cache=True para buscar resultado atualizado da API (não o cache antigo NS).
     """
     from data_ingestion import fetch_finished_fixtures
 
@@ -1081,9 +1292,7 @@ def api_check_results():
                             "total_pending": 0, "skipped_not_finished": 0})
 
         # 2. Filtrar APENAS jogos cuja hora prevista + 120min < agora (encerrados)
-        #    NOTA: match_time no Supabase está em UTC, converter para Brasília antes de comparar
-        from zoneinfo import ZoneInfo
-        utc_tz = ZoneInfo("UTC")
+        #    match_time no Supabase está em BRASÍLIA (convertido durante ingestão)
         now = datetime.now(config.BR_TIMEZONE)
         eligible = []
         skipped_not_finished = 0
@@ -1093,14 +1302,12 @@ def api_check_results():
             try:
                 dt_parts = md.split("-")
                 tm_parts = (mt or "00:00").split(":")
-                # match_time do Supabase está em UTC
-                match_dt_utc = datetime(
+                # match_time já está em horário de Brasília
+                match_dt_br = datetime(
                     int(dt_parts[0]), int(dt_parts[1]), int(dt_parts[2]),
                     int(tm_parts[0]), int(tm_parts[1]), 0,
-                    tzinfo=utc_tz,
+                    tzinfo=config.BR_TIMEZONE,
                 )
-                # Converter para Brasília para comparar com now (Brasília)
-                match_dt_br = match_dt_utc.astimezone(config.BR_TIMEZONE)
                 elapsed_min = (now - match_dt_br).total_seconds() / 60
                 if elapsed_min >= 120:
                     eligible.append(opp)
@@ -1116,24 +1323,28 @@ def api_check_results():
                             "total_pending": len(pending), "skipped_not_finished": skipped_not_finished})
 
         # 3. Agrupar por match_id (evitar buscar o mesmo jogo múltiplas vezes)
-        already_resolved = supabase_client.get_resolved_match_ids()
+        #    NÃO excluir match_ids "já resolvidos" — podem ter oportunidades PENDENTES
+        #    de uma run mais recente (recalcular cria novas oportunidades)
         match_ids_to_check = set()
         for opp in eligible:
             mid = opp.get("match_id")
-            if mid and mid not in already_resolved:
+            if mid:
                 match_ids_to_check.add(mid)
 
         if not match_ids_to_check:
-            return jsonify({"ok": True, "msg": "Jogos encerrados já foram resolvidos anteriormente.",
+            return jsonify({"ok": True, "msg": "Nenhum match_id encontrado.",
                             "checked": 0, "finished": 0, "resolved": 0,
                             "green": 0, "red": 0, "void": 0,
                             "total_pending": len(pending), "skipped_not_finished": skipped_not_finished})
 
         print(f"[CHECK-RESULTS] {len(eligible)} oportunidades elegíveis | {len(match_ids_to_check)} jogos únicos a verificar | {skipped_not_finished} ignorados (ainda não encerrados)")
 
-        # 4. Buscar resultados via API (1 call por jogo)
+        # 4. Buscar resultados via API (1 call por jogo, skip_cache=True para dados frescos)
         results = fetch_finished_fixtures(list(match_ids_to_check))
         finished_count = sum(1 for r in results.values() if r.get("score"))
+
+        if not finished_count:
+            print(f"[CHECK-RESULTS] Nenhum jogo FT encontrado. Status retornados: {set(r.get('status','?') for r in results.values())}")
 
         # 5. Resolver cada oportunidade
         updates = []
@@ -1151,11 +1362,45 @@ def api_check_results():
 
             status = _resolve_opportunity(opp, hg, ag, result)
             if status:
+                # Montar detalhes do resultado (HT, corners, cards, shots)
+                result_detail = {
+                    "ht_home": result.get("ht_home"),
+                    "ht_away": result.get("ht_away"),
+                    "corners_home": result.get("corners_home"),
+                    "corners_away": result.get("corners_away"),
+                    "cards_home": result.get("cards_home"),
+                    "cards_away": result.get("cards_away"),
+                    "shots_home": result.get("shots_home"),
+                    "shots_away": result.get("shots_away"),
+                    "shots_on_home": result.get("shots_on_home"),
+                    "shots_on_away": result.get("shots_on_away"),
+                }
+                # Formatar strings legíveis
+                ht_h, ht_a = result.get("ht_home"), result.get("ht_away")
+                result_ht_score = f"{ht_h}-{ht_a}" if ht_h is not None and ht_a is not None else ""
+                c_h, c_a = result.get("corners_home"), result.get("corners_away")
+                result_corners = f"{c_h}-{c_a}" if c_h is not None and c_a is not None else ""
+                cd_h, cd_a = result.get("cards_home"), result.get("cards_away")
+                result_cards = f"{cd_h}-{cd_a}" if cd_h is not None and cd_a is not None else ""
+                sh_h, sh_a = result.get("shots_home"), result.get("shots_away")
+                sot_h, sot_a = result.get("shots_on_home"), result.get("shots_on_away")
+                shots_parts = []
+                if sh_h is not None and sh_a is not None:
+                    shots_parts.append(f"{sh_h}-{sh_a}")
+                if sot_h is not None and sot_a is not None:
+                    shots_parts.append(f"({sot_h}-{sot_a} gol)")
+                result_shots = " ".join(shots_parts)
+
                 updates.append({
                     "id": opp["id"],
                     "match_id": mid,
                     "result_status": status,
                     "result_score": score,
+                    "result_ht_score": result_ht_score,
+                    "result_corners": result_corners,
+                    "result_cards": result_cards,
+                    "result_shots": result_shots,
+                    "result_detail": result_detail,
                     "market_odd": opp.get("market_odd", 0),
                 })
 
@@ -1220,6 +1465,10 @@ def _update_cache_with_results(updates: list[dict]):
                 u = update_by_id[opp_id]
                 opp["result_status"] = u["result_status"]
                 opp["result_score"] = u["result_score"]
+                opp["result_ht_score"] = u.get("result_ht_score", "")
+                opp["result_corners"] = u.get("result_corners", "")
+                opp["result_cards"] = u.get("result_cards", "")
+                opp["result_shots"] = u.get("result_shots", "")
                 updated_count += 1
                 continue
 
@@ -1230,6 +1479,10 @@ def _update_cache_with_results(updates: list[dict]):
                 for u in update_by_match[mid]:
                     opp["result_status"] = u["result_status"]
                     opp["result_score"] = u["result_score"]
+                    opp["result_ht_score"] = u.get("result_ht_score", "")
+                    opp["result_corners"] = u.get("result_corners", "")
+                    opp["result_cards"] = u.get("result_cards", "")
+                    opp["result_shots"] = u.get("result_shots", "")
                     updated_count += 1
                     break
 
@@ -1241,10 +1494,21 @@ def _update_cache_with_results(updates: list[dict]):
                 for u in update_by_match[opp.match_id]:
                     opp.result_status = u["result_status"]
                     opp.result_score = u["result_score"]
+                    if hasattr(opp, 'result_ht_score'):
+                        opp.result_ht_score = u.get("result_ht_score", "")
+                    if hasattr(opp, 'result_corners'):
+                        opp.result_corners = u.get("result_corners", "")
+                    if hasattr(opp, 'result_cards'):
+                        opp.result_cards = u.get("result_cards", "")
+                    if hasattr(opp, 'result_shots'):
+                        opp.result_shots = u.get("result_shots", "")
                     updated_count += 1
                     break
 
     print(f"[CHECK-RESULTS] Cache em memória atualizado: {updated_count} oportunidades")
+
+    # Persistir cache atualizado no disco para sobreviver a restarts
+    _save_results_to_disk_cache(updates)
 
 
 def _resolve_opportunity(opp: dict, home_goals: int, away_goals: int, result: dict) -> str:
@@ -1397,96 +1661,57 @@ def _resolve_opportunity(opp: dict, home_goals: int, away_goals: int, result: di
 def api_dashboard():
     """
     Dashboard completo de performance.
-    Retorna dados agregados por mercado, confiança, faixa de edge,
-    faixa de odds, liga, país, etc.
-    Assume 1 unidade por aposta para calcular retorno.
+    Retorna dados BRUTOS (resolved + pending_count) para o frontend fazer 
+    toda a agregação e filtragem client-side, igual à tela principal.
     """
     try:
-        opps = supabase_client.get_all_opportunities_for_dashboard()
-        if not opps:
-            return jsonify({"ok": True, "data": {}, "msg": "Nenhuma oportunidade no banco"})
+        dashboard_data = supabase_client.get_all_opportunities_for_dashboard()
+        resolved = dashboard_data.get("resolved", [])
+        pending_count = dashboard_data.get("pending_count", 0)
 
-        # Classificar em resolvidas e pendentes
-        resolved = [o for o in opps if o.get("result_status") in ("GREEN", "RED", "VOID")]
-        pending = [o for o in opps if o.get("result_status") == "PENDENTE"]
+        if not resolved and pending_count == 0:
+            return jsonify({"ok": True, "data": {"resolved": [], "pending_count": 0}, "msg": "Nenhuma oportunidade no banco"})
 
-        def _calc_stats(items: list) -> dict:
-            """Calcula estatísticas de performance para um grupo."""
-            if not items:
-                return {"total": 0, "green": 0, "red": 0, "void": 0, "hit_rate": 0,
-                        "profit": 0, "roi": 0, "avg_odd": 0, "avg_edge": 0}
-            greens = [o for o in items if o.get("result_status") == "GREEN"]
-            reds = [o for o in items if o.get("result_status") == "RED"]
-            voids = [o for o in items if o.get("result_status") == "VOID"]
-            decided = len(greens) + len(reds)
-            hit_rate = round(len(greens) / decided * 100, 1) if decided > 0 else 0
+        # Desduplicar resolvidas: manter apenas 1 registro por (match_id, market, selection)
+        seen_keys = set()
+        unique_resolved = []
+        for o in resolved:
+            key = (o.get("match_id"), (o.get("market") or "").lower(), (o.get("selection") or "").lower())
+            if key not in seen_keys:
+                seen_keys.add(key)
+                unique_resolved.append(o)
+        
+        if len(unique_resolved) < len(resolved):
+            print(f"[DASHBOARD] Dedup: {len(resolved)} → {len(unique_resolved)} oportunidades únicas")
 
-            # Lucro = sum(odd - 1 para GREEN) - len(RED) * 1
-            profit = sum((o.get("market_odd") or 0) - 1 for o in greens) - len(reds)
-            total_staked = decided  # 1 unidade por aposta
-            roi = round(profit / total_staked * 100, 1) if total_staked > 0 else 0
+        # Serializar campos necessários para cada oportunidade
+        clean = []
+        for o in unique_resolved:
+            clean.append({
+                "match_id": o.get("match_id"),
+                "match_date": o.get("match_date", ""),
+                "match_time": o.get("match_time", ""),
+                "home_team": o.get("home_team", ""),
+                "away_team": o.get("away_team", ""),
+                "league_name": o.get("league_name", ""),
+                "league_country": o.get("league_country", ""),
+                "market": o.get("market", ""),
+                "selection": o.get("selection", ""),
+                "market_odd": o.get("market_odd", 0),
+                "fair_odd": o.get("fair_odd", 0),
+                "edge": round((o.get("edge") or 0) * 100, 2),
+                "model_prob": round((o.get("model_prob") or 0) * 100, 2),
+                "confidence": o.get("confidence", ""),
+                "bookmaker": o.get("bookmaker", ""),
+                "result_status": o.get("result_status", "PENDENTE"),
+                "result_score": o.get("result_score", ""),
+                "result_ht_score": o.get("result_ht_score", ""),
+                "result_corners": o.get("result_corners", ""),
+                "result_cards": o.get("result_cards", ""),
+                "result_shots": o.get("result_shots", ""),
+            })
 
-            avg_odd = round(sum(o.get("market_odd") or 0 for o in items) / len(items), 2) if items else 0
-            avg_edge = round(sum(o.get("edge") or 0 for o in items) / len(items) * 100, 2) if items else 0
-
-            return {
-                "total": len(items), "green": len(greens), "red": len(reds),
-                "void": len(voids), "hit_rate": hit_rate, "profit": round(profit, 2),
-                "roi": roi, "avg_odd": avg_odd, "avg_edge": avg_edge,
-                "decided": decided,
-            }
-
-        def _group_and_calc(items: list, key_fn) -> list:
-            """Agrupa itens por key_fn e calcula stats por grupo."""
-            groups = {}
-            for o in items:
-                k = key_fn(o)
-                if k not in groups:
-                    groups[k] = []
-                groups[k].append(o)
-            result = []
-            for k, group in sorted(groups.items()):
-                s = _calc_stats(group)
-                s["label"] = k
-                result.append(s)
-            return sorted(result, key=lambda x: x["profit"], reverse=True)
-
-        # ── Helpers para faixas ──
-        def _edge_range(o):
-            e = (o.get("edge") or 0) * 100
-            if e < 3: return "0-3%"
-            elif e < 5: return "3-5%"
-            elif e < 10: return "5-10%"
-            elif e < 20: return "10-20%"
-            elif e < 50: return "20-50%"
-            else: return "50%+"
-
-        def _odds_range(o):
-            odd = o.get("market_odd") or 0
-            if odd < 1.3: return "1.00-1.30"
-            elif odd < 1.5: return "1.30-1.50"
-            elif odd < 1.8: return "1.50-1.80"
-            elif odd < 2.0: return "1.80-2.00"
-            elif odd < 2.5: return "2.00-2.50"
-            elif odd < 3.0: return "2.50-3.00"
-            elif odd < 5.0: return "3.00-5.00"
-            else: return "5.00+"
-
-        dashboard = {
-            "summary": _calc_stats(resolved),
-            "pending_count": len(pending),
-            "total_count": len(opps),
-            "by_market": _group_and_calc(resolved, lambda o: o.get("market", "?")),
-            "by_confidence": _group_and_calc(resolved, lambda o: o.get("confidence", "?")),
-            "by_edge_range": _group_and_calc(resolved, _edge_range),
-            "by_odds_range": _group_and_calc(resolved, _odds_range),
-            "by_league": _group_and_calc(resolved, lambda o: o.get("league_name", "?")),
-            "by_country": _group_and_calc(resolved, lambda o: o.get("league_country", "?")),
-            "by_bookmaker": _group_and_calc(resolved, lambda o: o.get("bookmaker", "?")),
-            "by_date": _group_and_calc(resolved, lambda o: o.get("match_date", "?")),
-        }
-
-        return jsonify({"ok": True, "data": dashboard})
+        return jsonify({"ok": True, "data": {"resolved": clean, "pending_count": pending_count}})
     except Exception as e:
         import traceback
         traceback.print_exc()

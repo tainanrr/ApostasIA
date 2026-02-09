@@ -44,7 +44,6 @@
             background: var(--bg-primary);
             color: var(--text-primary);
             min-height: 100vh;
-            overflow-x: hidden;
         }
 
         /* ── SCROLLBAR ── */
@@ -111,7 +110,7 @@
         .btn-recalc-big { padding: 14px 28px; font-size: 15px; margin-top: 10px; display: block; }
 
         /* ── MAIN ── */
-        main { max-width: 1440px; margin: 0 auto; padding: 24px 32px 60px; }
+        main { max-width: 1800px; margin: 0 auto; padding: 24px 24px 60px; }
 
         /* ── WELCOME / EMPTY STATE ── */
         .welcome-state {
@@ -242,16 +241,16 @@
             background: var(--bg-card); border: 1px solid var(--border);
             border-radius: var(--radius-lg); overflow-x: auto;
         }
-        table { width: 100%; border-collapse: collapse; min-width: 1300px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1450px; }
         thead th {
-            background: var(--bg-secondary); padding: 10px 12px;
-            font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+            background: var(--bg-secondary); padding: 8px 8px;
+            font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px;
             color: var(--text-muted); font-weight: 700; text-align: left;
             border-bottom: 1px solid var(--border); white-space: nowrap;
             position: sticky; top: 0; z-index: 10;
         }
         tbody td {
-            padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--border);
+            padding: 8px 8px; font-size: 12px; border-bottom: 1px solid var(--border);
             vertical-align: middle;
         }
         tbody tr { transition: background 0.15s; }
@@ -307,6 +306,8 @@
         .result-red { background: var(--accent-red-dim); color: var(--accent-red); padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 800; display:inline-block; }
         .result-void { background: rgba(107,114,128,0.2); color: #9ca3af; padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 800; display:inline-block; }
         .result-pending { background: rgba(245,158,11,0.12); color: var(--accent-yellow); padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 700; display:inline-block; }
+        .game-detail-mini { margin-top:3px; font-size:9px; color:var(--text-muted); line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px; }
+        .score-inline { font-family:'JetBrains Mono',monospace; font-weight:900; font-size:14px; color:var(--accent-yellow); background:rgba(245,158,11,0.12); padding:1px 6px; border-radius:4px; margin:0 2px; }
 
         /* ── GAME STATUS BADGES ── */
         .game-live {
@@ -385,50 +386,231 @@
             50% { box-shadow: 0 0 0 8px rgba(139,92,246,0); }
         }
 
-        /* ── DASHBOARD ── */
-        .dashboard-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 16px; margin-bottom: 24px;
+        /* ═══════════════════════════════════════════════════
+           DASHBOARD — COMPLETE REDESIGN
+           ═══════════════════════════════════════════════════ */
+
+        /* Filter bar */
+        .dash-filter-bar {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            margin-bottom: 24px;
         }
-        .dash-card {
-            background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: var(--radius); padding: 20px; overflow: hidden;
+        .dash-filter-row {
+            display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
         }
-        .dash-card-title {
-            font-size: 13px; font-weight: 700; color: var(--text-secondary);
-            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;
-            display: flex; align-items: center; gap: 8px;
+        .dash-filter-group {
+            display: flex; flex-direction: column; gap: 3px;
         }
-        .dash-summary-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 12px; margin-bottom: 24px;
+        .dash-filter-group label {
+            font-size: 10px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
         }
-        .dash-summary-card {
+        .dash-filter-group input,
+        .dash-filter-group select {
             background: var(--bg-secondary); border: 1px solid var(--border);
-            border-radius: var(--radius-sm); padding: 16px; text-align: center;
+            border-radius: 6px; color: var(--text-primary); font-size: 12px;
+            padding: 6px 8px; min-width: 100px; outline: none;
+            font-family: 'Inter', sans-serif;
         }
-        .dash-summary-card .num { font-size: 28px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
-        .dash-summary-card .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; font-weight: 600; }
-        .dash-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .dash-table thead th {
-            padding: 8px 10px; font-size: 10px; text-transform: uppercase;
+        .dash-filter-group input:focus,
+        .dash-filter-group select:focus { border-color: var(--accent-green); }
+        .dash-filter-group input[type="number"] { width: 70px; min-width: 70px; }
+        .dash-filter-group input[type="date"] { width: 130px; }
+        .btn-clear-dash {
+            background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+            color: var(--text-secondary); font-size: 11px; font-weight: 600;
+            padding: 6px 14px; border-radius: 6px; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-clear-dash:hover { background: rgba(239,68,68,0.15); border-color: var(--accent-red); color: var(--accent-red); }
+        .dash-filter-summary {
+            margin-top: 8px; font-size: 11px; color: var(--text-muted);
+            display: none;
+        }
+        .dash-filter-summary.active { display: block; }
+
+        /* Hero KPI cards */
+        .dash-kpi-grid {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 1200px) { .dash-kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 700px) { .dash-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+        .dash-kpi {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 18px 16px;
+            position: relative; overflow: hidden;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .dash-kpi:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(0,0,0,0.25); }
+        .dash-kpi-label {
+            font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px;
+            color: var(--text-muted); font-weight: 700; margin-bottom: 6px;
+        }
+        .dash-kpi-val {
+            font-size: 28px; font-weight: 900; font-family: 'JetBrains Mono', monospace;
+            line-height: 1.1;
+        }
+        .dash-kpi-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .dash-kpi-icon {
+            position: absolute; top: 14px; right: 14px; font-size: 28px; opacity: 0.12;
+        }
+        .dash-kpi.kpi-green { border-top: 3px solid var(--accent-green); }
+        .dash-kpi.kpi-red { border-top: 3px solid var(--accent-red); }
+        .dash-kpi.kpi-blue { border-top: 3px solid var(--accent-blue); }
+        .dash-kpi.kpi-yellow { border-top: 3px solid var(--accent-yellow); }
+        .dash-kpi.kpi-purple { border-top: 3px solid var(--accent-purple); }
+
+        /* Main two-column layout */
+        .dash-main-row {
+            display: grid; grid-template-columns: 340px 1fr; gap: 16px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 1000px) { .dash-main-row { grid-template-columns: 1fr; } }
+
+        /* Donut section */
+        .dash-donut-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 24px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .dash-donut-svg { width: 180px; height: 180px; }
+        .dash-donut-center {
+            font-size: 26px; font-weight: 900; font-family: 'JetBrains Mono', monospace;
+        }
+        .dash-donut-legend-row {
+            display: flex; gap: 20px; margin-top: 16px; font-size: 13px;
+        }
+        .dash-donut-legend-item {
+            display: flex; align-items: center; gap: 6px;
+        }
+        .dash-legend-dot {
+            width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+        }
+
+        /* Chart area */
+        .dash-chart {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 20px;
+        }
+        .dash-chart-title {
+            font-size: 12px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;
+        }
+        .dash-chart-svg { width: 100%; height: 200px; display: block; }
+        .dash-chart-footer {
+            display: flex; justify-content: space-between; padding-top: 6px;
+            font-size: 11px; color: var(--text-muted);
+        }
+
+        /* Breakdown grid */
+        .dash-grid-2 {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
+            margin-bottom: 16px;
+        }
+        .dash-grid-3 {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+            margin-bottom: 16px;
+        }
+        @media (max-width: 1200px) { .dash-grid-3 { grid-template-columns: 1fr; } }
+        @media (max-width: 1000px) { .dash-grid-2 { grid-template-columns: 1fr; } }
+
+        /* Breakdown card */
+        .dash-bd-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden;
+        }
+        .dash-bd-header {
+            padding: 14px 18px 10px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .dash-bd-title {
+            font-size: 13px; font-weight: 700; color: var(--text-primary);
+        }
+        .dash-bd-count {
+            font-size: 10px; background: rgba(255,255,255,0.06); padding: 2px 8px;
+            border-radius: 10px; color: var(--text-muted); font-weight: 600;
+        }
+        .dash-bd-scroll {
+            max-height: 350px; overflow-y: auto;
+        }
+        .dash-bd-scroll::-webkit-scrollbar { width: 3px; }
+        .dash-bd-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        /* Breakdown row item */
+        .dash-bd-row {
+            display: grid; grid-template-columns: 1fr 50px 50px 80px 70px 60px;
+            align-items: center; padding: 8px 18px; gap: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.025);
+            font-size: 12px; transition: background 0.1s;
+        }
+        .dash-bd-row:hover { background: rgba(255,255,255,0.03); }
+        .dash-bd-row:last-child { border-bottom: none; }
+        .dash-bd-row-name {
+            font-weight: 600; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; color: var(--text-primary);
+        }
+        .dash-bd-row-g { text-align: center; color: var(--accent-green); font-weight: 700; }
+        .dash-bd-row-r { text-align: center; color: var(--accent-red); font-weight: 700; }
+        .dash-bd-row-hr { display: flex; align-items: center; gap: 4px; }
+        .dash-bd-minibar {
+            flex: 1; height: 6px; background: rgba(255,255,255,0.05);
+            border-radius: 3px; overflow: hidden;
+        }
+        .dash-bd-minibar-fill { height: 100%; border-radius: 3px; }
+        .dash-bd-row-hr-pct {
+            font-size: 11px; font-weight: 800; font-family: 'JetBrains Mono', monospace;
+            min-width: 36px; text-align: right;
+        }
+        .dash-bd-row-pnl {
+            text-align: right; font-weight: 800; font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+        .dash-bd-row-roi {
+            text-align: right; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+        .dash-bd-head {
+            display: grid; grid-template-columns: 1fr 50px 50px 80px 70px 60px;
+            padding: 8px 18px; gap: 4px; font-size: 9px; text-transform: uppercase;
             letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700;
-            text-align: left; border-bottom: 2px solid var(--border); white-space: nowrap;
+            border-bottom: 2px solid var(--border); background: var(--bg-card);
+            position: sticky; top: 0; z-index: 1;
         }
-        .dash-table tbody td {
-            padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.03);
-            vertical-align: middle;
-        }
-        .dash-table tbody tr:hover { background: var(--bg-card-hover); }
+        .dash-bd-head > div:nth-child(n+2) { text-align: center; }
+        .dash-bd-head > div:nth-child(5) { text-align: right; }
+        .dash-bd-head > div:nth-child(6) { text-align: right; }
+
+        /* Utility */
+        .txt-green { color: var(--accent-green); }
+        .txt-red { color: var(--accent-red); }
+        .txt-yellow { color: var(--accent-yellow); }
+        .txt-muted { color: var(--text-muted); }
+        
+        /* Profit / Loss styling */
         .profit-positive { color: var(--accent-green); font-weight: 800; }
         .profit-negative { color: var(--accent-red); font-weight: 800; }
         .roi-positive { color: var(--accent-green); }
         .roi-negative { color: var(--accent-red); }
+        
+        /* Old compat hit-rate-bar */
         .hit-rate-bar {
             display: inline-block; width: 50px; height: 6px; background: var(--border);
             border-radius: 3px; overflow: hidden; vertical-align: middle; margin-left: 6px;
         }
         .hit-rate-bar-fill { height: 100%; border-radius: 3px; }
+        
+        /* PnL badge */
+        .pnl-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 6px;
+            font-size: 12px; font-weight: 800; font-family: 'JetBrains Mono', monospace;
+        }
+        .pnl-badge.positive { background: rgba(0,230,118,0.12); color: var(--accent-green); }
+        .pnl-badge.negative { background: rgba(255,82,82,0.12); color: var(--accent-red); }
+        .pnl-badge.neutral { background: rgba(255,255,255,0.06); color: var(--text-muted); }
 
         /* ── SORTABLE TABLE HEADERS ── */
         th.sortable {
@@ -509,6 +691,60 @@
             color: var(--text-muted);
             font-size: 8px;
         }
+
+        /* ── MULTI-SELECT DROPDOWN ── */
+        .ms-wrap { position:relative; width:100%; }
+        .ms-trigger {
+            width:100%; box-sizing:border-box; background:var(--bg-card); border:1px solid var(--border);
+            border-radius:4px; color:var(--text-primary); font-size:10px; padding:3px 18px 3px 4px;
+            cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:22px;
+            display:flex; align-items:center; user-select:none; position:relative;
+        }
+        .ms-trigger::after { content:'▾'; position:absolute; right:4px; top:50%; transform:translateY(-50%); font-size:8px; color:var(--text-muted); pointer-events:none; }
+        .ms-trigger.ms-active { border-color:var(--accent-green); }
+        .ms-trigger .ms-placeholder { color:var(--text-muted); }
+        .ms-trigger .ms-count { background:var(--accent-green); color:#000; font-size:8px; font-weight:800; padding:1px 5px; border-radius:8px; margin-right:4px; flex-shrink:0; }
+        .ms-dropdown {
+            display:none; position:absolute; top:100%; left:0; right:0; z-index:999;
+            background:var(--bg-card); border:1px solid var(--accent-green); border-radius:6px;
+            box-shadow:0 8px 24px rgba(0,0,0,0.5); max-height:260px; overflow:hidden;
+            flex-direction:column; min-width:180px;
+        }
+        .ms-dropdown.ms-open { display:flex; }
+        .ms-search-wrap { padding:4px; border-bottom:1px solid var(--border); }
+        .ms-search {
+            width:100%; box-sizing:border-box; background:var(--bg-secondary); border:1px solid var(--border);
+            border-radius:4px; color:var(--text-primary); font-size:10px; padding:4px 6px; outline:none;
+        }
+        .ms-search:focus { border-color:var(--accent-green); }
+        .ms-search::placeholder { color:var(--text-muted); font-size:9px; }
+        .ms-actions { display:flex; gap:2px; padding:3px 4px; border-bottom:1px solid var(--border); }
+        .ms-actions button {
+            flex:1; background:var(--bg-secondary); border:1px solid var(--border); border-radius:3px;
+            color:var(--text-secondary); font-size:8px; padding:2px 0; cursor:pointer; transition:all .15s;
+        }
+        .ms-actions button:hover { background:var(--accent-green); color:#000; border-color:var(--accent-green); }
+        .ms-list { overflow-y:auto; max-height:200px; padding:2px 0; }
+        .ms-item {
+            display:flex; align-items:center; gap:6px; padding:3px 8px; cursor:pointer;
+            font-size:10px; color:var(--text-secondary); transition:background .1s;
+        }
+        .ms-item:hover { background:rgba(16,185,129,0.08); }
+        .ms-item.ms-selected { color:var(--text-primary); font-weight:600; }
+        .ms-item .ms-check {
+            width:13px; height:13px; border:1.5px solid var(--border); border-radius:3px;
+            display:flex; align-items:center; justify-content:center; flex-shrink:0;
+            font-size:9px; transition:all .15s;
+        }
+        .ms-item.ms-selected .ms-check { background:var(--accent-green); border-color:var(--accent-green); color:#000; }
+        .ms-item .ms-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .ms-empty { padding:8px; text-align:center; font-size:10px; color:var(--text-muted); }
+        /* Dashboard multi-select wider */
+        .dash-filter-group .ms-wrap { min-width:120px; }
+        .dash-filter-group .ms-trigger { font-size:11px; padding:6px 20px 6px 8px; min-height:32px; }
+        .dash-filter-group .ms-dropdown { min-width:200px; }
+        .dash-filter-group .ms-search { font-size:11px; padding:5px 8px; }
+        .dash-filter-group .ms-item { font-size:11px; padding:4px 10px; }
 
         /* ── DETAIL MODAL ── */
         .modal-overlay {
@@ -847,63 +1083,34 @@
                             <th class="sortable" data-sort="index" data-type="num" onclick="sortTable(this)">#</th>
                             <th class="sortable" data-sort="team" data-type="str" onclick="sortTable(this)">Jogo</th>
                             <th class="sortable" data-sort="league" data-type="str" onclick="sortTable(this)">Liga</th>
-                            <th class="sortable" data-sort="date" data-type="str" onclick="sortTable(this)">Data</th>
+                            <th class="sortable sort-asc" data-sort="date" data-type="str" onclick="sortTable(this)">Data</th>
                             <th class="sortable" data-sort="game_status" data-type="num" onclick="sortTable(this)">Status</th>
                             <th class="sortable" data-sort="result" data-type="str" onclick="sortTable(this)">Resultado</th>
                             <th class="sortable" data-sort="market" data-type="str" onclick="sortTable(this)">Mercado</th>
                             <th class="sortable" data-sort="selection" data-type="str" onclick="sortTable(this)">Seleção</th>
-                            <th class="sortable sort-desc" data-sort="odd" data-type="num" onclick="sortTable(this)">Odd</th>
-                            <th class="sortable sort-desc" data-sort="edge" data-type="num" onclick="sortTable(this)">Edge</th>
+                            <th class="sortable" data-sort="odd" data-type="num" onclick="sortTable(this)">Odd Casa</th>
+                            <th class="sortable" data-sort="fair_odd" data-type="num" onclick="sortTable(this)">Odd Justa</th>
+                            <th class="sortable" data-sort="edge" data-type="num" onclick="sortTable(this)">Edge</th>
                             <th class="sortable" data-sort="prob" data-type="num" onclick="sortTable(this)">Prob.</th>
                             <th class="sortable" data-sort="confidence" data-type="str" onclick="sortTable(this)">Nível</th>
                         </tr>
                         <tr class="col-filter-row">
                             <th></th>
                             <th><input class="col-filter" type="text" id="cf-team" placeholder="Time..." oninput="applyColumnFilters()"></th>
-                            <th><select class="col-filter" id="cf-league" onchange="applyColumnFilters()"><option value="">Todas</option></select></th>
+                            <th><div id="cf-league"></div></th>
                             <th><div class="col-filter-datetime">
                                 <input type="datetime-local" id="cf-dt-start" title="De (data/hora)" oninput="applyColumnFilters()">
                                 <input type="datetime-local" id="cf-dt-end" title="Até (data/hora)" oninput="applyColumnFilters()">
                             </div></th>
-                            <th><select class="col-filter" id="cf-game-status" onchange="applyColumnFilters()">
-                                <option value="">Todos</option>
-                                <option value="LIVE">🔴 Ao Vivo</option>
-                                <option value="FINISHED">✔ Encerrado</option>
-                                <option value="UPCOMING">📅 Futuro</option>
-                            </select></th>
-                            <th><select class="col-filter" id="cf-result" onchange="applyColumnFilters()">
-                                <option value="">Todos</option>
-                                <option value="GREEN">✅ GREEN</option>
-                                <option value="RED">❌ RED</option>
-                                <option value="VOID">⬜ VOID</option>
-                                <option value="PENDENTE">⏳ PENDENTE</option>
-                            </select></th>
-                            <th><select class="col-filter" id="cf-market" onchange="applyColumnFilters()">
-                                <option value="">Todos</option>
-                                <option value="1x2">1x2</option>
-                                <option value="Dupla Chance">Dupla Chance</option>
-                                <option value="Gols O/U">Gols O/U</option>
-                                <option value="BTTS">BTTS</option>
-                                <option value="Gols Casa O/U">Gols Casa</option>
-                                <option value="Gols Fora O/U">Gols Fora</option>
-                                <option value="Clean Sheet">Clean Sheet</option>
-                                <option value="Vit. s/ Sofrer">Vit s/ Sofrer</option>
-                                <option value="1o Tempo">1o Tempo</option>
-                                <option value="Par/Impar">Par/Impar</option>
-                                <option value="Escanteios O/U">Escanteios</option>
-                                <option value="Cartoes O/U">Cartoes</option>
-                                <option value="Finaliz">Finalizações</option>
-                            </select></th>
+                            <th><div id="cf-game-status"></div></th>
+                            <th><div id="cf-result"></div></th>
+                            <th><div id="cf-market"></div></th>
                             <th><input class="col-filter" type="text" id="cf-selection" placeholder="Seleção..." oninput="applyColumnFilters()"></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-odd-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-odd-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
+                            <th><div class="col-filter-num"><input type="number" id="cf-fair-odd-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-fair-odd-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-edge-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-edge-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-prob-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-prob-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
-                            <th><select class="col-filter" id="cf-confidence" onchange="applyColumnFilters()">
-                                <option value="">Todos</option>
-                                <option value="ALTO">ALTO</option>
-                                <option value="MÉDIO">MÉDIO</option>
-                                <option value="BAIXO">BAIXO</option>
-                            </select></th>
+                            <th><div id="cf-confidence"></div></th>
                         </tr>
                     </thead>
                     <tbody id="opp-tbody"></tbody>
@@ -918,9 +1125,7 @@
                 <span class="section-count" id="match-count">0</span>
             </div>
             <div class="filter-bar">
-                <select class="filter-select" id="filter-match-league" onchange="filterMatches()">
-                    <option value="all">Todas as Ligas</option>
-                </select>
+                <div id="filter-match-league" style="min-width:160px"></div>
                 <div class="col-filter-datetime" style="flex-direction:row;gap:6px;align-items:center;min-width:auto">
                     <label style="font-size:10px;white-space:nowrap">De:</label>
                     <input type="datetime-local" id="filter-match-dt-start" oninput="filterMatches()" style="font-size:11px;padding:4px 6px">
@@ -963,15 +1168,76 @@
 
         <!-- PERFORMANCE DASHBOARD -->
         <div class="section" id="sec-performance">
-            <div class="section-title">
-                <span class="icon">📊</span> Dashboard de Performance
-                <span class="section-count" id="dash-total">0</span>
-                <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:8px">Análise completa de resultados — 1 unidade por aposta</span>
+            <!-- DASHBOARD FILTER BAR -->
+            <div class="dash-filter-bar" id="dash-filter-bar">
+                <div class="dash-filter-row">
+                    <div class="dash-filter-group">
+                        <label>📅 De</label>
+                        <input type="date" id="df-date-start" onchange="applyDashboardFilters()">
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>📅 Até</label>
+                        <input type="date" id="df-date-end" onchange="applyDashboardFilters()">
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>🎯 Mercado</label>
+                        <div id="df-market"></div>
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>📈 Confiança</label>
+                        <div id="df-confidence"></div>
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>🌍 País</label>
+                        <div id="df-country"></div>
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>🏆 Liga</label>
+                        <div id="df-league"></div>
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>▶ Seleção</label>
+                        <div id="df-selection"></div>
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>💰 Odd Casa Min</label>
+                        <input type="number" id="df-odd-min" step="0.1" placeholder="1.0" oninput="applyDashboardFilters()">
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>💰 Odd Casa Max</label>
+                        <input type="number" id="df-odd-max" step="0.1" placeholder="99" oninput="applyDashboardFilters()">
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>🎯 Odd Justa Min</label>
+                        <input type="number" id="df-fair-odd-min" step="0.1" placeholder="1.0" oninput="applyDashboardFilters()">
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>🎯 Odd Justa Max</label>
+                        <input type="number" id="df-fair-odd-max" step="0.1" placeholder="99" oninput="applyDashboardFilters()">
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>📐 Edge Min</label>
+                        <input type="number" id="df-edge-min" step="1" placeholder="0%" oninput="applyDashboardFilters()">
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>📐 Edge Max</label>
+                        <input type="number" id="df-edge-max" step="1" placeholder="100%" oninput="applyDashboardFilters()">
+                    </div>
+                    <div class="dash-filter-group">
+                        <label>🏦 Bookmaker</label>
+                        <div id="df-bookmaker"></div>
+                    </div>
+                    <div class="dash-filter-group" style="align-self:flex-end">
+                        <button class="btn-clear-dash" onclick="clearDashboardFilters()">🗑 Limpar</button>
+                    </div>
+                </div>
+                <div class="dash-filter-summary" id="dash-filter-summary"></div>
             </div>
+
             <div id="dashboard-content">
-                <div style="text-align:center;padding:40px;color:var(--text-muted)">
-                    <div style="font-size:40px;margin-bottom:12px">📊</div>
-                    <div style="font-size:14px">Clique em <strong>✅ Resultados</strong> para verificar jogos finalizados e popular o dashboard.</div>
+                <div style="text-align:center;padding:60px;color:var(--text-muted)">
+                    <div style="font-size:48px;margin-bottom:16px">📊</div>
+                    <div style="font-size:15px">Clique em <strong>✅ Resultados</strong> para verificar jogos finalizados e popular o dashboard.</div>
                 </div>
             </div>
         </div>
@@ -1675,8 +1941,7 @@ async function checkResults() {
         // Recarregar dados para mostrar resultados atualizados na tabela
         btn.innerHTML = "🔄 Atualizando tabela...";
         await loadCachedData();
-        dashboardLoaded = false; // Forçar reload do dashboard
-        loadDashboard();
+        loadDashboard(true); // Forçar reload do dashboard
         
     } catch (e) {
         clearInterval(timerInterval);
@@ -1689,134 +1954,440 @@ async function checkResults() {
 }
 
 // ═══════════════════════════════════════════
-// DASHBOARD — Carregar e renderizar
+// DASHBOARD — FULL REDESIGN WITH CLIENT-SIDE FILTERS
 // ═══════════════════════════════════════════
-let dashboardData = null;
+let dashboardRawData = null;  // { resolved: [...], pending_count: N }
 let dashboardLoaded = false;
 
-async function loadDashboard() {
-    if (dashboardLoaded && dashboardData) {
-        renderDashboard(dashboardData);
+async function loadDashboard(forceReload) {
+    if (dashboardLoaded && dashboardRawData && !forceReload) {
+        applyDashboardFilters();
         return;
     }
     
     const container = document.getElementById("dashboard-content");
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)"><div style="font-size:24px;animation:pulse 1.5s infinite">⏳</div><div style="margin-top:8px">Carregando dashboard...</div></div>';
+    container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted)"><div style="font-size:32px;animation:pulse 1.5s infinite">⏳</div><div style="margin-top:12px;font-size:14px">Carregando dashboard...</div></div>';
     
     try {
         const res = await fetch("/api/dashboard");
         const result = await res.json();
         
-        if (!result.ok || !result.data) {
-            container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)"><div style="font-size:40px;margin-bottom:12px">📊</div><div>Nenhum dado de performance ainda. Clique em <strong>✅ Resultados</strong> para verificar jogos.</div></div>';
+        if (!result.ok || !result.data || (!result.data.resolved?.length && !result.data.pending_count)) {
+            container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted)"><div style="font-size:48px;margin-bottom:16px">📊</div><div style="font-size:15px">Nenhum dado de performance ainda.<br>Clique em <strong>✅ Resultados</strong> para verificar jogos.</div></div>';
             return;
         }
         
-        dashboardData = result.data;
+        dashboardRawData = result.data;
         dashboardLoaded = true;
-        document.getElementById("dash-total").textContent = dashboardData.total_count || 0;
-        renderDashboard(dashboardData);
+        populateDashboardFilters(dashboardRawData.resolved || []);
+        applyDashboardFilters();
     } catch (e) {
         console.error(e);
-        container.innerHTML = `<div style="color:var(--accent-red);padding:20px">Erro ao carregar dashboard: ${e.message}</div>`;
+        container.innerHTML = `<div style="color:var(--accent-red);padding:30px;text-align:center">Erro ao carregar dashboard: ${e.message}</div>`;
     }
 }
 
-function renderDashboard(data) {
-    const s = data.summary || {};
+function populateDashboardFilters(items) {
+    const uniq = (arr) => [...new Set(arr)].filter(Boolean).sort();
+    const markets = uniq(items.map(o => o.market));
+    const selections = uniq(items.map(o => o.selection));
+    const confidences = uniq(items.map(o => o.confidence));
+    const countries = uniq(items.map(o => o.league_country));
+    const leagues = uniq(items.map(o => o.league_name));
+    const bookmakers = uniq(items.map(o => o.bookmaker));
+
+    const initMs = (id, placeholder, items) => {
+        if (!msRegistry[id]) {
+            msRegistry[id] = new MultiSelect(id, { placeholder, onChange: () => applyDashboardFilters() });
+        }
+        msRegistry[id].setItems(items);
+    };
+
+    initMs('df-market', 'Todos', markets);
+    initMs('df-selection', 'Todas', selections);
+    initMs('df-confidence', 'Todas', confidences);
+    initMs('df-country', 'Todos', countries);
+    initMs('df-league', 'Todas', leagues);
+    initMs('df-bookmaker', 'Todos', bookmakers);
+}
+
+function clearDashboardFilters() {
+    ['df-date-start','df-date-end','df-odd-min','df-odd-max','df-fair-odd-min','df-fair-odd-max','df-edge-min','df-edge-max'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    // Reset all dashboard multi-selects
+    ['df-market','df-selection','df-confidence','df-country','df-league','df-bookmaker'].forEach(id => {
+        if (msRegistry[id]) msRegistry[id].reset();
+    });
+    applyDashboardFilters();
+}
+
+function applyDashboardFilters() {
+    if (!dashboardRawData) return;
+    const all = dashboardRawData.resolved || [];
+    const pendingCount = dashboardRawData.pending_count || 0;
+
+    // Read filter values — multi-selects return [] if all/none selected
+    const dateStart = document.getElementById('df-date-start')?.value || '';
+    const dateEnd = document.getElementById('df-date-end')?.value || '';
+    const marketFilter = msRegistry['df-market'] ? msRegistry['df-market'].getSelected() : [];
+    const selectionFilter = msRegistry['df-selection'] ? msRegistry['df-selection'].getSelected() : [];
+    const confidenceFilter = msRegistry['df-confidence'] ? msRegistry['df-confidence'].getSelected() : [];
+    const countryFilter = msRegistry['df-country'] ? msRegistry['df-country'].getSelected() : [];
+    const leagueFilter = msRegistry['df-league'] ? msRegistry['df-league'].getSelected() : [];
+    const bookmakerFilter = msRegistry['df-bookmaker'] ? msRegistry['df-bookmaker'].getSelected() : [];
+    const oddMin = parseFloat(document.getElementById('df-odd-min')?.value) || null;
+    const oddMax = parseFloat(document.getElementById('df-odd-max')?.value) || null;
+    const fairOddMin = parseFloat(document.getElementById('df-fair-odd-min')?.value) || null;
+    const fairOddMax = parseFloat(document.getElementById('df-fair-odd-max')?.value) || null;
+    const edgeMin = parseFloat(document.getElementById('df-edge-min')?.value) || null;
+    const edgeMax = parseFloat(document.getElementById('df-edge-max')?.value) || null;
+
+    const hasFilter = dateStart || dateEnd || marketFilter.length || selectionFilter.length || confidenceFilter.length || countryFilter.length || leagueFilter.length || bookmakerFilter.length || oddMin || oddMax || fairOddMin || fairOddMax || edgeMin || edgeMax;
+
+    // Filter
+    const filtered = all.filter(o => {
+        if (dateStart && (o.match_date || '') < dateStart) return false;
+        if (dateEnd && (o.match_date || '') > dateEnd) return false;
+        if (marketFilter.length && !marketFilter.includes(o.market)) return false;
+        if (selectionFilter.length && !selectionFilter.includes(o.selection)) return false;
+        if (confidenceFilter.length && !confidenceFilter.includes(o.confidence)) return false;
+        if (countryFilter.length && !countryFilter.includes(o.league_country)) return false;
+        if (leagueFilter.length && !leagueFilter.includes(o.league_name)) return false;
+        if (bookmakerFilter.length && !bookmakerFilter.includes(o.bookmaker)) return false;
+        if (oddMin && (o.market_odd || 0) < oddMin) return false;
+        if (oddMax && (o.market_odd || 0) > oddMax) return false;
+        if (fairOddMin && (o.fair_odd || 0) < fairOddMin) return false;
+        if (fairOddMax && (o.fair_odd || 0) > fairOddMax) return false;
+        if (edgeMin && (o.edge || 0) < edgeMin) return false;
+        if (edgeMax && (o.edge || 0) > edgeMax) return false;
+        return true;
+    });
+
+    // Show filter summary
+    const summaryEl = document.getElementById('dash-filter-summary');
+    if (summaryEl) {
+        if (hasFilter) {
+            summaryEl.className = 'dash-filter-summary active';
+            summaryEl.innerHTML = `🔍 Filtro ativo: <strong>${filtered.length}</strong> de ${all.length} oportunidades resolvidas`;
+        } else {
+            summaryEl.className = 'dash-filter-summary';
+        }
+    }
+
+    renderDashboard(filtered, pendingCount, all.length);
+}
+
+// ═══════════════════════════════════════════
+// DASHBOARD — RENDER (completely new)
+// ═══════════════════════════════════════════
+function renderDashboard(items, pendingCount, totalAll) {
     const container = document.getElementById("dashboard-content");
+    if (!container) return;
     
-    const profitClass = (v) => v >= 0 ? 'profit-positive' : 'profit-negative';
-    const roiClass = (v) => v >= 0 ? 'roi-positive' : 'roi-negative';
-    const hitColor = (hr) => hr >= 60 ? 'var(--accent-green)' : hr >= 45 ? 'var(--accent-yellow)' : 'var(--accent-red)';
-    
+    if (!items.length) {
+        container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted)"><div style="font-size:48px;margin-bottom:16px">🔍</div><div style="font-size:15px">Nenhuma oportunidade corresponde aos filtros selecionados.</div></div>';
+        return;
+    }
+
+    // ── Compute stats ──
+    const greens = items.filter(o => o.result_status === 'GREEN');
+    const reds = items.filter(o => o.result_status === 'RED');
+    const voids = items.filter(o => o.result_status === 'VOID');
+    const decided = greens.length + reds.length;
+    const hitRate = decided > 0 ? (greens.length / decided * 100).toFixed(1) : 0;
+    const profitGreens = greens.reduce((s, o) => s + ((o.market_odd || 0) - 1), 0);
+    const profitTotal = profitGreens - reds.length;
+    const roi = decided > 0 ? (profitTotal / decided * 100).toFixed(1) : 0;
+    const avgOdd = items.length > 0 ? (items.reduce((s, o) => s + (o.market_odd || 0), 0) / items.length).toFixed(2) : 0;
+    const avgEdge = items.length > 0 ? (items.reduce((s, o) => s + (o.edge || 0), 0) / items.length).toFixed(1) : 0;
+
+    const hitColor = (hr) => hr >= 55 ? 'var(--accent-green)' : hr >= 45 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+    const sign = (v) => v >= 0 ? '+' : '';
+    const pc = (v) => v >= 0 ? 'profit-positive' : 'profit-negative';
+
     let html = '';
-    
-    // ── SUMMARY CARDS ──
-    html += `<div class="dash-summary-grid">
-        <div class="dash-summary-card">
-            <div class="num" style="color:var(--accent-blue)">${s.total || 0}</div>
-            <div class="lbl">Total Resolvidas</div>
+
+    // ═══════════════════════════════
+    // KPI CARDS (5 cols)
+    // ═══════════════════════════════
+    html += `<div class="dash-kpi-grid">
+        <div class="dash-kpi kpi-blue">
+            <div class="dash-kpi-icon">📊</div>
+            <div class="dash-kpi-label">Resolvidas</div>
+            <div class="dash-kpi-val" style="color:var(--accent-blue)">${items.length}</div>
+            <div class="dash-kpi-sub">${decided} decididas · ${voids.length} void · ${pendingCount} pend.</div>
         </div>
-        <div class="dash-summary-card">
-            <div class="num" style="color:var(--accent-green)">${s.green || 0}</div>
-            <div class="lbl">🟢 Greens</div>
+        <div class="dash-kpi kpi-green">
+            <div class="dash-kpi-icon">🎯</div>
+            <div class="dash-kpi-label">Taxa de Acerto</div>
+            <div class="dash-kpi-val" style="color:${hitColor(hitRate)}">${hitRate}%</div>
+            <div class="dash-kpi-sub">${greens.length} GREEN · ${reds.length} RED</div>
         </div>
-        <div class="dash-summary-card">
-            <div class="num" style="color:var(--accent-red)">${s.red || 0}</div>
-            <div class="lbl">🔴 Reds</div>
+        <div class="dash-kpi ${profitTotal >= 0 ? 'kpi-green' : 'kpi-red'}">
+            <div class="dash-kpi-icon">💰</div>
+            <div class="dash-kpi-label">Lucro / Prejuízo</div>
+            <div class="dash-kpi-val ${pc(profitTotal)}">${sign(profitTotal)}${profitTotal.toFixed(2)}u</div>
+            <div class="dash-kpi-sub">+${profitGreens.toFixed(2)}u ganhos · -${reds.length}.00u perdas</div>
         </div>
-        <div class="dash-summary-card">
-            <div class="num" style="color:${hitColor(s.hit_rate || 0)}">${s.hit_rate || 0}%</div>
-            <div class="lbl">Taxa de Acerto</div>
+        <div class="dash-kpi ${parseFloat(roi) >= 0 ? 'kpi-green' : 'kpi-red'}">
+            <div class="dash-kpi-icon">📈</div>
+            <div class="dash-kpi-label">ROI</div>
+            <div class="dash-kpi-val ${pc(parseFloat(roi))}">${sign(parseFloat(roi))}${roi}%</div>
+            <div class="dash-kpi-sub">Investido: ${decided}u · Retorno: ${(decided + profitTotal).toFixed(2)}u</div>
         </div>
-        <div class="dash-summary-card">
-            <div class="num ${profitClass(s.profit || 0)}">${(s.profit || 0) >= 0 ? '+' : ''}${(s.profit || 0).toFixed(2)}u</div>
-            <div class="lbl">Lucro Total</div>
-        </div>
-        <div class="dash-summary-card">
-            <div class="num ${roiClass(s.roi || 0)}">${(s.roi || 0) >= 0 ? '+' : ''}${s.roi || 0}%</div>
-            <div class="lbl">ROI</div>
-        </div>
-        <div class="dash-summary-card">
-            <div class="num" style="color:var(--accent-yellow)">${data.pending_count || 0}</div>
-            <div class="lbl">⏳ Pendentes</div>
-        </div>
-        <div class="dash-summary-card">
-            <div class="num" style="color:var(--text-secondary)">${s.avg_odd || 0}</div>
-            <div class="lbl">Odd Média</div>
+        <div class="dash-kpi kpi-purple">
+            <div class="dash-kpi-icon">⚡</div>
+            <div class="dash-kpi-label">Odds / Edge Médio</div>
+            <div class="dash-kpi-val" style="color:var(--accent-purple);font-size:22px">${avgOdd} / ${avgEdge}%</div>
+            <div class="dash-kpi-sub">Média de todas as oportunidades</div>
         </div>
     </div>`;
-    
-    // ── Tabela helper ──
-    function renderGroupTable(title, icon, items, extraCols) {
-        if (!items || !items.length) return '';
-        let h = `<div class="dash-card" style="grid-column: span 1">
-            <div class="dash-card-title">${icon} ${title}</div>
-            <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
-            <table class="dash-table">
-                <thead><tr>
-                    <th>${extraCols || 'Categoria'}</th>
-                    <th style="text-align:center">Total</th>
-                    <th style="text-align:center">🟢</th>
-                    <th style="text-align:center">🔴</th>
-                    <th style="text-align:center">Acerto</th>
-                    <th style="text-align:right">Lucro</th>
-                    <th style="text-align:right">ROI</th>
-                </tr></thead>
-                <tbody>`;
-        items.forEach(item => {
-            const hr = item.hit_rate || 0;
-            h += `<tr>
-                <td style="font-weight:600;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis">${item.label || '?'}</td>
-                <td style="text-align:center">${item.total || 0}</td>
-                <td style="text-align:center;color:var(--accent-green);font-weight:700">${item.green || 0}</td>
-                <td style="text-align:center;color:var(--accent-red);font-weight:700">${item.red || 0}</td>
-                <td style="text-align:center">
-                    <span style="color:${hitColor(hr)};font-weight:700">${hr}%</span>
-                    <div class="hit-rate-bar"><div class="hit-rate-bar-fill" style="width:${hr}%;background:${hitColor(hr)}"></div></div>
-                </td>
-                <td style="text-align:right" class="${profitClass(item.profit || 0)}">${(item.profit || 0) >= 0 ? '+' : ''}${(item.profit || 0).toFixed(2)}u</td>
-                <td style="text-align:right" class="${roiClass(item.roi || 0)}">${(item.roi || 0) >= 0 ? '+' : ''}${item.roi || 0}%</td>
-            </tr>`;
-        });
-        h += '</tbody></table></div></div>';
-        return h;
-    }
-    
-    // ── GRIDS ──
-    html += '<div class="dashboard-grid">';
-    html += renderGroupTable('Por Mercado', '🎯', data.by_market, 'Mercado');
-    html += renderGroupTable('Por Confiança', '📈', data.by_confidence, 'Nível');
-    html += renderGroupTable('Por Faixa de Edge', '📐', data.by_edge_range, 'Faixa Edge');
-    html += renderGroupTable('Por Faixa de Odds', '💰', data.by_odds_range, 'Faixa Odds');
-    html += renderGroupTable('Por Liga', '🏆', data.by_league, 'Liga');
-    html += renderGroupTable('Por País', '🌍', data.by_country, 'País');
-    html += renderGroupTable('Por Casa de Apostas', '🏦', data.by_bookmaker, 'Bookmaker');
-    html += renderGroupTable('Por Data', '📅', (data.by_date || []).slice(0, 30), 'Data');
+
+    // ═══════════════════════════════
+    // DONUT + CHART ROW
+    // ═══════════════════════════════
+    const greenPct = decided > 0 ? (greens.length / decided * 100) : 0;
+    const redPct = decided > 0 ? (reds.length / decided * 100) : 0;
+    const voidPct = items.length > 0 ? (voids.length / items.length * 100) : 0;
+
+    // SVG Donut
+    const donutSvg = _buildDonutSVG(greenPct, redPct, hitRate);
+
+    // Build accumulated profit chart
+    const chartSvg = _buildProfitChart(items);
+
+    html += `<div class="dash-main-row">
+        <div class="dash-donut-card">
+            <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:16px">Distribuição de Resultados</div>
+            ${donutSvg}
+            <div class="dash-donut-legend-row">
+                <div class="dash-donut-legend-item"><div class="dash-legend-dot" style="background:var(--accent-green)"></div><strong class="txt-green">${greens.length}</strong> <span class="txt-muted">G (${greenPct.toFixed(0)}%)</span></div>
+                <div class="dash-donut-legend-item"><div class="dash-legend-dot" style="background:var(--accent-red)"></div><strong class="txt-red">${reds.length}</strong> <span class="txt-muted">R (${redPct.toFixed(0)}%)</span></div>
+                <div class="dash-donut-legend-item"><div class="dash-legend-dot" style="background:var(--text-muted)"></div><strong class="txt-muted">${voids.length}</strong> <span class="txt-muted">V</span></div>
+            </div>
+        </div>
+        <div class="dash-chart">
+            <div class="dash-chart-title">📈 Lucro Acumulado por Data</div>
+            ${chartSvg}
+        </div>
+    </div>`;
+
+    // ═══════════════════════════════
+    // BREAKDOWN TABLES
+    // ═══════════════════════════════
+    const groupBy = (arr, keyFn) => {
+        const map = {};
+        arr.forEach(o => { const k = keyFn(o) || '?'; if (!map[k]) map[k] = []; map[k].push(o); });
+        return Object.entries(map).map(([label, items]) => {
+            const g = items.filter(x => x.result_status === 'GREEN');
+            const r = items.filter(x => x.result_status === 'RED');
+            const d = g.length + r.length;
+            const hr = d > 0 ? (g.length / d * 100).toFixed(1) : 0;
+            const pft = g.reduce((s, x) => s + ((x.market_odd||0)-1), 0) - r.length;
+            const roiV = d > 0 ? (pft / d * 100).toFixed(1) : 0;
+            return { label, total: items.length, green: g.length, red: r.length, hit_rate: parseFloat(hr), profit: Math.round(pft*100)/100, roi: parseFloat(roiV) };
+        }).sort((a, b) => b.roi - a.roi || b.profit - a.profit);
+    };
+
+    const edgeRange = (o) => {
+        const e = o.edge || 0;
+        if (e < 3) return '0-3%';
+        if (e < 5) return '3-5%';
+        if (e < 10) return '5-10%';
+        if (e < 20) return '10-20%';
+        if (e < 50) return '20-50%';
+        return '50%+';
+    };
+    const oddsRange = (o) => {
+        const odd = o.market_odd || 0;
+        if (odd < 1.3) return '1.00-1.30';
+        if (odd < 1.5) return '1.30-1.50';
+        if (odd < 1.8) return '1.50-1.80';
+        if (odd < 2.0) return '1.80-2.00';
+        if (odd < 2.5) return '2.00-2.50';
+        if (odd < 3.0) return '2.50-3.00';
+        if (odd < 5.0) return '3.00-5.00';
+        return '5.00+';
+    };
+
+    const byMarket = groupBy(items, o => o.market);
+    const byConfidence = groupBy(items, o => o.confidence);
+    const byEdge = groupBy(items, edgeRange);
+    const byOdds = groupBy(items, oddsRange);
+    const byCountry = groupBy(items, o => o.league_country);
+    const bySelection = groupBy(items, o => o.selection);
+    const byLeague = groupBy(items, o => o.league_name);
+    const byDate = groupBy(items, o => o.match_date);
+
+    // 3-column grid for main breakdowns
+    html += '<div class="dash-grid-3">';
+    html += _renderBreakdownCard('🎯 Por Mercado', byMarket);
+    html += _renderBreakdownCard('📈 Por Confiança', byConfidence);
+    html += _renderBreakdownCard('📐 Por Faixa de Edge', byEdge);
     html += '</div>';
-    
+
+    html += '<div class="dash-grid-3">';
+    html += _renderBreakdownCard('💰 Por Faixa de Odds', byOdds);
+    html += _renderBreakdownCard('🌍 Por País', byCountry);
+    html += _renderBreakdownCard('▶ Por Seleção', bySelection);
+    html += '</div>';
+
+    // Full-width tables
+    html += '<div class="dash-grid-2">';
+    html += _renderBreakdownCard('🏆 Por Liga', byLeague);
+    html += _renderBreakdownCard('📅 Por Data', byDate.sort((a,b) => (b.label||'').localeCompare(a.label||'')));
+    html += '</div>';
+
     container.innerHTML = html;
+}
+
+// ── SVG Donut ──
+function _buildDonutSVG(greenPct, redPct, hitRate) {
+    const r = 70, cx = 90, cy = 90, sw = 18;
+    const circ = 2 * Math.PI * r;
+    const gLen = circ * greenPct / 100;
+    const rLen = circ * redPct / 100;
+    const vLen = circ - gLen - rLen;
+    const gOff = 0;
+    const rOff = circ - gLen;
+    const vOff = circ - gLen - rLen;
+
+    return `<svg class="dash-donut-svg" viewBox="0 0 180 180">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="${sw}"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--accent-green)" stroke-width="${sw}"
+            stroke-dasharray="${gLen} ${circ - gLen}" stroke-dashoffset="0"
+            transform="rotate(-90 ${cx} ${cy})" stroke-linecap="round"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--accent-red)" stroke-width="${sw}"
+            stroke-dasharray="${rLen} ${circ - rLen}" stroke-dashoffset="${-gLen}"
+            transform="rotate(-90 ${cx} ${cy})" stroke-linecap="round"/>
+        <text x="${cx}" y="${cy - 6}" text-anchor="middle" fill="var(--text-primary)" font-size="28" font-weight="900" font-family="JetBrains Mono, monospace">${hitRate}%</text>
+        <text x="${cx}" y="${cy + 14}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-weight="600">ACERTO</text>
+    </svg>`;
+}
+
+// ── Accumulated Profit Chart ──
+function _buildProfitChart(items) {
+    // Group by date and compute cumulative
+    const byDateMap = {};
+    items.forEach(o => {
+        const d = o.match_date || '?';
+        if (!byDateMap[d]) byDateMap[d] = [];
+        byDateMap[d].push(o);
+    });
+    const sortedDates = Object.keys(byDateMap).sort();
+    if (sortedDates.length < 2) {
+        return '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px">Dados insuficientes para o gráfico (necessário ≥2 datas)</div>';
+    }
+
+    let cumProfit = 0;
+    const points = sortedDates.map(d => {
+        const ops = byDateMap[d];
+        const gp = ops.filter(x => x.result_status === 'GREEN').reduce((s, x) => s + ((x.market_odd||0)-1), 0);
+        const rp = ops.filter(x => x.result_status === 'RED').length;
+        const daily = gp - rp;
+        cumProfit += daily;
+        return { date: d, cum: cumProfit, daily, g: ops.filter(x=>x.result_status==='GREEN').length, r: rp, total: ops.length };
+    });
+
+    const svgW = 800, svgH = 200, padX = 40, padY = 24;
+    const maxP = Math.max(...points.map(p => p.cum), 0.5);
+    const minP = Math.min(...points.map(p => p.cum), -0.5);
+    const range = maxP - minP || 1;
+    const xStep = points.length > 1 ? (svgW - padX * 2) / (points.length - 1) : (svgW - padX * 2) / 2;
+    const toY = (v) => padY + (svgH - padY * 2) * (1 - (v - minP) / range);
+    const zeroY = toY(0);
+
+    let pathD = '', areaD = '';
+    const dots = [];
+    points.forEach((p, i) => {
+        const x = padX + i * xStep;
+        const y = toY(p.cum);
+        if (i === 0) { pathD += `M${x},${y}`; areaD += `M${x},${zeroY} L${x},${y}`; }
+        else { pathD += ` L${x},${y}`; areaD += ` L${x},${y}`; }
+        if (i === points.length - 1) areaD += ` L${x},${zeroY} Z`;
+        const col = p.cum >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+        dots.push(`<circle cx="${x}" cy="${y}" r="4.5" fill="${col}" stroke="var(--bg-card)" stroke-width="2.5"><title>${p.date}\nAcumulado: ${p.cum >= 0 ? '+' : ''}${p.cum.toFixed(2)}u\nDia: ${p.daily >= 0 ? '+' : ''}${p.daily.toFixed(2)}u (${p.g}G/${p.r}R)</title></circle>`);
+    });
+
+    const finalVal = points[points.length - 1].cum;
+    const lineCol = finalVal >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+    const areaCol = finalVal >= 0 ? 'rgba(0,230,138,0.08)' : 'rgba(239,68,68,0.08)';
+
+    // Y-axis labels
+    const yLabels = [maxP, 0, minP].filter((v, i, a) => a.indexOf(v) === i);
+    let yLabelsSvg = yLabels.map(v => {
+        const y = toY(v);
+        const col = v > 0 ? 'var(--accent-green)' : v < 0 ? 'var(--accent-red)' : 'rgba(255,255,255,0.3)';
+        return `<text x="${padX - 6}" y="${y + 4}" text-anchor="end" fill="${col}" font-size="10" font-family="JetBrains Mono, monospace">${v >= 0 ? '+' : ''}${v.toFixed(1)}</text>
+                <line x1="${padX}" y1="${y}" x2="${svgW - 10}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3,3"/>`;
+    }).join('');
+
+    // X-axis labels (first, last, middle)
+    const xLabels = [];
+    if (points.length <= 8) {
+        points.forEach((p, i) => xLabels.push({ i, label: p.date.slice(5) })); // MM-DD
+    } else {
+        [0, Math.floor(points.length/2), points.length-1].forEach(i => xLabels.push({ i, label: points[i].date.slice(5) }));
+    }
+    const xLabelsSvg = xLabels.map(({ i, label }) => {
+        const x = padX + i * xStep;
+        return `<text x="${x}" y="${svgH - 4}" text-anchor="middle" fill="var(--text-muted)" font-size="10">${label}</text>`;
+    }).join('');
+
+    return `<svg class="dash-chart-svg" viewBox="0 0 ${svgW} ${svgH}" preserveAspectRatio="xMidYMid meet">
+        ${yLabelsSvg}
+        <line x1="${padX}" y1="${zeroY}" x2="${svgW - 10}" y2="${zeroY}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <path d="${areaD}" fill="${areaCol}"/>
+        <path d="${pathD}" fill="none" stroke="${lineCol}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        ${dots.join('')}
+        ${xLabelsSvg}
+    </svg>
+    <div class="dash-chart-footer">
+        <span>${points[0].date}</span>
+        <span>Final: <strong class="${finalVal >= 0 ? 'profit-positive' : 'profit-negative'}">${finalVal >= 0 ? '+' : ''}${finalVal.toFixed(2)}u</strong></span>
+        <span>${points[points.length-1].date}</span>
+    </div>`;
+}
+
+// ── Breakdown Card ──
+function _renderBreakdownCard(title, items) {
+    if (!items || !items.length) return '';
+    const sorted = [...items].sort((a, b) => b.roi - a.roi || b.profit - a.profit);
+
+    let h = `<div class="dash-bd-card">
+        <div class="dash-bd-header">
+            <div class="dash-bd-title">${title}</div>
+            <div class="dash-bd-count">${sorted.length}</div>
+        </div>
+        <div class="dash-bd-scroll">
+            <div class="dash-bd-head">
+                <div>Nome</div><div>G</div><div>R</div><div>Acerto</div><div>P&L</div><div>ROI</div>
+            </div>`;
+
+    sorted.forEach(item => {
+        const hr = item.hit_rate || 0;
+        const p = item.profit || 0;
+        const r = item.roi || 0;
+        const hc = hr >= 55 ? 'var(--accent-green)' : hr >= 45 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+        const pClass = p >= 0 ? 'txt-green' : 'txt-red';
+        const rClass = r >= 0 ? 'txt-green' : 'txt-red';
+
+        h += `<div class="dash-bd-row">
+            <div class="dash-bd-row-name" title="${item.label}">${item.label} <span class="txt-muted" style="font-size:10px;font-weight:400">(${item.total})</span></div>
+            <div class="dash-bd-row-g">${item.green}</div>
+            <div class="dash-bd-row-r">${item.red}</div>
+            <div class="dash-bd-row-hr">
+                <div class="dash-bd-minibar"><div class="dash-bd-minibar-fill" style="width:${Math.min(hr, 100)}%;background:${hc}"></div></div>
+                <div class="dash-bd-row-hr-pct" style="color:${hc}">${hr}%</div>
+            </div>
+            <div class="dash-bd-row-pnl ${pClass}">${p >= 0 ? '+' : ''}${p.toFixed(2)}u</div>
+            <div class="dash-bd-row-roi ${rClass}">${r >= 0 ? '+' : ''}${r}%</div>
+        </div>`;
+    });
+
+    h += '</div></div>';
+    return h;
 }
 
 
@@ -1826,10 +2397,10 @@ function renderDashboard(data) {
 function renderAll() {
     renderRunInfo();
     renderStats();
-    renderOpportunities();
+    populateFilters();
+    applyColumnFilters();  // Aplica sort padrão (data asc) e filtros
     renderMatches();
     renderLeagues();
-    populateFilters();
 }
 
 function renderRunInfo() {
@@ -1923,7 +2494,7 @@ function renderOpportunities(data) {
             ? '<span class="game-finished">✔ Encerrado</span>'
             : '<span class="game-upcoming">📅 ' + gs.timeLabel + '</span>';
         
-        // Result status badge
+        // Result status badge + game details
         const resultStatus = o.result_status || 'PENDENTE';
         const resultBadge = (() => {
             if (resultStatus === 'GREEN') return '<span class="result-green">✅ GREEN</span>';
@@ -1932,6 +2503,19 @@ function renderOpportunities(data) {
             return '<span class="result-pending">⏳ Pend.</span>';
         })();
         const resultScore = o.result_score ? ` <span style="font-size:10px;color:var(--text-muted);font-family:'JetBrains Mono'">${o.result_score}</span>` : '';
+        
+        // Build game detail tooltip for finished games
+        let gameDetailHtml = '';
+        if (o.result_score && resultStatus !== 'PENDENTE') {
+            const detailParts = [];
+            if (o.result_ht_score) detailParts.push(`⏱️ HT: ${o.result_ht_score}`);
+            if (o.result_corners) detailParts.push(`🚩 Escanteios: ${o.result_corners}`);
+            if (o.result_cards) detailParts.push(`🟨 Cartões: ${o.result_cards}`);
+            if (o.result_shots) detailParts.push(`🎯 Finalizações: ${o.result_shots}`);
+            if (detailParts.length > 0) {
+                gameDetailHtml = `<div class="game-detail-mini">${detailParts.join(' · ')}</div>`;
+            }
+        }
         
         // Row class based on status
         const rowClass = resultStatus === 'GREEN' ? 'row-green' 
@@ -1945,14 +2529,17 @@ function renderOpportunities(data) {
         
         return `<tr class="${rowClass}" onclick="showOppDetail(${allOpps.indexOf(o)})" style="cursor:pointer${rowBorder}">
             <td style="color:var(--text-muted);font-weight:600">${i+1}</td>
-            <td class="team-cell">${o.home_team} <span class="vs">vs</span> ${o.away_team}${suspectBadge}</td>
+            <td class="team-cell">${o.result_score && resultStatus !== 'PENDENTE' 
+                ? `${o.home_team} <span class="score-inline">${o.result_score.split('-')[0]}</span> <span class="vs">vs</span> <span class="score-inline">${o.result_score.split('-')[1]}</span> ${o.away_team}` 
+                : `${o.home_team} <span class="vs">vs</span> ${o.away_team}`}${suspectBadge}</td>
             <td style="font-size:11px">${o.league_name}</td>
             <td style="font-size:11px;color:var(--text-secondary)">${o.match_date}<br>${o.match_time}</td>
             <td>${gameStatusBadge}</td>
-            <td>${resultBadge}${resultScore}</td>
+            <td>${resultBadge}${resultScore}${gameDetailHtml}</td>
             <td><span class="market-tag ${marketClass}">${o.market}</span></td>
             <td style="font-weight:600;font-size:11px;color:var(--accent-green);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.selection}">▶ ${o.selection}</td>
             <td class="odd-cell">${o.market_odd.toFixed(2)}</td>
+            <td class="odd-cell" style="color:var(--accent-green)">${o.fair_odd ? o.fair_odd.toFixed(2) : '--'}</td>
             <td class="edge-cell ${edgeClass}">${o.edge_pct}</td>
             <td style="font-size:12px">${o.model_prob}%</td>
             <td><span class="badge ${confClass}">${o.confidence}</span></td>
@@ -2022,7 +2609,7 @@ function renderLeagues() {
 // ═══════════════════════════════════════════
 // SORTING
 // ═══════════════════════════════════════════
-let currentSort = { key: 'edge', dir: 'desc' };
+let currentSort = { key: 'date', dir: 'asc' };
 
 function sortTable(th) {
     const key = th.dataset.sort;
@@ -2071,30 +2658,223 @@ function getSortValue(o, key) {
 }
 
 // ═══════════════════════════════════════════
+// MULTI-SELECT COMPONENT
+// ═══════════════════════════════════════════
+class MultiSelect {
+    constructor(container, options = {}) {
+        this.container = typeof container === 'string' ? document.getElementById(container) : container;
+        this.placeholder = options.placeholder || 'Todos';
+        this.onChange = options.onChange || (() => {});
+        this.items = [];            // [{value, label}]
+        this.selected = new Set();  // set of selected values
+        this._open = false;
+        this._build();
+    }
+
+    _build() {
+        this.container.innerHTML = '';
+        this.container.classList.add('ms-wrap');
+
+        // Trigger button
+        this.trigger = document.createElement('div');
+        this.trigger.className = 'ms-trigger';
+        this.trigger.innerHTML = `<span class="ms-placeholder">${this.placeholder}</span>`;
+        this.trigger.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(); });
+        this.container.appendChild(this.trigger);
+
+        // Dropdown
+        this.dropdown = document.createElement('div');
+        this.dropdown.className = 'ms-dropdown';
+        this.dropdown.addEventListener('click', e => e.stopPropagation());
+
+        // Search
+        const searchWrap = document.createElement('div');
+        searchWrap.className = 'ms-search-wrap';
+        this.searchInput = document.createElement('input');
+        this.searchInput.className = 'ms-search';
+        this.searchInput.type = 'text';
+        this.searchInput.placeholder = '🔍 Buscar...';
+        this.searchInput.addEventListener('input', () => this._filterList());
+        searchWrap.appendChild(this.searchInput);
+        this.dropdown.appendChild(searchWrap);
+
+        // Actions
+        const actions = document.createElement('div');
+        actions.className = 'ms-actions';
+        const btnAll = document.createElement('button');
+        btnAll.textContent = '✅ Todos';
+        btnAll.addEventListener('click', () => this.selectAll());
+        const btnNone = document.createElement('button');
+        btnNone.textContent = '❌ Nenhum';
+        btnNone.addEventListener('click', () => this.selectNone());
+        const btnInvert = document.createElement('button');
+        btnInvert.textContent = '🔄 Inverter';
+        btnInvert.addEventListener('click', () => this.invertSelection());
+        actions.appendChild(btnAll);
+        actions.appendChild(btnNone);
+        actions.appendChild(btnInvert);
+        this.dropdown.appendChild(actions);
+
+        // List
+        this.listEl = document.createElement('div');
+        this.listEl.className = 'ms-list';
+        this.dropdown.appendChild(this.listEl);
+
+        this.container.appendChild(this.dropdown);
+
+        // Close on outside click
+        document.addEventListener('click', () => this.close());
+    }
+
+    setItems(items) {
+        // items: array of strings or {value, label}
+        this.items = items.map(it => typeof it === 'string' ? { value: it, label: it } : it);
+        this.selected.clear();
+        this._renderList();
+        this._updateTrigger();
+    }
+
+    _renderList() {
+        const query = (this.searchInput?.value || '').toLowerCase();
+        this.listEl.innerHTML = '';
+        let visible = 0;
+        this.items.forEach(it => {
+            if (query && !it.label.toLowerCase().includes(query)) return;
+            visible++;
+            const el = document.createElement('div');
+            el.className = 'ms-item' + (this.selected.has(it.value) ? ' ms-selected' : '');
+            el.innerHTML = `<div class="ms-check">${this.selected.has(it.value) ? '✓' : ''}</div><div class="ms-label" title="${it.label}">${it.label}</div>`;
+            el.addEventListener('click', () => {
+                if (this.selected.has(it.value)) {
+                    this.selected.delete(it.value);
+                } else {
+                    this.selected.add(it.value);
+                }
+                this._renderList();
+                this._updateTrigger();
+                this.onChange(this.getSelected());
+            });
+            this.listEl.appendChild(el);
+        });
+        if (visible === 0) {
+            this.listEl.innerHTML = '<div class="ms-empty">Nenhum resultado</div>';
+        }
+    }
+
+    _updateTrigger() {
+        const count = this.selected.size;
+        const total = this.items.length;
+        if (count === 0 || count === total) {
+            this.trigger.innerHTML = `<span class="ms-placeholder">${this.placeholder}</span>`;
+        } else if (count <= 2) {
+            const labels = [...this.selected].map(v => {
+                const item = this.items.find(it => it.value === v);
+                return item ? item.label : v;
+            });
+            this.trigger.innerHTML = `<span class="ms-count">${count}</span><span style="overflow:hidden;text-overflow:ellipsis">${labels.join(', ')}</span>`;
+        } else {
+            this.trigger.innerHTML = `<span class="ms-count">${count}</span><span>${count} de ${total} selecionados</span>`;
+        }
+    }
+
+    _filterList() {
+        this._renderList();
+    }
+
+    toggle() {
+        this._open ? this.close() : this.open();
+    }
+
+    open() {
+        // Close all other MultiSelects
+        document.querySelectorAll('.ms-dropdown.ms-open').forEach(d => d.classList.remove('ms-open'));
+        document.querySelectorAll('.ms-trigger.ms-active').forEach(t => t.classList.remove('ms-active'));
+        this.dropdown.classList.add('ms-open');
+        this.trigger.classList.add('ms-active');
+        this._open = true;
+        this.searchInput.value = '';
+        this._renderList();
+        setTimeout(() => this.searchInput.focus(), 50);
+    }
+
+    close() {
+        this.dropdown.classList.remove('ms-open');
+        this.trigger.classList.remove('ms-active');
+        this._open = false;
+    }
+
+    getSelected() {
+        // Returns empty array = "all" (no filter), otherwise array of selected values
+        if (this.selected.size === 0 || this.selected.size === this.items.length) return [];
+        return [...this.selected];
+    }
+
+    selectAll() {
+        this.items.forEach(it => this.selected.add(it.value));
+        this._renderList();
+        this._updateTrigger();
+        this.onChange(this.getSelected());
+    }
+
+    selectNone() {
+        this.selected.clear();
+        this._renderList();
+        this._updateTrigger();
+        this.onChange(this.getSelected());
+    }
+
+    invertSelection() {
+        this.items.forEach(it => {
+            if (this.selected.has(it.value)) this.selected.delete(it.value);
+            else this.selected.add(it.value);
+        });
+        this._renderList();
+        this._updateTrigger();
+        this.onChange(this.getSelected());
+    }
+
+    reset() {
+        this.selected.clear();
+        this._updateTrigger();
+    }
+
+    setSelected(values) {
+        this.selected = new Set(values);
+        this._renderList();
+        this._updateTrigger();
+    }
+}
+
+// Registry of all multi-selects
+const msRegistry = {};
+
+// ═══════════════════════════════════════════
 // COLUMN FILTERS
 // ═══════════════════════════════════════════
 function applyColumnFilters() {
     const team = (document.getElementById('cf-team')?.value || '').toLowerCase();
-    const league = document.getElementById('cf-league')?.value || '';
+    const leagueFilter = msRegistry['cf-league'] ? msRegistry['cf-league'].getSelected() : [];
     const dtStartRaw = document.getElementById('cf-dt-start')?.value || '';
     const dtEndRaw = document.getElementById('cf-dt-end')?.value || '';
     const dtStart = dtStartRaw ? new Date(dtStartRaw) : null;
     const dtEnd = dtEndRaw ? new Date(dtEndRaw) : null;
-    const gameStatusFilter = document.getElementById('cf-game-status')?.value || '';
-    const resultFilter = document.getElementById('cf-result')?.value || '';
-    const market = document.getElementById('cf-market')?.value || '';
+    const gameStatusFilter = msRegistry['cf-game-status'] ? msRegistry['cf-game-status'].getSelected() : [];
+    const resultFilter = msRegistry['cf-result'] ? msRegistry['cf-result'].getSelected() : [];
+    const marketFilter = msRegistry['cf-market'] ? msRegistry['cf-market'].getSelected() : [];
     const selection = (document.getElementById('cf-selection')?.value || '').toLowerCase();
     const oddMin = parseFloat(document.getElementById('cf-odd-min')?.value) || null;
     const oddMax = parseFloat(document.getElementById('cf-odd-max')?.value) || null;
+    const fairOddMin = parseFloat(document.getElementById('cf-fair-odd-min')?.value) || null;
+    const fairOddMax = parseFloat(document.getElementById('cf-fair-odd-max')?.value) || null;
     const edgeMin = parseFloat(document.getElementById('cf-edge-min')?.value) || null;
     const edgeMax = parseFloat(document.getElementById('cf-edge-max')?.value) || null;
     const probMin = parseFloat(document.getElementById('cf-prob-min')?.value) || null;
     const probMax = parseFloat(document.getElementById('cf-prob-max')?.value) || null;
-    const confidence = document.getElementById('cf-confidence')?.value || '';
+    const confidenceFilter = msRegistry['cf-confidence'] ? msRegistry['cf-confidence'].getSelected() : [];
 
     let filtered = allOpps.filter(o => {
         if (team && !(o.home_team.toLowerCase().includes(team) || o.away_team.toLowerCase().includes(team))) return false;
-        if (league && o.league_name !== league) return false;
+        if (leagueFilter.length && !leagueFilter.includes(o.league_name)) return false;
         // Datetime range filter
         if (dtStart || dtEnd) {
             const timeParts = (o.match_time || '00:00').split(':');
@@ -2108,21 +2888,23 @@ function applyColumnFilters() {
                 if (dtEnd && matchDt > dtEnd) return false;
             }
         }
-        // Game status filter
-        if (gameStatusFilter) {
+        // Game status filter (multi)
+        if (gameStatusFilter.length) {
             const gs = getGameStatus(o.match_date, o.match_time);
-            if (gs.status !== gameStatusFilter) return false;
+            if (!gameStatusFilter.includes(gs.status)) return false;
         }
-        if (resultFilter && (o.result_status || 'PENDENTE') !== resultFilter) return false;
-        if (market && !o.market.includes(market)) return false;
+        if (resultFilter.length && !resultFilter.includes(o.result_status || 'PENDENTE')) return false;
+        if (marketFilter.length && !marketFilter.some(m => o.market.includes(m))) return false;
         if (selection && !o.selection.toLowerCase().includes(selection)) return false;
         if (oddMin !== null && o.market_odd < oddMin) return false;
         if (oddMax !== null && o.market_odd > oddMax) return false;
+        if (fairOddMin !== null && (o.fair_odd || 0) < fairOddMin) return false;
+        if (fairOddMax !== null && (o.fair_odd || 0) > fairOddMax) return false;
         if (edgeMin !== null && o.edge < edgeMin) return false;
         if (edgeMax !== null && o.edge > edgeMax) return false;
         if (probMin !== null && o.model_prob < probMin) return false;
         if (probMax !== null && o.model_prob > probMax) return false;
-        if (confidence && o.confidence !== confidence) return false;
+        if (confidenceFilter.length && !confidenceFilter.includes(o.confidence)) return false;
         return true;
     });
 
@@ -2152,16 +2934,17 @@ function applyColumnFilters() {
 
 function clearAllFilters() {
     ['cf-team', 'cf-selection', 'cf-dt-start', 'cf-dt-end',
-     'cf-odd-min', 'cf-odd-max', 'cf-edge-min', 'cf-edge-max',
+     'cf-odd-min', 'cf-odd-max', 'cf-fair-odd-min', 'cf-fair-odd-max',
+     'cf-edge-min', 'cf-edge-max',
      'cf-prob-min', 'cf-prob-max'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    // Reset all multi-selects on main screen
     ['cf-league', 'cf-game-status', 'cf-result', 'cf-market', 'cf-confidence'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
+        if (msRegistry[id]) msRegistry[id].reset();
     });
-    currentSort = { key: 'edge', dir: 'desc' };
+    currentSort = { key: 'date', dir: 'asc' };
     document.querySelectorAll('#opp-table th.sortable').forEach(h => {
         h.classList.remove('sort-asc', 'sort-desc');
     });
@@ -2169,22 +2952,55 @@ function clearAllFilters() {
 }
 
 function populateFilters() {
-    // Column filters - leagues
-    const leagues = [...new Set(allOpps.map(o => o.league_name))].sort();
-    const cfLeague = document.getElementById("cf-league");
-    if (cfLeague) {
-        cfLeague.innerHTML = '<option value="">Todas</option>' +
-            leagues.map(l => `<option value="${l}">${l}</option>`).join("");
-    }
+    // ── MAIN TABLE MULTI-SELECTS ──
+    const leagues = [...new Set(allOpps.map(o => o.league_name))].filter(Boolean).sort();
+    const markets = [...new Set(allOpps.map(o => o.market))].filter(Boolean).sort();
 
-    // Match filters
-    const matchLeagues = [...new Set(allMatches.map(m => m.league_name))].sort();
-    const matchLeagueSelect = document.getElementById("filter-match-league");
-    if (matchLeagueSelect) {
-        matchLeagueSelect.innerHTML = '<option value="all">Todas as Ligas</option>' +
-            matchLeagues.map(l => `<option value="${l}">${l}</option>`).join("");
+    // League
+    if (!msRegistry['cf-league']) {
+        msRegistry['cf-league'] = new MultiSelect('cf-league', { placeholder: 'Todas', onChange: () => applyColumnFilters() });
     }
+    msRegistry['cf-league'].setItems(leagues);
 
+    // Game Status
+    if (!msRegistry['cf-game-status']) {
+        msRegistry['cf-game-status'] = new MultiSelect('cf-game-status', { placeholder: 'Todos', onChange: () => applyColumnFilters() });
+    }
+    msRegistry['cf-game-status'].setItems([
+        { value: 'LIVE', label: '🔴 Ao Vivo' },
+        { value: 'FINISHED', label: '✔ Encerrado' },
+        { value: 'UPCOMING', label: '📅 Futuro' },
+    ]);
+
+    // Result
+    if (!msRegistry['cf-result']) {
+        msRegistry['cf-result'] = new MultiSelect('cf-result', { placeholder: 'Todos', onChange: () => applyColumnFilters() });
+    }
+    msRegistry['cf-result'].setItems([
+        { value: 'GREEN', label: '✅ GREEN' },
+        { value: 'RED', label: '❌ RED' },
+        { value: 'VOID', label: '⬜ VOID' },
+        { value: 'PENDENTE', label: '⏳ PENDENTE' },
+    ]);
+
+    // Market
+    if (!msRegistry['cf-market']) {
+        msRegistry['cf-market'] = new MultiSelect('cf-market', { placeholder: 'Todos', onChange: () => applyColumnFilters() });
+    }
+    msRegistry['cf-market'].setItems(markets);
+
+    // Confidence
+    if (!msRegistry['cf-confidence']) {
+        msRegistry['cf-confidence'] = new MultiSelect('cf-confidence', { placeholder: 'Todos', onChange: () => applyColumnFilters() });
+    }
+    msRegistry['cf-confidence'].setItems(['ALTO', 'MÉDIO', 'BAIXO']);
+
+    // Match filters - league multi-select
+    const matchLeagues = [...new Set(allMatches.map(m => m.league_name))].filter(Boolean).sort();
+    if (!msRegistry['filter-match-league']) {
+        msRegistry['filter-match-league'] = new MultiSelect('filter-match-league', { placeholder: 'Todas as Ligas', onChange: () => filterMatches() });
+    }
+    msRegistry['filter-match-league'].setItems(matchLeagues);
 }
 
 function filterOpps() {
@@ -2192,7 +3008,7 @@ function filterOpps() {
 }
 
 function filterMatches() {
-    const league = document.getElementById("filter-match-league").value;
+    const leagueFilter = msRegistry['filter-match-league'] ? msRegistry['filter-match-league'].getSelected() : [];
     const dtStartRaw = document.getElementById("filter-match-dt-start")?.value || '';
     const dtEndRaw = document.getElementById("filter-match-dt-end")?.value || '';
     const dtStart = dtStartRaw ? new Date(dtStartRaw) : null;
@@ -2200,7 +3016,7 @@ function filterMatches() {
     const search = document.getElementById("filter-match-search").value.toLowerCase();
 
     let filtered = allMatches;
-    if (league !== "all") filtered = filtered.filter(m => m.league_name === league);
+    if (leagueFilter.length) filtered = filtered.filter(m => leagueFilter.includes(m.league_name));
     if (dtStart || dtEnd) {
         filtered = filtered.filter(m => {
             const timeParts = (m.match_time || '00:00').split(':');
@@ -2326,6 +3142,33 @@ function showOppDetail(idx) {
                 <span style="background:rgba(255,255,255,0.05);padding:5px 12px;border-radius:6px;font-size:12px;color:${dqColor};font-weight:700;border:1px solid ${dqColor}40">Dados: ${dqPct}%</span>
             </div>
         </div>
+
+        <!-- ══ RESULTADO DO JOGO (se encerrado) ══ -->
+        ${(o.result_status && o.result_status !== 'PENDENTE' && o.result_score) ? `
+        <div style="margin-bottom:16px;padding:16px 20px;background:${o.result_status === 'GREEN' ? 'linear-gradient(135deg,#0d2818,#0a1f12)' : o.result_status === 'RED' ? 'linear-gradient(135deg,#2d0d0d,#1f0a0a)' : 'linear-gradient(135deg,#1a1a2e,#16213e)'};border:2px solid ${o.result_status === 'GREEN' ? 'var(--accent-green)' : o.result_status === 'RED' ? 'var(--accent-red)' : 'var(--text-muted)'};border-radius:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted)">RESULTADO DO JOGO</div>
+                <span class="result-${o.result_status.toLowerCase()}" style="font-size:13px;padding:4px 14px">${o.result_status === 'GREEN' ? '✅ GREEN' : o.result_status === 'RED' ? '❌ RED' : '⬜ VOID'}</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:24px;margin-bottom:14px">
+                <div style="text-align:center">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">${o.home_team}</div>
+                    <div style="font-size:32px;font-weight:900;color:var(--text-primary);font-family:'JetBrains Mono'">${o.result_score.split('-')[0] || '?'}</div>
+                </div>
+                <div style="font-size:18px;color:var(--text-muted);font-weight:300">×</div>
+                <div style="text-align:center">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">${o.away_team}</div>
+                    <div style="font-size:32px;font-weight:900;color:var(--text-primary);font-family:'JetBrains Mono'">${o.result_score.split('-')[1] || '?'}</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+                ${o.result_ht_score ? '<div style="background:rgba(255,255,255,0.04);padding:8px 12px;border-radius:8px;text-align:center"><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">⏱️ Primeiro Tempo</div><div style="font-size:16px;font-weight:800;color:var(--text-primary);font-family:JetBrains Mono">' + o.result_ht_score + '</div></div>' : ''}
+                ${o.result_corners ? '<div style="background:rgba(255,255,255,0.04);padding:8px 12px;border-radius:8px;text-align:center"><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">🚩 Escanteios</div><div style="font-size:16px;font-weight:800;color:var(--text-primary);font-family:JetBrains Mono">' + o.result_corners + '</div></div>' : ''}
+                ${o.result_cards ? '<div style="background:rgba(255,255,255,0.04);padding:8px 12px;border-radius:8px;text-align:center"><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">🟨 Cartões</div><div style="font-size:16px;font-weight:800;color:var(--text-primary);font-family:JetBrains Mono">' + o.result_cards + '</div></div>' : ''}
+                ${o.result_shots ? '<div style="background:rgba(255,255,255,0.04);padding:8px 12px;border-radius:8px;text-align:center"><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">🎯 Finalizações</div><div style="font-size:16px;font-weight:800;color:var(--text-primary);font-family:JetBrains Mono">' + o.result_shots + '</div></div>' : ''}
+            </div>
+        </div>
+        ` : ''}
 
         <!-- ══ ONDE APOSTAR (topo) ══ -->
         <div style="margin-bottom:16px;padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm)">
