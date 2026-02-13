@@ -49,16 +49,49 @@ from datetime import datetime, timezone, timedelta
 from flask import Flask, render_template, jsonify
 
 import config
-from data_ingestion import (
-    ingest_all_fixtures, _check_api_plan, _api_call_count,
-    MatchAnalysis, TeamStats, WeatherData, RefereeStats, MarketOdds,
-    _get_cached_response, _parse_odds_response,
-)
-from models import run_models_batch
-from context_engine import apply_context_batch
-from value_finder import find_all_value, ValueOpportunity
 import supabase_client
-import numpy as np
+
+# ═══ IMPORTS PESADOS (pipeline de análise) ═══
+# Só carregados se pandas/numpy/scipy estiverem instalados.
+# No Vercel (serverless), esses pacotes são omitidos para caber no limite de 250 MB.
+# Os endpoints de visualização (Supabase) funcionam sem eles.
+PIPELINE_AVAILABLE = False
+try:
+    from data_ingestion import (
+        ingest_all_fixtures, _check_api_plan, _api_call_count,
+        MatchAnalysis, TeamStats, WeatherData, RefereeStats, MarketOdds,
+        _get_cached_response, _parse_odds_response,
+    )
+    from models import run_models_batch
+    from context_engine import apply_context_batch
+    from value_finder import find_all_value, ValueOpportunity
+    import numpy as np
+    PIPELINE_AVAILABLE = True
+except ImportError:
+    # Placeholders — funções que usam esses tipos retornam 503 no Vercel
+    MatchAnalysis = type('MatchAnalysis', (), {})
+    TeamStats = type('TeamStats', (), {})
+    WeatherData = type('WeatherData', (), {})
+    RefereeStats = type('RefereeStats', (), {})
+    MarketOdds = type('MarketOdds', (), {})
+    ValueOpportunity = type('ValueOpportunity', (), {})
+    np = None
+    _api_call_count = 0
+
+
+def _check_api_plan_lite() -> dict:
+    """Verificação leve do status da API (sem dependências pesadas)."""
+    import requests as req
+    url = f"https://{config.API_FOOTBALL_HOST}/status"
+    headers = {"x-apisports-key": config.API_FOOTBALL_KEY}
+    resp = req.get(url, headers=headers, timeout=15)
+    data = resp.json()
+    r = data.get("response", {})
+    plan = r.get("subscription", {}).get("plan", "Unknown")
+    limit = r.get("requests", {}).get("limit_day", 100)
+    current = r.get("requests", {}).get("current", 0)
+    return {"plan": plan, "limit": limit, "used": current, "available": limit - current}
+
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -1170,6 +1203,8 @@ def index():
 def api_run():
     """Executa o engine e retorna os resultados.
     Aceita JSON com date_from e date_to para datas customizadas."""
+    if not PIPELINE_AVAILABLE:
+        return jsonify({"ok": False, "error": "Pipeline indisponível neste servidor (use o servidor local)"}), 503
     from flask import request
     try:
         data = request.get_json(silent=True) or {}
@@ -1208,6 +1243,8 @@ def api_recalculate():
     ZERO requisicoes a API — apenas reprocessa com codigo atualizado.
     Ideal para aplicar novos mercados/modelos sem gastar creditos.
     """
+    if not PIPELINE_AVAILABLE:
+        return jsonify({"ok": False, "error": "Recálculo indisponível neste servidor (use o servidor local)"}), 503
     try:
         recalculate_engine()
     except Exception as e:
@@ -1232,7 +1269,7 @@ def api_status():
     cached_dates = _cache.get("stats", {}).get("analysis_dates") if _cache.get("stats") else None
     analysis_dates = cached_dates or config.get_default_dates()
     try:
-        plan_info = _check_api_plan()
+        plan_info = _check_api_plan() if PIPELINE_AVAILABLE else _check_api_plan_lite()
         return jsonify({
             "ok": True,
             "plan": plan_info["plan"],
@@ -1659,6 +1696,8 @@ def api_check_results():
     - Agrupa por match_id direto das oportunidades pendentes elegíveis.
     - Usa skip_cache=True para buscar resultado atualizado da API (não o cache antigo NS).
     """
+    if not PIPELINE_AVAILABLE:
+        return jsonify({"ok": False, "error": "Verificação de resultados indisponível neste servidor (use o servidor local)"}), 503
     from data_ingestion import fetch_finished_fixtures
 
     try:
