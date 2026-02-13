@@ -35,7 +35,12 @@ import config
 import supabase_client
 
 _API_CACHE_DIR = os.path.join(os.path.dirname(__file__), "_api_cache")
-os.makedirs(_API_CACHE_DIR, exist_ok=True)
+try:
+    os.makedirs(_API_CACHE_DIR, exist_ok=True)
+except OSError:
+    # Vercel: filesystem read-only → usar /tmp
+    _API_CACHE_DIR = os.path.join("/tmp", "_api_cache")
+    os.makedirs(_API_CACHE_DIR, exist_ok=True)
 
 # TTL em horas por tipo de endpoint
 _CACHE_TTL_HOURS = {

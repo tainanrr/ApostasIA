@@ -64,7 +64,16 @@ import numpy as np
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
-CACHE_FILE = os.path.join(os.path.dirname(__file__), "_cache_data.json")
+# No Vercel, o filesystem do código é read-only; usar /tmp para cache
+_base_dir = os.path.dirname(__file__)
+try:
+    _test_path = os.path.join(_base_dir, ".write_test")
+    with open(_test_path, "w") as f:
+        f.write("ok")
+    os.remove(_test_path)
+    CACHE_FILE = os.path.join(_base_dir, "_cache_data.json")
+except OSError:
+    CACHE_FILE = os.path.join("/tmp", "_cache_data.json")
 
 # Cache global
 _cache = {
