@@ -17,9 +17,27 @@ from typing import Optional
 import unicodedata
 
 import numpy as np
-from scipy.optimize import brentq
 
 import config
+
+
+# ═══ Substituição leve de scipy.optimize.brentq ═══
+
+def brentq(f, a: float, b: float, xtol: float = 1e-12, maxiter: int = 200) -> float:
+    """Método de bisecção (substitui scipy.optimize.brentq sem dependência pesada)."""
+    fa, fb = f(a), f(b)
+    if fa * fb > 0:
+        raise ValueError("f(a) e f(b) devem ter sinais opostos")
+    for _ in range(maxiter):
+        c = (a + b) / 2.0
+        fc = f(c)
+        if abs(fc) < xtol or (b - a) / 2.0 < xtol:
+            return c
+        if fa * fc < 0:
+            b, fb = c, fc
+        else:
+            a, fa = c, fc
+    return (a + b) / 2.0
 from data_ingestion import MatchAnalysis
 from models import predict_corners, predict_cards
 

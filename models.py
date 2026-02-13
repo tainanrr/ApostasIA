@@ -15,11 +15,21 @@ import warnings
 from typing import Optional
 
 import numpy as np
-from scipy.optimize import minimize
-from scipy.special import gammaln
-from scipy.stats import poisson, nbinom
 
 import config
+
+
+# ═══ Substituições leves de scipy (evita +150 MB no deploy) ═══
+
+def _poisson_pmf(k: int, mu: float) -> float:
+    """Poisson PMF puro: P(X=k) = e^(-μ) · μ^k / k!"""
+    if mu <= 0:
+        return 1.0 if k == 0 else 0.0
+    return math.exp(-mu + k * math.log(mu) - math.lgamma(k + 1))
+
+
+# gammaln → math.lgamma (built-in)
+gammaln = math.lgamma
 from data_ingestion import MatchAnalysis
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -64,8 +74,8 @@ def dixon_coles_probability(x: int, y: int, lambda_: float,
     P(x, y) = τ(x, y, λ, μ, ρ) × Poisson(x; λ) × Poisson(y; μ)
     """
     tau = _tau(x, y, lambda_, mu, rho)
-    p_home = poisson.pmf(x, lambda_)
-    p_away = poisson.pmf(y, mu)
+    p_home = _poisson_pmf(x, lambda_)
+    p_away = _poisson_pmf(y, mu)
     return tau * p_home * p_away
 
 
@@ -830,7 +840,6 @@ def run_full_model(match: MatchAnalysis) -> MatchAnalysis:
         probs[f"exact_score__{s}"] = p
 
     # ── HT Model (empirical: ~42% of FT goals at halftime) ──
-    from scipy.stats import poisson as poisson_rv
     ht_factor = 0.42
     ht_hxg = max(0.01, lambda_ * ht_factor)
     ht_axg = max(0.01, mu * ht_factor)
@@ -838,7 +847,7 @@ def run_full_model(match: MatchAnalysis) -> MatchAnalysis:
     ht_M = np.zeros((ht_max + 1, ht_max + 1))
     for i in range(ht_max + 1):
         for j in range(ht_max + 1):
-            ht_M[i][j] = poisson_rv.pmf(i, ht_hxg) * poisson_rv.pmf(j, ht_axg)
+            ht_M[i][j] = _poisson_pmf(i, ht_hxg) * _poisson_pmf(j, ht_axg)
 
     # HT Result
     probs["ht_result__home"] = round(float(sum(ht_M[i][j] for i in range(ht_max + 1) for j in range(ht_max + 1) if i > j)), 4)
