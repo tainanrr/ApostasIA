@@ -315,16 +315,38 @@ def save_opportunities(run_id: str, opportunities: list[dict]) -> int:
                 "fatigue_note": o.get("fatigue_note", ""),
                 "urgency_home": o.get("urgency_home", 0.5),
                 "urgency_away": o.get("urgency_away", 0.5),
+                "confidence_score": o.get("confidence_score", 0.0),
+                "analysis_type": o.get("analysis_type", "PRE_JOGO"),
             })
 
         # Inserir em lotes de 100 (limite do Supabase)
         saved = 0
         batch_size = 100
+        _new_columns = {"confidence_score", "analysis_type"}
+        _retry_without_new = False
+
         for i in range(0, len(rows), batch_size):
             batch = rows[i:i + batch_size]
-            result = sb.table("opportunities").insert(batch).execute()
-            if result.data:
-                saved += len(result.data)
+            if _retry_without_new:
+                batch = [{k: v for k, v in r.items() if k not in _new_columns} for r in batch]
+            try:
+                result = sb.table("opportunities").insert(batch).execute()
+                if result.data:
+                    saved += len(result.data)
+            except Exception as batch_err:
+                err_msg = str(batch_err)
+                if any(col in err_msg for col in _new_columns) and not _retry_without_new:
+                    print(f"[SUPABASE] ⚠️  Colunas novas ausentes, tentando sem elas...")
+                    _retry_without_new = True
+                    batch = [{k: v for k, v in r.items() if k not in _new_columns} for r in batch]
+                    try:
+                        result = sb.table("opportunities").insert(batch).execute()
+                        if result.data:
+                            saved += len(result.data)
+                    except Exception as retry_err:
+                        print(f"[SUPABASE] Erro ao salvar lote (retry): {retry_err}")
+                else:
+                    print(f"[SUPABASE] Erro ao salvar lote: {batch_err}")
 
         print(f"[SUPABASE] {saved} oportunidades salvas")
         return saved
@@ -337,6 +359,7 @@ def save_matches(run_id: str, matches: list[dict]) -> int:
     """
     Salva todas as partidas de uma execução.
     Retorna número de partidas salvas.
+    Salva TODOS os campos detalhados para permitir visualização completa ao carregar do Supabase.
     """
     sb = get_client()
     if not sb or not run_id or not matches:
@@ -345,7 +368,7 @@ def save_matches(run_id: str, matches: list[dict]) -> int:
     try:
         rows = []
         for m in matches:
-            rows.append({
+            row = {
                 "run_id": run_id,
                 "match_id": m.get("match_id", 0),
                 "league_name": m.get("league_name", ""),
@@ -372,17 +395,148 @@ def save_matches(run_id: str, matches: list[dict]) -> int:
                 "weather_desc": m.get("weather_desc", ""),
                 "venue": m.get("venue", ""),
                 "referee": m.get("referee", ""),
-            })
+            }
+            # ── Campos detalhados extras (salvos se existirem no schema) ──
+            _extra_fields = {
+                "league_id": m.get("league_id", 0),
+                "home_team_id": m.get("home_team_id", 0),
+                "away_team_id": m.get("away_team_id", 0),
+                "home_fatigue": m.get("home_fatigue", 0),
+                "away_fatigue": m.get("away_fatigue", 0),
+                "urgency_home": m.get("urgency_home", 0.5),
+                "urgency_away": m.get("urgency_away", 0.5),
+                "injuries_home": m.get("injuries_home"),
+                "injuries_away": m.get("injuries_away"),
+                "referee_cards_avg": m.get("referee_cards_avg", 0),
+                "referee_fouls_avg": m.get("referee_fouls_avg", 0),
+                "home_form": m.get("home_form"),
+                "away_form": m.get("away_form"),
+                "home_attack": m.get("home_attack", 0),
+                "home_defense": m.get("home_defense", 0),
+                "away_attack": m.get("away_attack", 0),
+                "away_defense": m.get("away_defense", 0),
+                "model_alpha_h": m.get("model_alpha_h", 0),
+                "model_beta_h": m.get("model_beta_h", 0),
+                "model_alpha_a": m.get("model_alpha_a", 0),
+                "model_beta_a": m.get("model_beta_a", 0),
+                "home_goals_scored_avg": m.get("home_goals_scored_avg", 0),
+                "home_goals_conceded_avg": m.get("home_goals_conceded_avg", 0),
+                "away_goals_scored_avg": m.get("away_goals_scored_avg", 0),
+                "away_goals_conceded_avg": m.get("away_goals_conceded_avg", 0),
+                "home_form_points": m.get("home_form_points", 0),
+                "away_form_points": m.get("away_form_points", 0),
+                "home_league_pos": m.get("home_league_pos", 0),
+                "away_league_pos": m.get("away_league_pos", 0),
+                "home_league_pts": m.get("home_league_pts", 0),
+                "away_league_pts": m.get("away_league_pts", 0),
+                "home_games_played": m.get("home_games_played", 0),
+                "away_games_played": m.get("away_games_played", 0),
+                "home_games_remaining": m.get("home_games_remaining", 0),
+                "away_games_remaining": m.get("away_games_remaining", 0),
+                "home_points_to_title": m.get("home_points_to_title", 99),
+                "away_points_to_title": m.get("away_points_to_title", 99),
+                "home_points_to_relegation": m.get("home_points_to_relegation", 99),
+                "away_points_to_relegation": m.get("away_points_to_relegation", 99),
+                "home_shots_total_avg": m.get("home_shots_total_avg", 0),
+                "away_shots_total_avg": m.get("away_shots_total_avg", 0),
+                "home_shots_on_target_avg": m.get("home_shots_on_target_avg", 0),
+                "away_shots_on_target_avg": m.get("away_shots_on_target_avg", 0),
+                "home_shots_blocked_avg": m.get("home_shots_blocked_avg", 0),
+                "away_shots_blocked_avg": m.get("away_shots_blocked_avg", 0),
+                "home_corners_avg": m.get("home_corners_avg", 0),
+                "away_corners_avg": m.get("away_corners_avg", 0),
+                "home_cards_avg": m.get("home_cards_avg", 0),
+                "away_cards_avg": m.get("away_cards_avg", 0),
+                "home_fouls_avg": m.get("home_fouls_avg", 0),
+                "away_fouls_avg": m.get("away_fouls_avg", 0),
+                "home_possession": m.get("home_possession", 0),
+                "away_possession": m.get("away_possession", 0),
+                "weather_rain": m.get("weather_rain", 0),
+                "data_quality": m.get("data_quality", 0),
+                "has_real_odds": m.get("has_real_odds", False),
+                "has_real_standings": m.get("has_real_standings", False),
+                "has_real_weather": m.get("has_real_weather", False),
+                "home_has_real_data": m.get("home_has_real_data", False),
+                "away_has_real_data": m.get("away_has_real_data", False),
+                "odds_home_away_suspect": m.get("odds_home_away_suspect", False),
+                "league_avg_goals": m.get("league_avg_goals", 2.7),
+                "model_home_shots": m.get("model_home_shots", 0),
+                "model_away_shots": m.get("model_away_shots", 0),
+                "model_total_shots": m.get("model_total_shots", 0),
+                "model_home_sot": m.get("model_home_sot", 0),
+                "model_away_sot": m.get("model_away_sot", 0),
+                "model_total_sot": m.get("model_total_sot", 0),
+                "odds_over25": m.get("odds_over25", 0),
+                "odds_under25": m.get("odds_under25", 0),
+                "odds_btts_yes": m.get("odds_btts_yes", 0),
+                "odds_btts_no": m.get("odds_btts_no", 0),
+                "odds_corners_over": m.get("odds_corners_over", 0),
+                "odds_corners_under": m.get("odds_corners_under", 0),
+                "odds_cards_over": m.get("odds_cards_over", 0),
+                "odds_cards_under": m.get("odds_cards_under", 0),
+                "odds_ah_line": m.get("odds_ah_line", 0),
+                "odds_ah_home": m.get("odds_ah_home", 0),
+                "odds_ah_away": m.get("odds_ah_away", 0),
+                "odds_1x": m.get("odds_1x", 0),
+                "odds_x2": m.get("odds_x2", 0),
+            }
+            # Só adicionar campos extras que não sejam None (para compatibilidade com schemas antigos)
+            for k, v in _extra_fields.items():
+                if v is not None:
+                    row[k] = v
+            
+            # JSONB fields - serializar
+            import json
+            if m.get("all_markets"):
+                row["all_markets"] = json.dumps(m["all_markets"])
+            if m.get("model_probs"):
+                row["model_probs"] = json.dumps(m["model_probs"])
+            
+            rows.append(row)
+
+        # Campos básicos que SEMPRE existem no schema
+        _basic_keys = {
+            "run_id", "match_id", "league_name", "league_country", "match_date",
+            "match_time", "home_team", "away_team", "home_xg", "away_xg",
+            "prob_home", "prob_draw", "prob_away", "prob_over25", "prob_btts",
+            "corners_expected", "cards_expected", "odds_home", "odds_draw", "odds_away",
+            "bookmaker", "weather_temp", "weather_wind", "weather_desc", "venue", "referee",
+        }
 
         saved = 0
         batch_size = 100
+        use_full_schema = True  # Tentar com todos os campos primeiro
+        
         for i in range(0, len(rows), batch_size):
             batch = rows[i:i + batch_size]
-            result = sb.table("matches").insert(batch).execute()
-            if result.data:
-                saved += len(result.data)
+            
+            if not use_full_schema:
+                # Fallback: usar apenas campos básicos
+                batch = [{k: v for k, v in row.items() if k in _basic_keys} for row in batch]
+            
+            try:
+                result = sb.table("matches").insert(batch).execute()
+                if result.data:
+                    saved += len(result.data)
+            except Exception as batch_err:
+                err_msg = str(batch_err).lower()
+                if "column" in err_msg and ("does not exist" in err_msg or "not found" in err_msg):
+                    if use_full_schema:
+                        print(f"[SUPABASE] ⚠️  Schema matches incompleto — salvando apenas campos básicos")
+                        print(f"[SUPABASE]    Execute o SQL de migração para habilitar todos os campos detalhados")
+                        use_full_schema = False
+                        # Retry este batch com campos básicos
+                        basic_batch = [{k: v for k, v in row.items() if k in _basic_keys} for row in batch]
+                        try:
+                            result = sb.table("matches").insert(basic_batch).execute()
+                            if result.data:
+                                saved += len(result.data)
+                        except Exception as retry_err:
+                            print(f"[SUPABASE] Erro ao salvar batch (retry básico): {retry_err}")
+                else:
+                    print(f"[SUPABASE] Erro ao salvar batch de partidas: {batch_err}")
 
-        print(f"[SUPABASE] {saved} partidas salvas")
+        print(f"[SUPABASE] {saved} partidas salvas" + (" (campos básicos apenas)" if not use_full_schema else " (completo)"))
         return saved
     except Exception as e:
         print(f"[SUPABASE] Erro ao salvar partidas: {e}")
@@ -392,9 +546,11 @@ def save_matches(run_id: str, matches: list[dict]) -> int:
 def save_full_run(stats: dict, opportunities: list[dict], matches: list[dict]):
     """
     Salva uma execução completa: run + oportunidades + partidas.
-    Chamado automaticamente após cada pipeline.
-    ANTES de salvar: remove PENDENTES de runs anteriores para evitar duplicatas.
-    Oportunidades resolvidas (GREEN/RED/VOID) de qualquer run são preservadas.
+    Estratégia UPSERT (preserva dados anteriores):
+      - Oportunidades com mesmo (match_id, market, selection): SOBRESCRITAS pela nova run
+      - Oportunidades novas (sem equivalente anterior): INSERIDAS
+      - Oportunidades anteriores sem equivalente na nova run: PRESERVADAS
+      - Oportunidades já resolvidas (GREEN/RED/VOID): NUNCA tocadas
     """
     if not is_configured():
         print("[SUPABASE] Não configurado — dados salvos apenas localmente")
@@ -402,64 +558,142 @@ def save_full_run(stats: dict, opportunities: list[dict], matches: list[dict]):
 
     print("[SUPABASE] Salvando execução no banco de dados...")
 
-    # ── Limpar pendentes de runs anteriores (evita duplicatas) ──
-    _cleanup_old_pending_opportunities()
-
     run_id = save_pipeline_run(stats)
     if not run_id:
         print("[SUPABASE] Falha ao criar pipeline_run — abortando")
         return
 
-    save_opportunities(run_id, opportunities)
+    _upsert_opportunities(run_id, opportunities)
     save_matches(run_id, matches)
+    _cleanup_orphan_runs(run_id)
     print(f"[SUPABASE] Execução salva com sucesso (run_id: {run_id})")
 
 
-def _cleanup_old_pending_opportunities():
+def _upsert_opportunities(run_id: str, new_opportunities: list[dict]):
     """
-    Remove oportunidades PENDENTES de runs anteriores.
-    Mantém resolvidas (GREEN/RED/VOID) de qualquer run.
-    Também remove runs vazias e matches de runs que serão limpas.
+    Estratégia de UPSERT inteligente para oportunidades:
+      1. Busca PENDENTES existentes no mesmo range de datas
+      2. Se já existe PENDENTE com mesmo (match_id, market, selection): DELETA a antiga
+      3. Insere TODAS as novas oportunidades
+      4. Oportunidades anteriores sem equivalente: PRESERVADAS (nunca tocadas)
+      5. Oportunidades já resolvidas (GREEN/RED/VOID): NUNCA tocadas
+    """
+    sb = get_client()
+    if not sb or not run_id or not new_opportunities:
+        return
+
+    try:
+        # 1. Determinar range de datas da run atual
+        analysis_dates = set()
+        for o in new_opportunities:
+            d = o.get("match_date", "")
+            if d:
+                analysis_dates.add(d)
+
+        if not analysis_dates:
+            print("[SUPABASE] Sem datas nas oportunidades — inserindo tudo como novo")
+            save_opportunities(run_id, new_opportunities)
+            return
+
+        date_from = min(analysis_dates)
+        date_to = max(analysis_dates)
+
+        # 2. Buscar PENDENTES existentes no range de datas
+        existing_pendentes = []
+        page_size = 1000
+        offset = 0
+        while True:
+            result = (
+                sb.table("opportunities")
+                .select("id, match_id, market, selection")
+                .eq("result_status", "PENDENTE")
+                .gte("match_date", date_from)
+                .lte("match_date", date_to)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = result.data or []
+            existing_pendentes.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        print(f"[SUPABASE] {len(existing_pendentes)} pendentes existentes no range {date_from}→{date_to}")
+
+        # 3. Mapear existentes por (match_id, market_lower, selection_lower)
+        #    Pode haver múltiplas (de runs diferentes) → acumular IDs
+        existing_map = {}
+        for e in existing_pendentes:
+            key = (e.get("match_id"), (e.get("market") or "").lower(), (e.get("selection") or "").lower())
+            if key not in existing_map:
+                existing_map[key] = []
+            existing_map[key].append(e["id"])
+
+        # 4. Identificar quais pendentes existentes serão substituídas pelas novas
+        ids_to_delete = []
+        for o in new_opportunities:
+            key = (o.get("match_id"), (o.get("market") or "").lower(), (o.get("selection") or "").lower())
+            if key in existing_map:
+                ids_to_delete.extend(existing_map[key])
+                del existing_map[key]  # Consumido — não deletar de novo
+
+        # 5. Deletar duplicatas em lotes
+        if ids_to_delete:
+            batch_size = 100
+            total_deleted = 0
+            for i in range(0, len(ids_to_delete), batch_size):
+                batch_ids = ids_to_delete[i:i + batch_size]
+                try:
+                    result = sb.table("opportunities").delete().in_("id", batch_ids).execute()
+                    total_deleted += len(result.data) if result.data else 0
+                except Exception as e:
+                    print(f"[SUPABASE] Erro ao deletar lote de duplicatas: {e}")
+            print(f"[SUPABASE] {total_deleted} pendentes substituídas (mesma partida/mercado/seleção)")
+
+        # 6. Inserir TODAS as novas oportunidades
+        save_opportunities(run_id, new_opportunities)
+
+        # 7. Log de preservadas (existentes que não tiveram equivalente na nova run)
+        preserved_count = sum(len(ids) for ids in existing_map.values())
+        if preserved_count > 0:
+            print(f"[SUPABASE] {preserved_count} oportunidades anteriores preservadas (sem equivalente na nova run)")
+
+    except Exception as e:
+        print(f"[SUPABASE] Erro no upsert: {e}")
+        import traceback
+        traceback.print_exc()
+        print("[SUPABASE] Fallback: inserindo todas como novas (sem dedup)")
+        save_opportunities(run_id, new_opportunities)
+
+
+def _cleanup_orphan_runs(current_run_id: str):
+    """
+    Remove pipeline_runs que ficaram sem nenhuma oportunidade (exceto a run atual).
+    Também remove matches órfãos dessas runs.
     """
     sb = get_client()
     if not sb:
         return
     try:
-        # Obter a run mais recente
-        runs = (
+        all_runs = (
             sb.table("pipeline_runs")
             .select("id")
-            .order("executed_at", desc=True)
-            .limit(1)
+            .neq("id", current_run_id)
             .execute()
         )
-        if not runs.data:
-            return
 
-        latest_run_id = runs.data[0]["id"]
-
-        # Deletar PENDENTES que NÃO são da run mais recente
-        result = (
-            sb.table("opportunities")
-            .delete()
-            .eq("result_status", "PENDENTE")
-            .neq("run_id", latest_run_id)
-            .execute()
-        )
-        deleted = len(result.data) if result.data else 0
-        if deleted > 0:
-            print(f"[SUPABASE] Limpeza: {deleted} pendentes duplicadas removidas de runs antigas")
-
-        # Limpar runs que ficaram sem oportunidades (exceto a mais recente)
-        all_runs = sb.table("pipeline_runs").select("id").order("executed_at", desc=True).execute()
-        for run in (all_runs.data or [])[1:]:  # Skip a mais recente
+        cleaned = 0
+        for run in (all_runs.data or []):
             r = sb.table("opportunities").select("id", count="exact").eq("run_id", run["id"]).execute()
             if (r.count or 0) == 0:
                 sb.table("matches").delete().eq("run_id", run["id"]).execute()
                 sb.table("pipeline_runs").delete().eq("id", run["id"]).execute()
+                cleaned += 1
 
+        if cleaned > 0:
+            print(f"[SUPABASE] Limpeza: {cleaned} runs órfãs removidas")
     except Exception as e:
-        print(f"[SUPABASE] Aviso na limpeza: {e}")
+        print(f"[SUPABASE] Aviso na limpeza de runs órfãs: {e}")
 
 
 def get_run_history(limit: int = 10) -> list[dict]:
@@ -625,13 +859,18 @@ def batch_update_results(updates: list[dict]) -> int:
     updates: [{"id": uuid, "result_status": "GREEN"|"RED"|"VOID", "result_score": "2-1",
                "result_detail": {...}}, ...]
     Retorna número de atualizações bem sucedidas.
+    Detecta automaticamente se as colunas extras existem no Supabase.
     """
     sb = get_client()
     if not sb:
         return 0
     count = 0
     now = datetime.now().isoformat()
-    for u in updates:
+
+    # Detectar colunas extras disponíveis no Supabase (testar uma vez)
+    _extra_cols_available = None  # None = não testado, True/False = resultado
+
+    for i, u in enumerate(updates):
         try:
             data = {
                 "result_status": u["result_status"],
@@ -639,28 +878,10 @@ def batch_update_results(updates: list[dict]) -> int:
                 "result_updated_at": now,
             }
 
-            # Dados detalhados do resultado (HT, corners, cards, shots)
-            # Campos diretos já formatados (vêm do app.py)
-            detail_fields = {}
-            if u.get("result_ht_score"):
-                detail_fields["result_ht_score"] = u["result_ht_score"]
-            if u.get("result_corners"):
-                detail_fields["result_corners"] = u["result_corners"]
-            if u.get("result_cards"):
-                detail_fields["result_cards"] = u["result_cards"]
-            if u.get("result_shots"):
-                detail_fields["result_shots"] = u["result_shots"]
-            if u.get("result_detail"):
-                import json
-                detail_fields["result_detail"] = json.dumps(u["result_detail"])
-            
-            if detail_fields:
-                data.update(detail_fields)
-
             # Calcular retorno assumindo 1 unidade apostada
             if u["result_status"] == "GREEN":
                 data["bet_amount"] = 1.0
-                data["bet_return"] = u.get("market_odd", 0)
+                data["bet_return"] = float(u.get("market_odd", 0) or 0)
                 data["bet_profit"] = data["bet_return"] - 1.0
             elif u["result_status"] == "RED":
                 data["bet_amount"] = 1.0
@@ -671,11 +892,52 @@ def batch_update_results(updates: list[dict]) -> int:
                 data["bet_return"] = 1.0
                 data["bet_profit"] = 0.0
 
+            # Dados detalhados do resultado (HT, corners, cards, shots)
+            # Só tenta adicionar se as colunas existem (testado na primeira tentativa)
+            if _extra_cols_available is not False:
+                detail_fields = {}
+                if u.get("result_ht_score"):
+                    detail_fields["result_ht_score"] = u["result_ht_score"]
+                if u.get("result_corners"):
+                    detail_fields["result_corners"] = u["result_corners"]
+                if u.get("result_cards"):
+                    detail_fields["result_cards"] = u["result_cards"]
+                if u.get("result_shots"):
+                    detail_fields["result_shots"] = u["result_shots"]
+                if u.get("result_detail"):
+                    import json as _json
+                    detail_fields["result_detail"] = _json.dumps(u["result_detail"])
+                
+                if detail_fields:
+                    data_with_details = {**data, **detail_fields}
+                    try:
+                        result = sb.table("opportunities").update(data_with_details).eq("id", u["id"]).execute()
+                        if result.data:
+                            count += 1
+                            if _extra_cols_available is None:
+                                _extra_cols_available = True
+                                print("[SUPABASE] ✅ Colunas extras (ht_score, corners, cards, shots, detail) disponíveis")
+                            continue  # Sucesso com detalhes, próximo
+                    except Exception as detail_err:
+                        err_str = str(detail_err)
+                        if "could not find" in err_str.lower() or "PGRST204" in err_str:
+                            _extra_cols_available = False
+                            print("[SUPABASE] ⚠️  Colunas extras não encontradas no Supabase — salvando sem detalhes")
+                            print("[SUPABASE] 💡 Execute o SQL de migração no Supabase para habilitar: result_ht_score, result_corners, result_cards, result_shots, result_detail")
+                        else:
+                            raise detail_err
+
+            # Fallback: salvar sem campos extras
             result = sb.table("opportunities").update(data).eq("id", u["id"]).execute()
             if result.data:
                 count += 1
         except Exception as e:
             print(f"[SUPABASE] Erro ao atualizar {u.get('id', '?')}: {e}")
+
+        # Progresso a cada 50 registros
+        if (i + 1) % 50 == 0:
+            print(f"[SUPABASE] Progresso: {i+1}/{len(updates)} atualizações ({count} ok)")
+
     return count
 
 
@@ -773,3 +1035,77 @@ def get_all_opportunities_for_dashboard() -> dict:
     except Exception as e:
         print(f"[SUPABASE] Erro ao buscar dashboard: {e}")
         return {"resolved": [], "pending_count": 0}
+
+
+def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
+    """
+    Retorna TODAS as oportunidades cujo match_date está no intervalo [date_from, date_to].
+    Inclui todas as colunas necessárias para a tabela principal.
+    Busca tanto pendentes quanto resolvidas.
+    """
+    sb = get_client()
+    if not sb:
+        return []
+    try:
+        all_data = []
+        page_size = 1000
+        offset = 0
+
+        while True:
+            result = (
+                sb.table("opportunities")
+                .select("*")
+                .gte("match_date", date_from)
+                .lte("match_date", date_to)
+                .order("match_date", desc=False)
+                .order("match_time", desc=False)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = result.data or []
+            all_data.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        print(f"[SUPABASE] Oportunidades {date_from}→{date_to}: {len(all_data)} encontradas")
+        return all_data
+    except Exception as e:
+        print(f"[SUPABASE] Erro ao buscar oportunidades por data: {e}")
+        return []
+
+
+def get_matches_by_dates(date_from: str, date_to: str) -> list[dict]:
+    """
+    Retorna TODAS as partidas cujo match_date está no intervalo [date_from, date_to].
+    """
+    sb = get_client()
+    if not sb:
+        return []
+    try:
+        all_data = []
+        page_size = 1000
+        offset = 0
+
+        while True:
+            result = (
+                sb.table("matches")
+                .select("*")
+                .gte("match_date", date_from)
+                .lte("match_date", date_to)
+                .order("match_date", desc=False)
+                .order("match_time", desc=False)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = result.data or []
+            all_data.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        print(f"[SUPABASE] Matches {date_from}→{date_to}: {len(all_data)} encontradas")
+        return all_data
+    except Exception as e:
+        print(f"[SUPABASE] Erro ao buscar partidas por data: {e}")
+        return []

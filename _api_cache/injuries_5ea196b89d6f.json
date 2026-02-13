@@ -1,1 +1,1 @@
-{"_cached_at": "2026-02-09T11:29:43.835714", "_endpoint": "injuries", "_params": {"fixture": 1499001}, "data": {"get": "injuries", "parameters": {"fixture": "1499001"}, "errors": [], "results": 0, "paging": {"current": 1, "total": 1}, "response": []}}
+{"_cached_at": "2026-02-10T14:20:25.167420", "_endpoint": "injuries", "_params": {"fixture": 1499001}, "data": {"get": "injuries", "parameters": {"fixture": "1499001"}, "errors": [], "results": 0, "paging": {"current": 1, "total": 1}, "response": []}}

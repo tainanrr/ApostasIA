@@ -358,9 +358,10 @@ def _api_football_request(endpoint: str, params: dict, cache_only: bool = False,
 #  PIPELINE DE DADOS REAIS
 # ═══════════════════════════════════════════════════════════════
 
-def _fetch_fixtures(date: str) -> list[dict]:
-    """Busca TODOS os jogos agendados para uma data."""
-    print(f"  [ETL] Buscando fixtures para {date}...")
+def _fetch_fixtures(date: str, include_finished: bool = False) -> list[dict]:
+    """Busca TODOS os jogos agendados para uma data.
+    Se include_finished=True, inclui jogos FT junto com NS/Live (para análise retroativa)."""
+    print(f"  [ETL] Buscando fixtures para {date}{'  [+FT retroativo]' if include_finished else ''}...")
     data = _api_football_request("fixtures", {"date": date})
     raw = data.get("response", [])
 
@@ -374,22 +375,26 @@ def _fetch_fixtures(date: str) -> list[dict]:
     # Prioridade: jogos não iniciados
     ns_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") == "NS"]
 
-    # Se não há NS, incluir jogos em andamento
+    # Jogos em andamento
     live_status = {"1H", "HT", "2H", "LIVE", "ET", "P", "BT"}
     live_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in live_status]
 
-    # Se não há NS nem live, incluir TBD
+    # TBD
     tbd_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in {"TBD", "SUSP", "PST"}]
+
+    # Jogos finalizados
+    ft_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in {"FT", "AET", "PEN"}]
 
     # Combinar: NS primeiro, depois live, depois TBD
     fixtures = ns_fixtures + live_fixtures + tbd_fixtures
 
-    # Se ainda 0, incluir jogos finalizados (FT) para análise retroativa
-    if not fixtures and raw:
-        ft_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in {"FT", "AET", "PEN"}]
-        if ft_fixtures:
-            print(f"  [ETL] ⚠️  Sem jogos futuros — incluindo {len(ft_fixtures)} jogos finalizados para análise")
-            fixtures = ft_fixtures
+    # Se include_finished=True OU não há jogos futuros, incluir jogos FT
+    if include_finished and ft_fixtures:
+        print(f"  [ETL] 📊 Incluindo {len(ft_fixtures)} jogos finalizados para análise retroativa")
+        fixtures = fixtures + ft_fixtures
+    elif not fixtures and ft_fixtures:
+        print(f"  [ETL] ⚠️  Sem jogos futuros — incluindo {len(ft_fixtures)} jogos finalizados para análise")
+        fixtures = ft_fixtures
 
     print(f"  [ETL] {len(fixtures)} jogos selecionados para {date} (de {len(raw)} total)")
     return fixtures
@@ -1261,9 +1266,18 @@ def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
     all_fixtures_raw = []
 
     # ── PASSO 1: Fixtures globais ──
+    # Detectar automaticamente se são datas passadas (para incluir jogos FT)
+    from datetime import datetime as _dt
+    today_str = _dt.now(config.BR_TIMEZONE).strftime("%Y-%m-%d")
+    
     print(f"[ETL] ═══ PASSO 1: Buscando fixtures globais ({len(analysis_dates)} datas) ═══")
     for date in analysis_dates:
-        fixes = _fetch_fixtures(date)
+        # Incluir jogos FT para datas passadas E para hoje (jogos que já terminaram mais cedo)
+        include_ft = date <= today_str
+        if include_ft:
+            label = "hoje (inclui FT)" if date == today_str else "passada"
+            print(f"  [ETL] ⏪ Data {label}: {date} — incluindo jogos finalizados")
+        fixes = _fetch_fixtures(date, include_finished=include_ft)
         all_fixtures_raw.extend(fixes)
 
     if not all_fixtures_raw:

@@ -1,0 +1,1 @@
+{"_cached_at": "2026-02-10T13:35:38.818515", "_endpoint": "fixtures/headtohead", "_params": {"h2h": "0-0", "last": 10, "status": "FT-AET-PEN"}, "data": {"get": "fixtures/headtohead", "parameters": {"h2h": "0-0", "last": "10", "status": "FT-AET-PEN"}, "errors": [], "results": 0, "paging": {"current": 1, "total": 1}, "response": []}}

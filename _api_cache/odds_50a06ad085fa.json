@@ -1,0 +1,1 @@
+{"_cached_at": "2026-02-09T21:35:57.693231", "_endpoint": "odds", "_params": {"fixture": 1518657}, "data": {"get": "odds", "parameters": {"fixture": "1518657"}, "errors": [], "results": 0, "paging": {"current": 1, "total": 1}, "response": []}}

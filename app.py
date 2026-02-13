@@ -153,17 +153,22 @@ def _save_results_to_disk_cache(updates: list[dict]):
                 count += 1
                 continue
 
-            # Fallback por match_id
+            # Fallback por match_id + market + selection
             if mid in update_by_match:
+                opp_market = (opp.get("market") or "").lower()
+                opp_sel = (opp.get("selection") or "").lower()
                 for u in update_by_match[mid]:
-                    opp["result_status"] = u["result_status"]
-                    opp["result_score"] = u["result_score"]
-                    opp["result_ht_score"] = u.get("result_ht_score", "")
-                    opp["result_corners"] = u.get("result_corners", "")
-                    opp["result_cards"] = u.get("result_cards", "")
-                    opp["result_shots"] = u.get("result_shots", "")
-                    count += 1
-                    break
+                    u_market = (u.get("market") or "").lower()
+                    u_sel = (u.get("selection") or "").lower()
+                    if u_market == opp_market and u_sel == opp_sel:
+                        opp["result_status"] = u["result_status"]
+                        opp["result_score"] = u["result_score"]
+                        opp["result_ht_score"] = u.get("result_ht_score", "")
+                        opp["result_corners"] = u.get("result_corners", "")
+                        opp["result_cards"] = u.get("result_cards", "")
+                        opp["result_shots"] = u.get("result_shots", "")
+                        count += 1
+                        break
 
         if count > 0:
             with open(CACHE_FILE, "w", encoding="utf-8") as f:
@@ -174,20 +179,102 @@ def _save_results_to_disk_cache(updates: list[dict]):
 
 
 def _save_cache_to_disk():
-    """Salva resultados serializados em JSON para sobreviver a restarts."""
+    """
+    Salva resultados em JSON, MESCLANDO com dados anteriores de outras datas.
+    Estratégia:
+      - Oportunidades com mesmo (match_id, market, selection): nova sobrescreve antiga
+      - Oportunidades novas: adicionadas
+      - Oportunidades anteriores de outras datas/mercados: PRESERVADAS
+      - Matches: mesclados por match_id (novo sobrescreve antigo)
+    """
     try:
+        # Serializar dados da run atual
+        new_opps = [serialize_opportunity(o) for o in (_cache["opportunities"] or [])]
+        new_matches = [serialize_match(m) for m in (_cache["matches"] or [])]
+
+        # Carregar dados anteriores para mesclar
+        existing_opps = []
+        existing_matches = []
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                    old_data = json.load(f)
+                existing_opps = old_data.get("opportunities", [])
+                existing_matches = old_data.get("matches", [])
+            except Exception:
+                pass  # Se falhar ao ler, seguir só com dados novos
+
+        # ── Mesclar oportunidades: upsert por (match_id, market, selection) ──
+        opp_map = {}
+        # 1. Primeiro adicionar existentes ao mapa
+        for o in existing_opps:
+            key = (o.get("match_id"), (o.get("market") or "").lower(), (o.get("selection") or "").lower())
+            opp_map[key] = o
+        # 2. Depois sobrescrever/adicionar com novos (nova run tem prioridade)
+        for o in new_opps:
+            key = (o.get("match_id"), (o.get("market") or "").lower(), (o.get("selection") or "").lower())
+            # Preservar result_status de oportunidades já resolvidas
+            existing = opp_map.get(key)
+            if existing and existing.get("result_status") not in (None, "", "PENDENTE"):
+                # Manter resultado já resolvido (GREEN/RED/VOID), atualizar o resto
+                o["result_status"] = existing["result_status"]
+                o["result_score"] = existing.get("result_score", "")
+                o["result_ht_score"] = existing.get("result_ht_score", "")
+                o["result_corners"] = existing.get("result_corners", "")
+                o["result_cards"] = existing.get("result_cards", "")
+                o["result_shots"] = existing.get("result_shots", "")
+            opp_map[key] = o
+        merged_opps = list(opp_map.values())
+
+        # ── Mesclar matches: upsert por match_id ──
+        match_map = {}
+        for m in existing_matches:
+            match_map[m.get("match_id")] = m
+        for m in new_matches:
+            match_map[m.get("match_id")] = m
+        merged_matches = list(match_map.values())
+
+        # ── Recalcular stats para refletir dados mesclados ──
+        merged_stats = dict(_cache["stats"]) if _cache["stats"] else {}
+        merged_stats["total_matches"] = len(merged_matches)
+        merged_stats["total_opportunities"] = len(merged_opps)
+        merged_stats["high_conf"] = sum(1 for o in merged_opps if o.get("confidence") == "ALTO")
+        merged_stats["med_conf"] = sum(1 for o in merged_opps if o.get("confidence") == "MÉDIO")
+        merged_stats["low_conf"] = sum(1 for o in merged_opps if o.get("confidence") == "BAIXO")
+        if merged_opps:
+            edges = [o.get("edge", 0) for o in merged_opps]
+            merged_stats["avg_edge"] = round(sum(edges) / len(edges), 2)
+            merged_stats["max_edge"] = max(edges)
+
+        # Construir leagues a partir dos matches mesclados
+        leagues = {}
+        for m in merged_matches:
+            ln = m.get("league_name", "")
+            lc = m.get("league_country", "")
+            key = (ln, lc)
+            if key not in leagues:
+                leagues[key] = {"league_name": ln, "league_country": lc, "match_count": 0}
+            leagues[key]["match_count"] += 1
+        merged_leagues = list(leagues.values())
+
         data = {
             "_timezone": "America/Sao_Paulo",
-            "stats": _cache["stats"],
+            "stats": merged_stats,
             "last_run_at": _cache["last_run_at"],
             "api_calls_used": _cache["api_calls_used"],
-            "opportunities": [serialize_opportunity(o) for o in (_cache["opportunities"] or [])],
-            "matches": [serialize_match(m) for m in (_cache["matches"] or [])],
-            "leagues": _build_leagues_list(),
+            "opportunities": merged_opps,
+            "matches": merged_matches,
+            "leagues": merged_leagues,
         }
         with open(CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
-        print(f"[CACHE] Dados salvos em {CACHE_FILE}")
+
+        prev_count = len(existing_opps)
+        new_count = len(new_opps)
+        final_count = len(merged_opps)
+        print(f"[CACHE] Dados salvos em {CACHE_FILE} ({final_count} oportunidades, {len(merged_matches)} partidas)")
+        if prev_count > 0:
+            print(f"[CACHE] Mesclagem: {prev_count} anteriores + {new_count} novas → {final_count} total")
     except Exception as e:
         print(f"[CACHE] Erro ao salvar: {e}")
 
@@ -919,6 +1006,8 @@ def serialize_opportunity(o: ValueOpportunity) -> dict:
         "edge_pct": o.edge_pct,
         "kelly_bet_pct": o.kelly_bet_pct if o.kelly_bet_pct != "N/A" else "0.00%",
         "confidence": o.confidence,
+        "confidence_score": getattr(o, 'confidence_score', 0.0),
+        "analysis_type": getattr(o, 'analysis_type', 'PRE_JOGO'),
         "reasoning": o.reasoning,
         "home_xg": o.home_xg,
         "away_xg": o.away_xg,
@@ -1079,15 +1168,19 @@ def api_run():
     from flask import request
     try:
         data = request.get_json(silent=True) or {}
-        date_from = data.get("date_from")
-        date_to = data.get("date_to")
+        # Aceitar ambos os formatos: start_date/end_date (frontend) e date_from/date_to (legacy)
+        date_from = data.get("start_date") or data.get("date_from")
+        date_to = data.get("end_date") or data.get("date_to")
 
         if date_from and date_to:
             analysis_dates = config.build_date_range(date_from, date_to)
+            print(f"[API/RUN] Datas customizadas: {date_from} → {date_to} ({len(analysis_dates)} dias)")
         elif date_from:
             analysis_dates = [date_from]
+            print(f"[API/RUN] Data única: {date_from}")
         else:
             analysis_dates = None  # usa default
+            print(f"[API/RUN] Usando datas padrão (hoje + amanhã)")
 
         run_engine(analysis_dates=analysis_dates)
     except Exception as e:
@@ -1189,6 +1282,287 @@ def api_leagues():
     if not _cache["matches"]:
         return jsonify([])
     return jsonify(_build_leagues_list())
+
+
+@app.route("/api/load-by-dates")
+def api_load_by_dates():
+    """
+    Busca oportunidades e partidas do Supabase filtrando por intervalo de datas.
+    Parâmetros: ?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+    Retorna dados no formato esperado pelo frontend (edge em %, prob em %, etc.)
+    Atualiza o cache em memória para consistência com dashboard.
+    """
+    from flask import request as flask_request
+    date_from = flask_request.args.get("date_from", "")
+    date_to = flask_request.args.get("date_to", "")
+
+    if not date_from or not date_to:
+        return jsonify({"ok": False, "error": "date_from e date_to são obrigatórios"}), 400
+
+    print(f"[API/LOAD-BY-DATES] Buscando dados Supabase: {date_from} → {date_to}")
+
+    try:
+        raw_opps = supabase_client.get_opportunities_by_dates(date_from, date_to)
+        raw_matches = supabase_client.get_matches_by_dates(date_from, date_to)
+
+        # Deduplicar oportunidades: manter apenas a mais recente por (match_id, market, selection)
+        seen = {}
+        for opp in raw_opps:
+            key = (opp.get("match_id"), (opp.get("market") or "").lower(), (opp.get("selection") or "").lower())
+            existing = seen.get(key)
+            if existing is None:
+                seen[key] = opp
+            else:
+                # Manter a que tem resultado resolvido, ou a mais recente (by created_at)
+                if opp.get("result_status", "PENDENTE") != "PENDENTE" and existing.get("result_status", "PENDENTE") == "PENDENTE":
+                    seen[key] = opp
+                elif opp.get("created_at", "") > existing.get("created_at", ""):
+                    # Se ambas pendentes ou ambas resolvidas, manter a mais recente
+                    if opp.get("result_status", "PENDENTE") == existing.get("result_status", "PENDENTE"):
+                        seen[key] = opp
+
+        deduped_opps = list(seen.values())
+        removed = len(raw_opps) - len(deduped_opps)
+        if removed > 0:
+            print(f"[API/LOAD-BY-DATES] Deduplicadas: {removed} oportunidades removidas ({len(raw_opps)} → {len(deduped_opps)})")
+
+        # Converter do formato Supabase → formato frontend
+        frontend_opps = [_supabase_opp_to_frontend(o) for o in deduped_opps]
+        frontend_matches = [_supabase_match_to_frontend(m) for m in raw_matches]
+
+        # Deduplicar matches por match_id
+        match_seen = {}
+        for m in frontend_matches:
+            mid = m.get("match_id")
+            if mid not in match_seen:
+                match_seen[mid] = m
+        frontend_matches = list(match_seen.values())
+
+        # Construir lista de ligas
+        leagues_set = set()
+        leagues_list = []
+        for m in frontend_matches:
+            key = (m.get("league_name"), m.get("league_country"))
+            if key not in leagues_set:
+                leagues_set.add(key)
+                leagues_list.append({
+                    "league_name": m.get("league_name"),
+                    "league_country": m.get("league_country"),
+                    "match_count": sum(1 for m2 in frontend_matches if m2.get("league_name") == m.get("league_name")),
+                })
+
+        # Construir stats resumidas
+        n_matches = len(frontend_matches)
+        n_opps = len(frontend_opps)
+        stats_summary = {
+            "total_matches": n_matches,
+            "total_leagues": len(leagues_list),
+            "total_opportunities": n_opps,
+            "high_conf": sum(1 for o in frontend_opps if o.get("confidence") == "ALTO"),
+            "med_conf": sum(1 for o in frontend_opps if o.get("confidence") == "MÉDIO"),
+            "low_conf": sum(1 for o in frontend_opps if o.get("confidence") == "BAIXO"),
+            "avg_edge": round(sum(o.get("edge", 0) for o in frontend_opps) / max(1, n_opps), 2),
+            "max_edge": max((o.get("edge", 0) for o in frontend_opps), default=0),
+            "max_edge_match": "",
+            "max_edge_selection": "",
+            "run_time": 0,
+            "analysis_dates": [date_from, date_to] if date_from != date_to else [date_from],
+            "mode": "Supabase (dados históricos)",
+            "last_run_at": _cache.get("last_run_at", "--"),
+            "api_calls_this_run": 0,
+            "source": "supabase",
+        }
+        if frontend_opps:
+            top = max(frontend_opps, key=lambda o: o.get("edge", 0))
+            stats_summary["max_edge_match"] = f"{top.get('home_team')} vs {top.get('away_team')}"
+            stats_summary["max_edge_selection"] = top.get("selection", "")
+
+        # Atualizar cache em memória para consistência com dashboard
+        _cache["_serialized_opportunities"] = frontend_opps
+        _cache["_serialized_matches"] = frontend_matches
+        _cache["_serialized_leagues"] = leagues_list
+        _cache["stats"] = stats_summary
+        _cache["matches"] = "FROM_SUPABASE"
+        _cache["opportunities"] = "FROM_SUPABASE"
+
+        n_green = sum(1 for o in frontend_opps if o.get("result_status") == "GREEN")
+        n_red = sum(1 for o in frontend_opps if o.get("result_status") == "RED")
+        n_pend = sum(1 for o in frontend_opps if o.get("result_status") == "PENDENTE")
+
+        print(f"[API/LOAD-BY-DATES] Retornando: {n_opps} opps ({n_green}G/{n_red}R/{n_pend}P), {n_matches} matches, {len(leagues_list)} ligas")
+
+        return jsonify({
+            "ok": True,
+            "stats": stats_summary,
+            "opportunities": frontend_opps,
+            "matches": frontend_matches,
+            "leagues": leagues_list,
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _supabase_opp_to_frontend(o: dict) -> dict:
+    """Converte oportunidade do formato Supabase para formato do frontend."""
+    edge_raw = float(o.get("edge") or 0)
+    model_prob_raw = float(o.get("model_prob") or 0)
+    implied_prob_raw = float(o.get("implied_prob") or 0)
+
+    # Supabase armazena como decimal (0.05); frontend espera percentual (5.0)
+    edge = edge_raw * 100 if edge_raw < 1 else edge_raw
+    model_prob = model_prob_raw * 100 if model_prob_raw < 1 else model_prob_raw
+    implied_prob = implied_prob_raw * 100 if implied_prob_raw < 1 else implied_prob_raw
+
+    return {
+        "match_id": o.get("match_id"),
+        "league_name": o.get("league_name", ""),
+        "league_country": o.get("league_country", ""),
+        "match_date": str(o.get("match_date", "")),
+        "match_time": o.get("match_time", ""),
+        "home_team": o.get("home_team", ""),
+        "away_team": o.get("away_team", ""),
+        "market": o.get("market", ""),
+        "selection": o.get("selection", ""),
+        "market_odd": float(o.get("market_odd") or 0),
+        "fair_odd": float(o.get("fair_odd") or 0),
+        "model_prob": round(model_prob, 1),
+        "implied_prob": round(implied_prob, 1),
+        "edge": round(edge, 1),
+        "edge_pct": o.get("edge_pct", ""),
+        "kelly_bet_pct": o.get("kelly_bet_pct", "0.00%"),
+        "confidence": o.get("confidence", ""),
+        "confidence_score": float(o.get("confidence_score") or 0),
+        "analysis_type": o.get("analysis_type", "PRE_JOGO"),
+        "reasoning": o.get("reasoning", ""),
+        "home_xg": float(o.get("home_xg") or 0),
+        "away_xg": float(o.get("away_xg") or 0),
+        "weather_note": o.get("weather_note", ""),
+        "fatigue_note": o.get("fatigue_note", ""),
+        "urgency_home": float(o.get("urgency_home") or 0.5),
+        "urgency_away": float(o.get("urgency_away") or 0.5),
+        "bookmaker": o.get("bookmaker", "N/D"),
+        "data_quality": float(o.get("data_quality") or 0),
+        "odds_suspect": False,
+        "result_status": o.get("result_status", "PENDENTE"),
+        "result_score": o.get("result_score", "") or "",
+        "result_ht_score": o.get("result_ht_score", "") or "",
+        "result_corners": o.get("result_corners", "") or "",
+        "result_cards": o.get("result_cards", "") or "",
+        "result_shots": o.get("result_shots", "") or "",
+        "venue": o.get("venue", ""),
+    }
+
+
+def _supabase_match_to_frontend(m: dict) -> dict:
+    """Converte partida do formato Supabase para formato do frontend.
+    Resiliente a colunas que podem não existir na tabela matches."""
+    def _flt(val, default=0):
+        try:
+            return float(val) if val is not None else default
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "match_id": m.get("match_id"),
+        "league_id": m.get("league_id", 0),
+        "league_name": m.get("league_name", ""),
+        "league_country": m.get("league_country", ""),
+        "match_date": str(m.get("match_date", "")),
+        "match_time": m.get("match_time", ""),
+        "home_team": m.get("home_team", ""),
+        "home_team_id": m.get("home_team_id", 0),
+        "away_team": m.get("away_team", ""),
+        "away_team_id": m.get("away_team_id", 0),
+        "home_xg": _flt(m.get("home_xg")),
+        "away_xg": _flt(m.get("away_xg")),
+        "prob_home": _flt(m.get("prob_home")),
+        "prob_draw": _flt(m.get("prob_draw")),
+        "prob_away": _flt(m.get("prob_away")),
+        "prob_over25": _flt(m.get("prob_over25")),
+        "prob_btts": _flt(m.get("prob_btts")),
+        "corners_expected": _flt(m.get("corners_expected")),
+        "cards_expected": _flt(m.get("cards_expected")),
+        "odds_home": _flt(m.get("odds_home")),
+        "odds_draw": _flt(m.get("odds_draw")),
+        "odds_away": _flt(m.get("odds_away")),
+        "weather_temp": _flt(m.get("weather_temp")),
+        "weather_wind": _flt(m.get("weather_wind")),
+        "weather_rain": _flt(m.get("weather_rain")),
+        "weather_desc": m.get("weather_desc", ""),
+        "home_fatigue": _flt(m.get("home_fatigue")),
+        "away_fatigue": _flt(m.get("away_fatigue")),
+        "venue": m.get("venue", ""),
+        "data_quality": _flt(m.get("data_quality")),
+        # Campos usados pelo modal de detalhes — fallback seguro para dados do Supabase
+        "urgency_home": _flt(m.get("urgency_home"), 0.5),
+        "urgency_away": _flt(m.get("urgency_away"), 0.5),
+        "home_attack": _flt(m.get("home_attack")),
+        "home_defense": _flt(m.get("home_defense")),
+        "away_attack": _flt(m.get("away_attack")),
+        "away_defense": _flt(m.get("away_defense")),
+        "home_goals_scored_avg": _flt(m.get("home_goals_scored_avg")),
+        "home_goals_conceded_avg": _flt(m.get("home_goals_conceded_avg")),
+        "away_goals_scored_avg": _flt(m.get("away_goals_scored_avg")),
+        "away_goals_conceded_avg": _flt(m.get("away_goals_conceded_avg")),
+        "home_form_points": _flt(m.get("home_form_points")),
+        "away_form_points": _flt(m.get("away_form_points")),
+        "home_league_pos": m.get("home_league_pos"),
+        "away_league_pos": m.get("away_league_pos"),
+        "home_league_pts": m.get("home_league_pts"),
+        "away_league_pts": m.get("away_league_pts"),
+        "home_games_played": m.get("home_games_played"),
+        "away_games_played": m.get("away_games_played"),
+        "home_games_remaining": m.get("home_games_remaining"),
+        "away_games_remaining": m.get("away_games_remaining"),
+        "home_points_to_title": m.get("home_points_to_title"),
+        "away_points_to_title": m.get("away_points_to_title"),
+        "home_points_to_relegation": m.get("home_points_to_relegation"),
+        "away_points_to_relegation": m.get("away_points_to_relegation"),
+        "home_form": m.get("home_form"),
+        "away_form": m.get("away_form"),
+        "home_shots_total_avg": _flt(m.get("home_shots_total_avg")),
+        "away_shots_total_avg": _flt(m.get("away_shots_total_avg")),
+        "home_shots_on_target_avg": _flt(m.get("home_shots_on_target_avg")),
+        "away_shots_on_target_avg": _flt(m.get("away_shots_on_target_avg")),
+        "home_shots_blocked_avg": _flt(m.get("home_shots_blocked_avg")),
+        "away_shots_blocked_avg": _flt(m.get("away_shots_blocked_avg")),
+        "home_corners_avg": _flt(m.get("home_corners_avg")),
+        "away_corners_avg": _flt(m.get("away_corners_avg")),
+        "home_cards_avg": _flt(m.get("home_cards_avg")),
+        "away_cards_avg": _flt(m.get("away_cards_avg")),
+        "home_fouls_avg": _flt(m.get("home_fouls_avg")),
+        "away_fouls_avg": _flt(m.get("away_fouls_avg")),
+        "home_possession": _flt(m.get("home_possession")),
+        "away_possession": _flt(m.get("away_possession")),
+        "referee": m.get("referee", ""),
+        "referee_cards_avg": m.get("referee_cards_avg"),
+        "referee_fouls_avg": m.get("referee_fouls_avg"),
+        "injuries_home": m.get("injuries_home"),
+        "injuries_away": m.get("injuries_away"),
+        "bookmaker": m.get("bookmaker", ""),
+        "has_real_odds": m.get("has_real_odds", False),
+        "has_real_standings": m.get("has_real_standings", False),
+        "has_real_weather": m.get("has_real_weather", False),
+        "home_has_real_data": m.get("home_has_real_data"),
+        "away_has_real_data": m.get("away_has_real_data"),
+        "odds_home_away_suspect": m.get("odds_home_away_suspect", False),
+        "model_alpha_h": _flt(m.get("model_alpha_h")),
+        "model_beta_h": _flt(m.get("model_beta_h")),
+        "model_alpha_a": _flt(m.get("model_alpha_a")),
+        "model_beta_a": _flt(m.get("model_beta_a")),
+        "league_avg_goals": _flt(m.get("league_avg_goals"), 2.7),
+        "all_markets": m.get("all_markets"),
+        "model_probs": m.get("model_probs"),
+        "model_home_shots": _flt(m.get("model_home_shots")),
+        "model_away_shots": _flt(m.get("model_away_shots")),
+        "model_total_shots": _flt(m.get("model_total_shots")),
+        "model_home_sot": _flt(m.get("model_home_sot")),
+        "model_away_sot": _flt(m.get("model_away_sot")),
+        "model_total_sot": _flt(m.get("model_total_sot")),
+    }
 
 
 @app.route("/api/team-history/<int:team_id>")
@@ -1394,6 +1768,8 @@ def api_check_results():
                 updates.append({
                     "id": opp["id"],
                     "match_id": mid,
+                    "market": opp.get("market", ""),
+                    "selection": opp.get("selection", ""),
                     "result_status": status,
                     "result_score": score,
                     "result_ht_score": result_ht_score,
@@ -1477,33 +1853,41 @@ def _update_cache_with_results(updates: list[dict]):
                 opp_market = (opp.get("market") or "").lower()
                 opp_sel = (opp.get("selection") or "").lower()
                 for u in update_by_match[mid]:
-                    opp["result_status"] = u["result_status"]
-                    opp["result_score"] = u["result_score"]
-                    opp["result_ht_score"] = u.get("result_ht_score", "")
-                    opp["result_corners"] = u.get("result_corners", "")
-                    opp["result_cards"] = u.get("result_cards", "")
-                    opp["result_shots"] = u.get("result_shots", "")
-                    updated_count += 1
-                    break
+                    u_market = (u.get("market") or "").lower()
+                    u_sel = (u.get("selection") or "").lower()
+                    if u_market == opp_market and u_sel == opp_sel:
+                        opp["result_status"] = u["result_status"]
+                        opp["result_score"] = u["result_score"]
+                        opp["result_ht_score"] = u.get("result_ht_score", "")
+                        opp["result_corners"] = u.get("result_corners", "")
+                        opp["result_cards"] = u.get("result_cards", "")
+                        opp["result_shots"] = u.get("result_shots", "")
+                        updated_count += 1
+                        break
 
     # 2) Atualizar objetos em memória (quando rodou direto do engine)
     opps_in_memory = _cache.get("opportunities")
     if opps_in_memory and isinstance(opps_in_memory, list) and opps_in_memory not in ("FROM_DISK", "FROM_SUPABASE"):
         for opp in opps_in_memory:
             if hasattr(opp, 'match_id') and opp.match_id in update_by_match:
+                opp_market = (getattr(opp, 'market', '') or '').lower()
+                opp_sel = (getattr(opp, 'selection', '') or '').lower()
                 for u in update_by_match[opp.match_id]:
-                    opp.result_status = u["result_status"]
-                    opp.result_score = u["result_score"]
-                    if hasattr(opp, 'result_ht_score'):
-                        opp.result_ht_score = u.get("result_ht_score", "")
-                    if hasattr(opp, 'result_corners'):
-                        opp.result_corners = u.get("result_corners", "")
-                    if hasattr(opp, 'result_cards'):
-                        opp.result_cards = u.get("result_cards", "")
-                    if hasattr(opp, 'result_shots'):
-                        opp.result_shots = u.get("result_shots", "")
-                    updated_count += 1
-                    break
+                    u_market = (u.get("market") or "").lower()
+                    u_sel = (u.get("selection") or "").lower()
+                    if u_market == opp_market and u_sel == opp_sel:
+                        opp.result_status = u["result_status"]
+                        opp.result_score = u["result_score"]
+                        if hasattr(opp, 'result_ht_score'):
+                            opp.result_ht_score = u.get("result_ht_score", "")
+                        if hasattr(opp, 'result_corners'):
+                            opp.result_corners = u.get("result_corners", "")
+                        if hasattr(opp, 'result_cards'):
+                            opp.result_cards = u.get("result_cards", "")
+                        if hasattr(opp, 'result_shots'):
+                            opp.result_shots = u.get("result_shots", "")
+                        updated_count += 1
+                        break
 
     print(f"[CHECK-RESULTS] Cache em memória atualizado: {updated_count} oportunidades")
 
@@ -1702,6 +2086,8 @@ def api_dashboard():
                 "edge": round((o.get("edge") or 0) * 100, 2),
                 "model_prob": round((o.get("model_prob") or 0) * 100, 2),
                 "confidence": o.get("confidence", ""),
+                "confidence_score": float(o.get("confidence_score") or 0),
+                "analysis_type": o.get("analysis_type", "PRE_JOGO"),
                 "bookmaker": o.get("bookmaker", ""),
                 "result_status": o.get("result_status", "PENDENTE"),
                 "result_score": o.get("result_score", ""),
@@ -1725,6 +2111,197 @@ def api_run_dates():
     return jsonify(runs)
 
 
+def _fix_supabase_confidence_and_analysis_type():
+    """
+    Corrige oportunidades existentes no Supabase que têm confidence_score=0 e/ou analysis_type='PRE_JOGO' incorreto.
+    Executa diretamente via Python/Supabase client (não depende de SQL raw).
+    """
+    if not supabase_client.is_configured():
+        return
+    try:
+        sb = supabase_client.get_client()
+        if not sb:
+            return
+
+        # 1. Buscar oportunidades com score=0 ou NULL
+        print("[FIX] Verificando oportunidades com confidence_score=0 ou analysis_type incorreto...")
+        
+        # Buscar em lotes
+        page_size = 1000
+        offset = 0
+        all_to_fix = []
+        
+        while True:
+            try:
+                result = (
+                    sb.table("opportunities")
+                    .select("id, match_id, match_date, match_time, edge, model_prob, market_odd, confidence, confidence_score, analysis_type, created_at, run_id")
+                    .or_("confidence_score.eq.0,confidence_score.is.null")
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+            except Exception:
+                # Talvez a coluna não exista ainda
+                print("[FIX] Colunas confidence_score/analysis_type podem não existir no Supabase. Pulando.")
+                return
+                
+            batch = result.data or []
+            all_to_fix.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        if not all_to_fix:
+            print("[FIX] Nenhuma oportunidade com score=0 para corrigir.")
+        else:
+            print(f"[FIX] {len(all_to_fix)} oportunidades precisam de correção de score...")
+
+        # 2. Buscar horários das pipeline_runs para determinar analysis_type
+        run_ids = list(set(r.get("run_id") for r in all_to_fix if r.get("run_id")))
+        run_times = {}
+        for i in range(0, len(run_ids), 50):
+            batch_ids = run_ids[i:i+50]
+            try:
+                rr = sb.table("pipeline_runs").select("id, executed_at").in_("id", batch_ids).execute()
+                for r in (rr.data or []):
+                    run_times[r["id"]] = r.get("executed_at", "")
+            except Exception:
+                pass
+
+        # 3. Calcular e atualizar
+        updated = 0
+        errors = 0
+        for opp in all_to_fix:
+            try:
+                edge_raw = float(opp.get("edge") or 0)
+                model_prob_raw = float(opp.get("model_prob") or 0)
+                market_odd = float(opp.get("market_odd") or 2.0)
+                
+                # Calcular confidence_score
+                score = 0.0
+                edge_pct = edge_raw * 100
+                
+                # Fator 1: Edge (máx 25)
+                if edge_pct <= 0: score += 0
+                elif edge_pct <= 5: score += 10
+                elif edge_pct <= 10: score += 25
+                elif edge_pct <= 15: score += 22
+                elif edge_pct <= 25: score += 15
+                elif edge_pct <= 40: score += 8
+                else: score += 3
+                
+                # Fator 2: Odds (máx 20)
+                if market_odd <= 1.3: score += 18
+                elif market_odd <= 1.6: score += 20
+                elif market_odd <= 2.0: score += 17
+                elif market_odd <= 2.5: score += 14
+                elif market_odd <= 3.5: score += 10
+                elif market_odd <= 5.0: score += 6
+                else: score += 3
+                
+                # Fator 3: Probabilidade do modelo (máx 20)
+                prob_pct = model_prob_raw * 100 if model_prob_raw <= 1 else model_prob_raw
+                if prob_pct >= 75: score += 20
+                elif prob_pct >= 60: score += 17
+                elif prob_pct >= 50: score += 14
+                elif prob_pct >= 40: score += 10
+                elif prob_pct >= 30: score += 6
+                else: score += 3
+                
+                # Fator 4: Dados (estimativa fixa = 7)
+                score += 7
+                # Fator 5: Contexto (estimativa fixa = 8)
+                score += 8
+                
+                # Fator 7: Concordância modelo-mercado
+                if market_odd > 0 and model_prob_raw > 0:
+                    implied_prob = 1.0 / market_odd
+                    ratio = model_prob_raw / max(0.01, implied_prob)
+                    if 1.03 <= ratio <= 1.25: score += 10
+                    elif 1.01 <= ratio <= 1.50: score += 6
+                    elif ratio > 1.50: score += 2
+                
+                score = max(0, min(100, score))
+                
+                # Determinar analysis_type
+                analysis_type = "PRE_JOGO"
+                match_date = str(opp.get("match_date", ""))
+                match_time = opp.get("match_time", "")
+                run_id = opp.get("run_id", "")
+                executed_at_str = run_times.get(run_id, "")
+                
+                if match_date and executed_at_str:
+                    try:
+                        # Parse da data/hora do jogo
+                        mt = match_time if match_time else "00:00"
+                        match_dt = datetime.strptime(f"{match_date} {mt}", "%Y-%m-%d %H:%M")
+                        match_dt = match_dt.replace(tzinfo=config.BR_TIMEZONE)
+                        
+                        # Parse do executed_at (formato ISO do Supabase: 2026-02-10T00:49:04+00:00)
+                        exec_str = executed_at_str.replace("T", " ").split("+")[0].split(".")[0]
+                        exec_dt = datetime.strptime(exec_str, "%Y-%m-%d %H:%M:%S")
+                        # executed_at é em UTC, converter para Brasília (-3h)
+                        from datetime import timezone as tz
+                        exec_dt = exec_dt.replace(tzinfo=tz.utc).astimezone(config.BR_TIMEZONE)
+                        
+                        # Se o jogo já tinha começado quando a análise rodou → RETROATIVA
+                        minutes_diff = (match_dt - exec_dt).total_seconds() / 60.0
+                        if minutes_diff < 30:
+                            analysis_type = "RETROATIVA"
+                    except Exception:
+                        pass
+                
+                # Update no Supabase
+                opp_id = opp.get("id")
+                if opp_id:
+                    sb.table("opportunities").update({
+                        "confidence_score": round(score, 1),
+                        "analysis_type": analysis_type,
+                    }).eq("id", opp_id).execute()
+                    updated += 1
+                    
+            except Exception as e:
+                errors += 1
+                if errors <= 3:
+                    print(f"[FIX] Erro: {e}")
+        
+        print(f"[FIX] ✅ Corrigidas {updated} oportunidades ({errors} erros)")
+        
+    except Exception as e:
+        print(f"[FIX] Erro geral: {e}")
+
+    # ── Correção pontual: jogos do dia 09/02/2026 foram analisados pré-jogo ──
+    try:
+        sb2 = supabase_client.get_client()
+        if sb2:
+            # Verificar quantos registros precisam de correção
+            check = (
+                sb2.table("opportunities")
+                .select("id", count="exact")
+                .eq("match_date", "2026-02-09")
+                .eq("analysis_type", "RETROATIVA")
+                .execute()
+            )
+            to_fix = check.count if hasattr(check, 'count') and check.count else len(check.data or [])
+            
+            if to_fix > 0:
+                result = (
+                    sb2.table("opportunities")
+                    .update({"analysis_type": "PRE_JOGO"})
+                    .eq("match_date", "2026-02-09")
+                    .eq("analysis_type", "RETROATIVA")
+                    .execute()
+                )
+                fixed_count = len(result.data or [])
+                print(f"[FIX] ✅ Corrigidas {fixed_count} oportunidades do dia 09/02 → PRE_JOGO")
+            else:
+                print("[FIX] Dia 09/02: já está como PRE_JOGO (nenhuma correção necessária)")
+    except Exception as e:
+        print(f"[FIX] Erro ao corrigir 09/02: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 if __name__ == "__main__":
     print("\n" + "=" * 55)
     print("  ApostasIA Engine — Servidor Web")
@@ -1733,6 +2310,9 @@ if __name__ == "__main__":
     print(f"  Modo: {mode_label}")
     print(f"  Datas de análise: {config.ANALYSIS_DATES}")
     print(f"  Pipeline: MANUAL (não roda ao iniciar)")
+
+    # Corrigir dados existentes no Supabase (confidence_score e analysis_type)
+    _fix_supabase_confidence_and_analysis_type()
 
     # Tentar carregar dados anteriores do disco
     if _load_cache_from_disk():

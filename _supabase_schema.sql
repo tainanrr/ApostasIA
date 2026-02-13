@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS opportunities (
     fatigue_note TEXT,
     urgency_home NUMERIC(3,1),
     urgency_away NUMERIC(3,1),
+    confidence_score NUMERIC(5,1) DEFAULT 0,
+    analysis_type TEXT DEFAULT 'PRE_JOGO',
     result_status TEXT DEFAULT 'PENDENTE',
     result_score TEXT,
     result_ht_score TEXT,
@@ -102,13 +104,124 @@ CREATE TABLE IF NOT EXISTS matches (
     result_updated_at TIMESTAMPTZ
 );
 
--- 4. MIGRAÇÃO: Adicionar colunas de detalhe de resultado (executar se tabela já existe)
--- Se a tabela já existe, executar estes ALTERs para adicionar as novas colunas:
+-- 4. MIGRAÇÃO: Adicionar colunas de detalhe de resultado em opportunities
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_ht_score TEXT;
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_corners TEXT;
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_cards TEXT;
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_shots TEXT;
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS result_detail JSONB;
+
+-- 5. MIGRAÇÃO: Adicionar colunas detalhadas na tabela matches (IDs, stats, etc.)
+-- ═══ IDs e identificação ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS league_id INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_team_id INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_team_id INTEGER DEFAULT 0;
+
+-- ═══ Fadiga, urgência, lesões ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_fatigue NUMERIC(4,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_fatigue NUMERIC(4,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS urgency_home NUMERIC(4,2) DEFAULT 0.5;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS urgency_away NUMERIC(4,2) DEFAULT 0.5;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS injuries_home JSONB;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS injuries_away JSONB;
+
+-- ═══ Árbitro detalhado ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS referee_cards_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS referee_fouls_avg NUMERIC(4,1) DEFAULT 0;
+
+-- ═══ Forma dos times ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_form JSONB;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_form JSONB;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_form_points NUMERIC(4,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_form_points NUMERIC(4,2) DEFAULT 0;
+
+-- ═══ Força ataque/defesa ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_attack NUMERIC(5,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_defense NUMERIC(5,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_attack NUMERIC(5,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_defense NUMERIC(5,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_alpha_h NUMERIC(6,4) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_beta_h NUMERIC(6,4) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_alpha_a NUMERIC(6,4) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_beta_a NUMERIC(6,4) DEFAULT 0;
+
+-- ═══ Médias de gols ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_goals_scored_avg NUMERIC(4,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_goals_conceded_avg NUMERIC(4,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_goals_scored_avg NUMERIC(4,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_goals_conceded_avg NUMERIC(4,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS league_avg_goals NUMERIC(4,2) DEFAULT 2.7;
+
+-- ═══ Classificação ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_league_pos INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_league_pos INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_league_pts INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_league_pts INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_games_played INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_games_played INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_games_remaining INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_games_remaining INTEGER DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_points_to_title INTEGER DEFAULT 99;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_points_to_title INTEGER DEFAULT 99;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_points_to_relegation INTEGER DEFAULT 99;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_points_to_relegation INTEGER DEFAULT 99;
+
+-- ═══ Estatísticas de finalizações ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_shots_total_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_shots_total_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_shots_on_target_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_shots_on_target_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_shots_blocked_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_shots_blocked_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_home_shots NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_away_shots NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_total_shots NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_home_sot NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_away_sot NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_total_sot NUMERIC(4,1) DEFAULT 0;
+
+-- ═══ Escanteios, cartões, faltas, posse ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_corners_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_corners_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_cards_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_cards_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_fouls_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_fouls_avg NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_possession NUMERIC(4,1) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_possession NUMERIC(4,1) DEFAULT 0;
+
+-- ═══ Odds extras ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_over25 NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_under25 NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_btts_yes NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_btts_no NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_corners_over NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_corners_under NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_cards_over NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_cards_under NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_ah_line NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_ah_home NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_ah_away NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_1x NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_x2 NUMERIC(6,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS weather_rain NUMERIC(4,1) DEFAULT 0;
+
+-- ═══ Qualidade dos dados ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS data_quality NUMERIC(4,2) DEFAULT 0;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS has_real_odds BOOLEAN DEFAULT FALSE;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS has_real_standings BOOLEAN DEFAULT FALSE;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS has_real_weather BOOLEAN DEFAULT FALSE;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_has_real_data BOOLEAN DEFAULT FALSE;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_has_real_data BOOLEAN DEFAULT FALSE;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS odds_home_away_suspect BOOLEAN DEFAULT FALSE;
+
+-- ═══ JSONB (todos os mercados e probabilidades do modelo) ═══
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS all_markets JSONB;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS model_probs JSONB;
+
+-- Índice para buscar por team_id (histórico)
+CREATE INDEX IF NOT EXISTS idx_matches_home_team_id ON matches(home_team_id);
+CREATE INDEX IF NOT EXISTS idx_matches_away_team_id ON matches(away_team_id);
 
 -- 5. ÍNDICES
 CREATE INDEX IF NOT EXISTS idx_opportunities_match_date ON opportunities(match_date);
@@ -374,3 +487,99 @@ BEGIN
         CREATE POLICY service_full_matches ON matches FOR ALL USING (true);
     END IF;
 END $$;
+
+-- ═══════════════════════════════════════════════════════
+-- MIGRAÇÃO: Novas colunas para confiança recalibrada e tipo de análise
+-- Execute este bloco se as colunas ainda não existem
+-- ═══════════════════════════════════════════════════════
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS confidence_score NUMERIC(5,1) DEFAULT 0;
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS analysis_type TEXT DEFAULT 'PRE_JOGO';
+
+-- Índice para filtrar por tipo de análise (pré-jogo vs retroativa)
+CREATE INDEX IF NOT EXISTS idx_opportunities_analysis_type ON opportunities(analysis_type);
+
+-- Índice composto para dashboard por tipo de análise
+CREATE INDEX IF NOT EXISTS idx_opportunities_analysis_result ON opportunities(analysis_type, result_status);
+
+-- ═══════════════════════════════════════════════════════
+-- MIGRAÇÃO: Corrigir analysis_type para oportunidades existentes
+-- Compara horário do jogo com horário de criação do registro (pipeline run)
+-- Se o jogo já tinha começado quando a análise foi criada → RETROATIVA
+-- ═══════════════════════════════════════════════════════
+UPDATE opportunities o
+SET analysis_type = 'RETROATIVA'
+WHERE o.analysis_type = 'PRE_JOGO'
+  AND EXISTS (
+    SELECT 1 FROM pipeline_runs pr
+    WHERE pr.id = o.run_id
+      AND (o.match_date::timestamp + COALESCE(o.match_time, '00:00')::time)
+          < (pr.executed_at AT TIME ZONE 'America/Sao_Paulo') - interval '30 minutes'
+  );
+
+-- ═══════════════════════════════════════════════════════
+-- MIGRAÇÃO: Recalcular confidence_score para oportunidades existentes (score=0)
+-- Usa os mesmos 7 fatores do sistema Python, com dados disponíveis no banco
+-- Score final = soma ponderada (0-100), mesmo algoritmo de calculate_confidence_score
+-- ═══════════════════════════════════════════════════════
+UPDATE opportunities
+SET confidence_score = GREATEST(0, LEAST(100,
+    -- FATOR 1: Edge (máx 25 pts) — edges moderados são mais confiáveis
+    CASE
+        WHEN COALESCE(edge, 0) * 100 <= 0 THEN 0
+        WHEN edge * 100 <= 5  THEN 10
+        WHEN edge * 100 <= 10 THEN 25   -- sweet spot
+        WHEN edge * 100 <= 15 THEN 22
+        WHEN edge * 100 <= 25 THEN 15
+        WHEN edge * 100 <= 40 THEN 8
+        ELSE 3                            -- edge extremo = provável erro
+    END
+    +
+    -- FATOR 2: Odds (máx 20 pts) — odds baixas = mais previsíveis
+    CASE
+        WHEN COALESCE(market_odd, 2.0) <= 1.3 THEN 18
+        WHEN market_odd <= 1.6 THEN 20   -- sweet spot
+        WHEN market_odd <= 2.0 THEN 17
+        WHEN market_odd <= 2.5 THEN 14
+        WHEN market_odd <= 3.5 THEN 10
+        WHEN market_odd <= 5.0 THEN 6
+        ELSE 3
+    END
+    +
+    -- FATOR 3: Probabilidade do modelo (máx 20 pts)
+    CASE
+        WHEN COALESCE(model_prob, 0) * 100 >= 75 THEN 20
+        WHEN model_prob * 100 >= 60 THEN 17
+        WHEN model_prob * 100 >= 50 THEN 14
+        WHEN model_prob * 100 >= 40 THEN 10
+        WHEN model_prob * 100 >= 30 THEN 6
+        ELSE 3
+    END
+    +
+    -- FATOR 4: Qualidade dos dados (estimativa: 7 pts para dados com odds reais)
+    7
+    +
+    -- FATOR 5: Condições contextuais (estimativa: 8 pts padrão)
+    8
+    +
+    -- FATOR 7: Concordância modelo-mercado (máx 10 pts)
+    CASE
+        WHEN COALESCE(market_odd, 0) > 0 AND COALESCE(model_prob, 0) > 0 THEN
+            CASE
+                WHEN (model_prob / (1.0 / market_odd)) BETWEEN 1.03 AND 1.25 THEN 10
+                WHEN (model_prob / (1.0 / market_odd)) BETWEEN 1.01 AND 1.50 THEN 6
+                WHEN (model_prob / (1.0 / market_odd)) > 1.50 THEN 2
+                ELSE 0
+            END
+        ELSE 5
+    END
+))
+WHERE confidence_score = 0 OR confidence_score IS NULL;
+
+-- ═══════════════════════════════════════════════════════
+-- CORREÇÃO: Jogos do dia 09/02/2026 foram analisados pré-jogo
+-- (a análise original foi feita antes dos jogos começarem)
+-- ═══════════════════════════════════════════════════════
+UPDATE opportunities
+SET analysis_type = 'PRE_JOGO'
+WHERE match_date = '2026-02-09'
+  AND analysis_type = 'RETROATIVA';

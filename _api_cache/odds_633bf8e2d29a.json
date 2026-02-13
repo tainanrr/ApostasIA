@@ -1,1 +1,1 @@
-{"_cached_at": "2026-02-08T23:02:47.085362", "_endpoint": "odds", "_params": {"fixture": 1471692}, "data": {"get": "odds", "parameters": {"fixture": "1471692"}, "errors": [], "results": 0, "paging": {"current": 1, "total": 1}, "response": []}}
+{"_cached_at": "2026-02-09T21:30:36.071575", "_endpoint": "odds", "_params": {"fixture": 1471692}, "data": {"get": "odds", "parameters": {"fixture": "1471692"}, "errors": [], "results": 0, "paging": {"current": 1, "total": 1}, "response": []}}

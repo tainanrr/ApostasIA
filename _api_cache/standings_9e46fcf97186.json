@@ -1,0 +1,1 @@
+{"_cached_at": "2026-02-10T13:55:52.193925", "_endpoint": "standings", "_params": {"league": 712, "season": 2026}, "data": {"get": "standings", "parameters": {"league": "712", "season": "2026"}, "errors": [], "results": 0, "paging": {"current": 1, "total": 1}, "response": []}}

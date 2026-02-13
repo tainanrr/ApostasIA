@@ -1,0 +1,1 @@
+{"_cached_at": "2026-02-10T13:35:39.154001", "_endpoint": "team_history", "_params": {"team": 0, "league": 0, "last": 10}, "data": {"team_id": 0, "all_matches": [], "league_matches": [], "ev_analysis": {"all_analysis": {}, "league_analysis": {}, "player_rankings": [], "top_opportunities": []}}}

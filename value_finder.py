@@ -12,6 +12,7 @@ Implementa:
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Optional
 import unicodedata
 
@@ -322,6 +323,8 @@ class ValueOpportunity:
     bookmaker: str = "N/D"
     data_quality: float = 0.0
     odds_suspect: bool = False  # True = possível inversão casa/fora
+    confidence_score: float = 0.0  # Score numérico de confiança (0-100)
+    analysis_type: str = "PRE_JOGO"  # "PRE_JOGO" ou "RETROATIVA"
     result_status: str = "PENDENTE"  # GREEN, RED, VOID, PENDENTE
     result_score: str = ""           # ex: "2-1"
     result_ht_score: str = ""        # ex: "1-0" (primeiro tempo)
@@ -478,46 +481,185 @@ def fractional_kelly(model_prob: float, market_odd: float,
 # 3. CLASSIFICAÇÃO DE CONFIANÇA
 # ═══════════════════════════════════════════════════════
 
+def calculate_confidence_score(
+    edge: float,
+    model_prob: float,
+    market_odd: float,
+    data_quality: float = 0.5,
+    weather_stable: bool = True,
+    fatigue_free: bool = True,
+    has_real_odds: bool = True,
+    has_real_standings: bool = True,
+    games_played_min: int = 10,
+    model_xg_suspicious: bool = False,
+) -> tuple[str, float]:
+    """
+    Sistema de confiança recalibrado com base em dados reais (1.183 apostas analisadas).
+
+    Descobertas dos dados reais:
+    - Edges muito altos (>30%) têm hit rate MENOR (22% no 09/02 vs 63% para 0-10%)
+    - Odds baixas (<2.0) correlacionam com maior taxa de acerto
+    - Mercados de alta probabilidade (Under conservador, Dupla Chance) são mais previsíveis
+    - Confiança ALTO com threshold simples de edge gerava 71% retroativo mas 49.7% real
+    - Data quality e presença de dados reais são fatores críticos
+
+    Score final = soma ponderada de fatores (0-100), mapeado para ALTO/MÉDIO/BAIXO.
+
+    Retorna (confidence_label, confidence_score)
+    """
+    score = 0.0
+
+    # ═══ FATOR 1: EDGE (máx 25 pts) ═══
+    # Edges moderados (5-15%) são os mais confiáveis
+    # Edges muito altos frequentemente indicam dados incorretos
+    edge_pct = edge * 100
+    if edge_pct <= 0:
+        score += 0
+    elif edge_pct <= 5:
+        score += 10  # Edge baixo mas existente
+    elif edge_pct <= 10:
+        score += 25  # Sweet spot
+    elif edge_pct <= 15:
+        score += 22  # Bom, mas começa a diminuir
+    elif edge_pct <= 25:
+        score += 15  # Moderadamente confiável
+    elif edge_pct <= 40:
+        score += 8   # Edge alto — possível anomalia
+    else:
+        score += 3   # Edge extremo — provável erro de dados
+
+    # ═══ FATOR 2: ODDS (máx 20 pts) ═══
+    # Odds baixas = eventos mais prováveis = mais previsíveis
+    if market_odd <= 1.3:
+        score += 18  # Muito favorito — alta previsibilidade
+    elif market_odd <= 1.6:
+        score += 20  # Sweet spot (favorito com valor)
+    elif market_odd <= 2.0:
+        score += 17  # Favorito moderado
+    elif market_odd <= 2.5:
+        score += 14  # Neutro
+    elif market_odd <= 3.5:
+        score += 10  # Underdog moderado
+    elif market_odd <= 5.0:
+        score += 6   # Underdog
+    else:
+        score += 3   # Grande underdog — baixa previsibilidade
+
+    # ═══ FATOR 3: PROBABILIDADE DO MODELO (máx 20 pts) ═══
+    # Probabilidades mais altas = mais previsíveis
+    prob_pct = model_prob * 100 if model_prob <= 1 else model_prob
+    if prob_pct >= 75:
+        score += 20
+    elif prob_pct >= 60:
+        score += 17
+    elif prob_pct >= 50:
+        score += 14
+    elif prob_pct >= 40:
+        score += 10
+    elif prob_pct >= 30:
+        score += 6
+    else:
+        score += 3
+
+    # ═══ FATOR 4: QUALIDADE DOS DADOS (máx 15 pts) ═══
+    # Dados reais são fundamentais para previsões confiáveis
+    dq_score = data_quality if data_quality <= 1 else data_quality / 100
+    score += dq_score * 10  # 0-10 pts baseado na qualidade
+
+    if has_real_odds:
+        score += 3  # Bônus por odds reais
+    if has_real_standings:
+        score += 2  # Bônus por standings reais
+
+    # ═══ FATOR 5: CONDIÇÕES CONTEXTUAIS (máx 10 pts) ═══
+    ctx_score = 10
+    if not weather_stable:
+        ctx_score -= 4  # Penalidade por clima instável
+    if not fatigue_free:
+        ctx_score -= 4  # Penalidade por fadiga
+    if games_played_min < 5:
+        ctx_score -= 3  # Poucos jogos = dados limitados
+    elif games_played_min < 10:
+        ctx_score -= 1
+    score += max(0, ctx_score)
+
+    # ═══ FATOR 6: MODELO SUSPEITO (penalidade máx -15 pts) ═══
+    if model_xg_suspicious:
+        if edge_pct > 30:
+            score -= 15  # Forte penalidade
+        else:
+            score -= 8   # Penalidade moderada
+
+    # ═══ FATOR 7: CONCORDÂNCIA MODELO-MERCADO (máx 10 pts) ═══
+    # Se a prob do modelo e a prob implícita da odd apontam na mesma direção
+    # mas com edge positivo, é mais confiável
+    implied_prob = 1.0 / market_odd if market_odd > 0 else 0
+    prob_ratio = model_prob / max(0.01, implied_prob)
+    if 1.03 <= prob_ratio <= 1.25:
+        score += 10  # Concordância forte com edge moderado (sweet spot)
+    elif 1.01 <= prob_ratio <= 1.50:
+        score += 6   # Concordância razoável
+    elif prob_ratio > 1.50:
+        score += 2   # Divergência significativa — menos confiável
+    else:
+        score += 0   # Sem edge real
+
+    # Clamp entre 0 e 100
+    score = max(0, min(100, score))
+
+    # ═══ CLASSIFICAÇÃO FINAL ═══
+    # Recalibrado: thresholds baseados na distribuição real de performance
+    if score >= 65:
+        label = "ALTO"
+    elif score >= 42:
+        label = "MÉDIO"
+    else:
+        label = "BAIXO"
+
+    return label, round(score, 1)
+
+
 def classify_confidence(edge: float, model_prob: float,
                          weather_stable: bool = True,
-                         fatigue_free: bool = True) -> str:
+                         fatigue_free: bool = True,
+                         market_odd: float = 2.0,
+                         data_quality: float = 0.5,
+                         has_real_odds: bool = True,
+                         has_real_standings: bool = True,
+                         games_played_min: int = 10,
+                         model_xg_suspicious: bool = False) -> tuple[str, float]:
     """
-    Classifica a confiança da oportunidade.
-
-    Critérios:
-        ALTO:  Edge > 10% + prob > 40% + sem fatores adversos
-        MÉDIO: Edge > 5% OU (Edge > 7% com fatores adversos)
-        BAIXO: Edge > 3% mas com incertezas
+    Classifica a confiança da oportunidade usando o sistema recalibrado.
+    Retorna (confidence_label, confidence_score).
     """
-    if edge > 0.10 and model_prob > 0.40 and weather_stable and fatigue_free:
-        return "ALTO"
-    elif edge > 0.08 and model_prob > 0.35:
-        return "ALTO"
-    elif edge > 0.05:
-        if not weather_stable or not fatigue_free:
-            return "MÉDIO"
-        return "MÉDIO"
-    elif edge > 0.03:
-        return "BAIXO"
-    else:
-        return "BAIXO"
+    return calculate_confidence_score(
+        edge=edge,
+        model_prob=model_prob,
+        market_odd=market_odd,
+        data_quality=data_quality,
+        weather_stable=weather_stable,
+        fatigue_free=fatigue_free,
+        has_real_odds=has_real_odds,
+        has_real_standings=has_real_standings,
+        games_played_min=games_played_min,
+        model_xg_suspicious=model_xg_suspicious,
+    )
 
 
-def _downgrade_confidence_if_suspicious(conf: str, model_xg_suspicious: bool,
-                                         edge: float) -> str:
+def _downgrade_confidence_if_suspicious(conf: str, conf_score: float,
+                                         model_xg_suspicious: bool,
+                                         edge: float) -> tuple[str, float]:
     """
-    Rebaixa a confiança se o xG do modelo diverge muito do xG naive (overall stats).
-    Isso captura falsos positivos gerados por amostras pequenas de casa/fora.
-
-    Se edge > 50% E modelo é suspeito → sempre BAIXO.
-    Se modelo é suspeito → rebaixa em 1 nível (ALTO→MÉDIO, MÉDIO→BAIXO).
+    Rebaixa a confiança se o xG do modelo diverge muito do xG naive.
+    NOTA: No novo sistema, model_xg_suspicious já é fatorado no score.
+    Esta função é mantida como camada adicional de segurança.
     """
     if not model_xg_suspicious:
-        return conf
-    if edge > 0.50:
-        return "BAIXO"
-    downgrade = {"ALTO": "MÉDIO", "MÉDIO": "BAIXO", "BAIXO": "BAIXO"}
-    return downgrade.get(conf, conf)
+        return conf, conf_score
+    # Penalidade já aplicada no score; aqui só garante o cap para edges extremos
+    if edge > 0.50 and conf != "BAIXO":
+        return "BAIXO", min(conf_score, 30.0)
+    return conf, conf_score
 
 
 # ═══════════════════════════════════════════════════════
@@ -880,8 +1022,14 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
         if edge >= config.MIN_EDGE_THRESHOLD:
             fair_odd = round(1.0 / max(0.01, model_p), 2)
             kelly = fractional_kelly(model_p, market_o)
-            conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
-            conf = _downgrade_confidence_if_suspicious(conf, model_xg_suspicious, edge)
+            conf, conf_score = classify_confidence(
+                edge, model_p, weather_stable, fatigue_free,
+                market_odd=market_o, data_quality=match.data_quality_score,
+                has_real_odds=match.has_real_odds, has_real_standings=match.has_real_standings,
+                games_played_min=min(home.games_played, away.games_played),
+                model_xg_suspicious=model_xg_suspicious,
+            )
+            conf, conf_score = _downgrade_confidence_if_suspicious(conf, conf_score, model_xg_suspicious, edge)
             reasoning = generate_reasoning(match, f"1x2 - {label}", edge, model_p)
 
             opportunities.append(ValueOpportunity(
@@ -914,6 +1062,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 bookmaker=match.odds.bookmaker,
                 data_quality=match.data_quality_score,
                 odds_suspect=getattr(match, 'odds_home_away_suspect', False),
+                confidence_score=conf_score,
             ))
 
     # ── MERCADO DUPLA CHANCE (Casa ou Empate / Fora ou Empate) ──
@@ -954,8 +1103,14 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
             fair_odd = round(1.0 / max(0.01, model_p), 2)
             implied_p = 1.0 / market_o if market_o > 0 else 0
             kelly = fractional_kelly(model_p, market_o)
-            conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
-            conf = _downgrade_confidence_if_suspicious(conf, model_xg_suspicious, edge)
+            conf, conf_score = classify_confidence(
+                edge, model_p, weather_stable, fatigue_free,
+                market_odd=market_o, data_quality=match.data_quality_score,
+                has_real_odds=match.has_real_odds, has_real_standings=match.has_real_standings,
+                games_played_min=min(home.games_played, away.games_played),
+                model_xg_suspicious=model_xg_suspicious,
+            )
+            conf, conf_score = _downgrade_confidence_if_suspicious(conf, conf_score, model_xg_suspicious, edge)
             reasoning = generate_reasoning(match, f"Dupla Chance - {label}", edge, model_p)
 
             opportunities.append(ValueOpportunity(
@@ -988,6 +1143,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 bookmaker=match.odds.bookmaker,
                 data_quality=match.data_quality_score,
                 odds_suspect=getattr(match, 'odds_home_away_suspect', False),
+                confidence_score=conf_score,
             ))
 
     # ── MERCADO OVER/UNDER 2.5 ──
@@ -1016,8 +1172,14 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
         if edge >= config.MIN_EDGE_THRESHOLD:
             fair_odd = round(1.0 / max(0.01, model_p), 2)
             kelly = fractional_kelly(model_p, market_o)
-            conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
-            conf = _downgrade_confidence_if_suspicious(conf, model_xg_suspicious, edge)
+            conf, conf_score = classify_confidence(
+                edge, model_p, weather_stable, fatigue_free,
+                market_odd=market_o, data_quality=match.data_quality_score,
+                has_real_odds=match.has_real_odds, has_real_standings=match.has_real_standings,
+                games_played_min=min(home.games_played, away.games_played),
+                model_xg_suspicious=model_xg_suspicious,
+            )
+            conf, conf_score = _downgrade_confidence_if_suspicious(conf, conf_score, model_xg_suspicious, edge)
             reasoning = generate_reasoning(match, f"BTTS - {label}", edge, model_p)
 
             opportunities.append(ValueOpportunity(
@@ -1049,6 +1211,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 bookmaker=match.odds.bookmaker,
                 data_quality=match.data_quality_score,
                 odds_suspect=getattr(match, 'odds_home_away_suspect', False),
+                confidence_score=conf_score,
             ))
 
     # ═══════════════════════════════════════════════════════════
@@ -1098,8 +1261,14 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 fair_odd = round(1.0 / max(0.01, model_p), 2)
                 implied_p = 1.0 / market_o
                 kelly = fractional_kelly(model_p, market_o)
-                conf = classify_confidence(edge, model_p, weather_stable, fatigue_free)
-                conf = _downgrade_confidence_if_suspicious(conf, model_xg_suspicious, edge)
+                conf, conf_score = classify_confidence(
+                    edge, model_p, weather_stable, fatigue_free,
+                    market_odd=market_o, data_quality=match.data_quality_score,
+                    has_real_odds=match.has_real_odds, has_real_standings=match.has_real_standings,
+                    games_played_min=min(home.games_played, away.games_played),
+                    model_xg_suspicious=model_xg_suspicious,
+                )
+                conf, conf_score = _downgrade_confidence_if_suspicious(conf, conf_score, model_xg_suspicious, edge)
 
                 # Identificar bookmaker correto (pode vir de _source para mercados especiais)
                 source_bk = market_odds_dict.get("_source", "")
@@ -1137,6 +1306,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                     bookmaker=bk_name,
                     data_quality=match.data_quality_score,
                     odds_suspect=getattr(match, 'odds_home_away_suspect', False),
+                    confidence_score=conf_score,
                 ))
 
     # ═══ DEDUPLICAÇÃO FINAL ═══
@@ -1164,6 +1334,47 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     return deduped
 
 
+def determine_analysis_type(match_date: str, match_time: str) -> str:
+    """
+    Determina se a análise é PRE_JOGO ou RETROATIVA.
+
+    PRE_JOGO:    análise feita ANTES do início do jogo (>30 min antes do kickoff)
+    RETROATIVA:  análise feita DEPOIS do jogo já ter começado ou terminado
+
+    Usa o horário atual em Brasília comparado com o horário de início do jogo.
+    """
+    try:
+        now_br = datetime.now(config.BR_TIMEZONE)
+
+        # Parse da data e hora do jogo
+        # match_time pode estar em formato "HH:MM" (já em Brasília)
+        if match_date and match_time:
+            match_dt_str = f"{match_date} {match_time}"
+            try:
+                match_dt = datetime.strptime(match_dt_str, "%Y-%m-%d %H:%M")
+                match_dt = match_dt.replace(tzinfo=config.BR_TIMEZONE)
+            except ValueError:
+                # Tentar formato alternativo
+                try:
+                    match_dt = datetime.strptime(match_dt_str, "%Y-%m-%d %H:%M:%S")
+                    match_dt = match_dt.replace(tzinfo=config.BR_TIMEZONE)
+                except ValueError:
+                    return "PRE_JOGO"  # Se não conseguir parsear, assumir pré-jogo
+
+            # Se a análise está sendo feita mais de 30 min antes do jogo → PRE_JOGO
+            # Se o jogo já começou ou está muito próximo → RETROATIVA
+            minutes_until_kickoff = (match_dt - now_br).total_seconds() / 60.0
+
+            if minutes_until_kickoff > 30:
+                return "PRE_JOGO"
+            else:
+                return "RETROATIVA"
+        else:
+            return "PRE_JOGO"
+    except Exception:
+        return "PRE_JOGO"
+
+
 def find_all_value(matches: list[MatchAnalysis]) -> list[ValueOpportunity]:
     """
     Escaneia todas as partidas buscando oportunidades de valor.
@@ -1189,6 +1400,8 @@ def find_all_value(matches: list[MatchAnalysis]) -> list[ValueOpportunity]:
     all_opps = []
     processed_count = 0
     rejected_by_scan = 0
+    pre_game_count = 0
+    retro_count = 0
     
     for match in matches:
         # Só processar partidas elegíveis: precisa ter odds OU standings reais + qualidade mínima
@@ -1197,6 +1410,15 @@ def find_all_value(matches: list[MatchAnalysis]) -> list[ValueOpportunity]:
             
         opps = scan_match_for_value(match)
         if opps:
+            # Determinar tipo de análise para cada oportunidade do match
+            analysis_type = determine_analysis_type(match.match_date, match.match_time)
+            for opp in opps:
+                opp.analysis_type = analysis_type
+                if analysis_type == "PRE_JOGO":
+                    pre_game_count += 1
+                else:
+                    retro_count += 1
+
             all_opps.extend(opps)
             processed_count += 1
         else:
@@ -1212,13 +1434,16 @@ def find_all_value(matches: list[MatchAnalysis]) -> list[ValueOpportunity]:
     all_opps.sort(key=lambda x: x.edge, reverse=True)
 
     print(f"[VALUE] {len(all_opps)} oportunidades com Edge >= {config.MIN_EDGE_THRESHOLD*100:.0f}% encontradas")
+    print(f"[VALUE] Tipo: 🟢 {pre_game_count} Pré-Jogo | 🔵 {retro_count} Retroativa")
 
     # Estatísticas
     if all_opps:
         high = sum(1 for o in all_opps if o.confidence == "ALTO")
         med = sum(1 for o in all_opps if o.confidence == "MÉDIO")
         low = sum(1 for o in all_opps if o.confidence == "BAIXO")
+        avg_score = sum(o.confidence_score for o in all_opps) / len(all_opps)
         print(f"[VALUE] Distribuição: ALTO={high} | MÉDIO={med} | BAIXO={low}")
+        print(f"[VALUE] Score médio de confiança: {avg_score:.1f}/100")
         print(f"[VALUE] Maior Edge: {all_opps[0].edge_pct} em "
               f"{all_opps[0].home_team} vs {all_opps[0].away_team} ({all_opps[0].selection})")
 

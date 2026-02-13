@@ -110,7 +110,7 @@
         .btn-recalc-big { padding: 14px 28px; font-size: 15px; margin-top: 10px; display: block; }
 
         /* ── MAIN ── */
-        main { max-width: 1800px; margin: 0 auto; padding: 24px 24px 60px; }
+        main { max-width: 2000px; margin: 0 auto; padding: 24px 24px 60px; }
 
         /* ── WELCOME / EMPTY STATE ── */
         .welcome-state {
@@ -241,7 +241,8 @@
             background: var(--bg-card); border: 1px solid var(--border);
             border-radius: var(--radius-lg); overflow-x: auto;
         }
-        table { width: 100%; border-collapse: collapse; min-width: 1450px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1650px; }
+        #match-table { min-width: 1100px; }
         thead th {
             background: var(--bg-secondary); padding: 8px 8px;
             font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px;
@@ -353,6 +354,8 @@
         }
         .date-picker-group input[type="date"]:focus,
         .date-picker-group input[type="datetime-local"]:focus { border-color: var(--accent-green); outline: none; }
+        .date-picker-group.loading { border-color: var(--accent-yellow); animation: pulse-border 1s infinite; }
+        @keyframes pulse-border { 0%,100% { border-color: var(--accent-yellow); } 50% { border-color: var(--border); } }
 
         /* Column datetime range filter */
         .col-filter-datetime {
@@ -583,6 +586,227 @@
         .dash-bd-head > div:nth-child(n+2) { text-align: center; }
         .dash-bd-head > div:nth-child(5) { text-align: right; }
         .dash-bd-head > div:nth-child(6) { text-align: right; }
+
+        /* ── COMBO ANALYZER ── */
+        .combo-analyzer {
+            margin-top: 32px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: linear-gradient(135deg, rgba(139,92,246,0.04), rgba(6,182,212,0.04));
+            overflow: hidden;
+        }
+        .combo-analyzer-header {
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+        }
+        .combo-analyzer-title {
+            font-size: 16px; font-weight: 800; color: var(--text-primary);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .combo-analyzer-title .ca-icon {
+            background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-size: 22px;
+        }
+        .combo-analyzer-controls {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        }
+        .ca-ctrl {
+            display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary);
+        }
+        .ca-ctrl label { font-weight: 600; white-space: nowrap; }
+        .ca-ctrl select, .ca-ctrl input[type="number"] {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+            color: var(--text-primary); font-size: 11px; padding: 5px 8px; outline: none;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .ca-ctrl select:focus, .ca-ctrl input:focus { border-color: var(--accent-purple); }
+        .ca-ctrl select { min-width: 100px; cursor: pointer; }
+        .ca-ctrl input[type="number"] { width: 55px; }
+        .ca-depth-btns {
+            display: flex; gap: 2px;
+        }
+        .ca-depth-btn {
+            padding: 4px 10px; font-size: 10px; font-weight: 700; border: 1px solid var(--border);
+            background: var(--bg-card); color: var(--text-muted); border-radius: 4px;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .ca-depth-btn:hover { border-color: var(--accent-purple); color: var(--text-primary); }
+        .ca-depth-btn.active {
+            background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(6,182,212,0.2));
+            border-color: var(--accent-purple); color: #fff; font-weight: 800;
+        }
+        .combo-analyzer-body {
+            padding: 16px 20px 20px;
+        }
+        .ca-summary-bar {
+            display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;
+        }
+        .ca-summary-chip {
+            font-size: 11px; padding: 5px 12px; border-radius: 20px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            color: var(--text-secondary); display: flex; align-items: center; gap: 5px;
+        }
+        .ca-summary-chip strong { color: var(--text-primary); font-family: 'JetBrains Mono', monospace; }
+        .ca-cards-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px;
+        }
+        .ca-card {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 16px 18px; transition: all 0.2s; position: relative; overflow: hidden;
+        }
+        .ca-card:hover { border-color: var(--accent-purple); box-shadow: 0 0 20px rgba(139,92,246,0.08); }
+        .ca-card-rank {
+            position: absolute; top: 0; right: 0;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
+            color: #fff; font-size: 11px; font-weight: 800; padding: 4px 12px 4px 14px;
+            border-radius: 0 0 0 12px; font-family: 'JetBrains Mono', monospace;
+        }
+        .ca-card-rank.gold { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .ca-card-rank.silver { background: linear-gradient(135deg, #94a3b8, #64748b); }
+        .ca-card-rank.bronze { background: linear-gradient(135deg, #d97706, #92400e); }
+        .ca-card-name {
+            font-size: 13px; font-weight: 700; color: var(--text-primary);
+            margin-bottom: 4px; padding-right: 45px;
+            display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+        }
+        .ca-dim-tag {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700;
+        }
+        .ca-dim-tag.dim-market { background: rgba(59,130,246,0.15); color: #60a5fa; }
+        .ca-dim-tag.dim-selection { background: rgba(139,92,246,0.15); color: #a78bfa; }
+        .ca-dim-tag.dim-confidence { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .ca-dim-tag.dim-edge { background: rgba(0,230,138,0.15); color: var(--accent-green); }
+        .ca-dim-tag.dim-odds { background: rgba(6,182,212,0.15); color: #22d3ee; }
+        .ca-dim-tag.dim-country { background: rgba(239,68,68,0.12); color: #f87171; }
+        .ca-dim-tag.dim-league { background: rgba(167,139,250,0.12); color: #c4b5fd; }
+        .ca-dim-tag.dim-analysis { background: rgba(34,211,238,0.12); color: #67e8f9; }
+        .ca-dim-tag.dim-time { background: rgba(251,191,36,0.12); color: #fcd34d; }
+        .ca-card-score {
+            display: flex; align-items: center; gap: 6px; margin: 8px 0 10px;
+        }
+        .ca-score-bar {
+            flex: 1; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden;
+        }
+        .ca-score-fill {
+            height: 100%; border-radius: 4px;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-cyan));
+            transition: width 0.4s ease;
+        }
+        .ca-score-val {
+            font-size: 13px; font-weight: 800; font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-purple); min-width: 32px; text-align: right;
+        }
+        .ca-card-metrics {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px;
+        }
+        .ca-metric {
+            text-align: center; padding: 6px 4px;
+            background: rgba(255,255,255,0.02); border-radius: 6px;
+        }
+        .ca-metric-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.3px; }
+        .ca-metric-val {
+            font-size: 14px; font-weight: 800; font-family: 'JetBrains Mono', monospace;
+            margin-top: 2px;
+        }
+        .ca-card-actions {
+            display: flex; gap: 6px; margin-top: 8px;
+        }
+        .ca-btn {
+            flex: 1; padding: 6px 10px; border-radius: 6px; font-size: 10px; font-weight: 700;
+            border: 1px solid var(--border); cursor: pointer; text-align: center; transition: all 0.15s;
+        }
+        .ca-btn-apply {
+            background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15));
+            color: var(--accent-purple); border-color: rgba(139,92,246,0.4);
+        }
+        .ca-btn-apply:hover { background: linear-gradient(135deg, rgba(139,92,246,0.4), rgba(6,182,212,0.3)); color: #fff; }
+        .ca-btn-save {
+            background: rgba(0,230,138,0.08); color: var(--accent-green); border-color: rgba(0,230,138,0.3);
+        }
+        .ca-btn-save:hover { background: rgba(0,230,138,0.2); color: #fff; }
+        .ca-empty {
+            text-align: center; padding: 40px 20px; color: var(--text-muted);
+        }
+        .ca-empty-icon { font-size: 36px; margin-bottom: 12px; }
+
+        /* Variable mode toggles */
+        .ca-vars-panel {
+            margin-bottom: 16px; padding: 12px 14px;
+            background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+        .ca-vars-title {
+            font-size: 11px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .ca-vars-title .ca-vars-legend {
+            font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 10px;
+            margin-left: auto; display: flex; gap: 10px;
+        }
+        .ca-vars-legend span { display: inline-flex; align-items: center; gap: 3px; }
+        .ca-vars-grid {
+            display: flex; flex-wrap: wrap; gap: 6px;
+        }
+        .ca-var-chip {
+            display: flex; align-items: center; gap: 0; border-radius: 6px; overflow: hidden;
+            border: 1px solid var(--border); transition: all 0.15s; font-size: 10px;
+        }
+        .ca-var-chip-label {
+            padding: 5px 10px; font-weight: 600; color: var(--text-primary);
+            background: var(--bg-card); white-space: nowrap;
+        }
+        .ca-var-chip-btns { display: flex; }
+        .ca-var-btn {
+            padding: 5px 7px; border: none; cursor: pointer; font-size: 9px;
+            font-weight: 700; transition: all 0.15s; line-height: 1;
+            background: var(--bg-secondary); color: var(--text-muted);
+            border-left: 1px solid var(--border);
+        }
+        .ca-var-btn:hover { color: var(--text-primary); }
+        .ca-var-btn.vmode-auto.active {
+            background: rgba(59,130,246,0.2); color: var(--accent-blue); font-weight: 800;
+        }
+        .ca-var-btn.vmode-force.active {
+            background: rgba(0,230,138,0.2); color: var(--accent-green); font-weight: 800;
+        }
+        .ca-var-btn.vmode-exclude.active {
+            background: rgba(239,68,68,0.2); color: var(--accent-red); font-weight: 800;
+        }
+        .ca-var-chip.state-exclude {
+            opacity: 0.45; border-color: rgba(239,68,68,0.3);
+        }
+        .ca-var-chip.state-exclude .ca-var-chip-label {
+            text-decoration: line-through; color: var(--text-muted);
+        }
+        .ca-var-chip.state-force {
+            border-color: rgba(0,230,138,0.4);
+            box-shadow: 0 0 8px rgba(0,230,138,0.08);
+        }
+        .ca-var-chip.state-force .ca-var-chip-label {
+            color: var(--accent-green);
+        }
+        .ca-heatmap {
+            margin-top: 20px;
+        }
+        .ca-heatmap-title {
+            font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;
+            letter-spacing: 0.5px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+        }
+        .ca-heatmap-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px;
+        }
+        .ca-heat-cell {
+            padding: 10px 8px; border-radius: 8px; text-align: center; cursor: pointer;
+            border: 1px solid transparent; transition: all 0.2s; position: relative;
+        }
+        .ca-heat-cell:hover { transform: scale(1.03); box-shadow: 0 4px 12px rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.1); }
+        .ca-heat-cell-name { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ca-heat-cell-val { font-size: 15px; font-weight: 800; font-family: 'JetBrains Mono', monospace; margin-top: 3px; }
+        .ca-heat-cell-sub { font-size: 9px; color: rgba(255,255,255,0.5); margin-top: 2px; }
 
         /* Utility */
         .txt-green { color: var(--accent-green); }
@@ -954,7 +1178,81 @@
             .welcome-info { flex-direction: column; align-items: center; }
             .header-right { flex-wrap: wrap; }
         }
+        .btn-export {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: #fff;
+            border: none;
+            padding: 5px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-export:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(16,185,129,0.3); }
+        .btn-export:disabled { opacity: 0.6; cursor: wait; }
+
+        /* ── FILTER VIEWS ── */
+        .filter-views-bar {
+            display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+            padding: 8px 0;
+        }
+        .filter-views-bar .fv-label {
+            font-size: 11px; color: var(--text-muted); font-weight: 600;
+            white-space: nowrap; margin-right: 4px;
+        }
+        .fv-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-secondary); padding: 4px 10px; border-radius: 16px;
+            font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .fv-chip:hover { border-color: var(--accent-green); color: var(--text-primary); }
+        .fv-chip.fv-active { background: var(--accent-green-dim); border-color: var(--accent-green); color: var(--accent-green); }
+        .fv-chip .fv-delete {
+            width: 14px; height: 14px; border-radius: 50%; display: inline-flex;
+            align-items: center; justify-content: center; font-size: 9px;
+            background: rgba(239,68,68,0.15); color: var(--accent-red);
+            opacity: 0; transition: opacity 0.15s; cursor: pointer;
+        }
+        .fv-chip:hover .fv-delete { opacity: 1; }
+        .fv-chip .fv-delete:hover { background: var(--accent-red); color: #fff; }
+        .fv-btn-save {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: var(--accent-blue-dim); border: 1px solid rgba(59,130,246,0.3);
+            color: var(--accent-blue); padding: 4px 10px; border-radius: 16px;
+            font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .fv-btn-save:hover { border-color: var(--accent-blue); background: rgba(59,130,246,0.25); }
+        .fv-save-modal {
+            position: fixed; inset: 0; z-index: 10000; background: rgba(10,14,23,0.85);
+            backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center;
+        }
+        .fv-save-modal.show { display: flex; }
+        .fv-save-modal-box {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 24px; width: 380px; max-width: 90vw;
+        }
+        .fv-save-modal-box h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+        .fv-save-modal-box input {
+            width: 100%; background: var(--bg-secondary); border: 1px solid var(--border);
+            color: var(--text-primary); padding: 10px 14px; border-radius: var(--radius-sm);
+            font-size: 14px; font-family: 'Inter', sans-serif; margin-bottom: 16px;
+        }
+        .fv-save-modal-box input:focus { border-color: var(--accent-green); outline: none; }
+        .fv-save-modal-box .fv-btns { display: flex; gap: 8px; justify-content: flex-end; }
+        .fv-save-modal-box .fv-btns button {
+            padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600;
+            cursor: pointer; border: none; font-family: 'Inter', sans-serif; transition: all 0.15s;
+        }
+        .fv-save-modal-box .fv-btn-cancel { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border); }
+        .fv-save-modal-box .fv-btn-cancel:hover { background: var(--border); color: var(--text-primary); }
+        .fv-save-modal-box .fv-btn-confirm { background: var(--gradient-green); color: #000; font-weight: 700; }
+        .fv-save-modal-box .fv-btn-confirm:hover { transform: translateY(-1px); }
     </style>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -982,6 +1280,7 @@
             <input type="date" id="date-start" title="Data início da análise">
             <label>Até:</label>
             <input type="date" id="date-end" title="Data fim da análise">
+            <button id="btn-load-dates" onclick="_triggerDateLoad(true)" title="Buscar dados" style="background:var(--accent-green);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;font-weight:600">🔍</button>
         </div>
         <div class="api-quota" id="api-quota">
             <span>API:</span>
@@ -1029,11 +1328,18 @@
                 <input type="date" id="w-date-start" style="font-size:13px;padding:6px 10px">
                 <label style="font-size:12px">Até:</label>
                 <input type="date" id="w-date-end" style="font-size:13px;padding:6px 10px">
+                <button onclick="_triggerDateLoad(true)" title="Buscar dados" style="background:var(--accent-green);color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600">🔍 Buscar</button>
             </div>
         </div>
-        <button class="btn-run-big" id="btn-run-big" onclick="executeEngine()">▶ Executar Análise Completa</button>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+            <button class="btn-run-big" id="btn-run-big" onclick="executeEngine()">▶ Executar Análise</button>
+            <button class="btn-run-big" id="btn-run-retro" onclick="executeEngine(true)" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)" title="Roda análise + verifica resultados automaticamente">📊 Análise Retroativa + Resultados</button>
+        </div>
         <button class="btn-recalc-big" id="btn-recalc-big" onclick="recalculateEngine()">🔄 Recalcular (0 API calls)</button>
-        <div class="welcome-cost">Custo estimado: ~620 requests por execução | Recalcular: 0 requests</div>
+        <div class="welcome-cost">
+            💡 <strong>Análise Retroativa:</strong> Selecione datas passadas nos campos acima para mapear oportunidades históricas e verificar resultados.<br>
+            Custo estimado: ~310 requests/dia | Recalcular: 0 requests
+        </div>
         <div id="w-last-run" style="margin-top:16px;font-size:13px;color:var(--text-muted)"></div>
         <div id="w-run-history" style="margin-top:12px;font-size:11px;color:var(--text-muted)"></div>
     </div>
@@ -1061,8 +1367,7 @@
         <div class="tabs">
             <button class="tab active" data-tab="opportunities" onclick="switchTab('opportunities')">🎯 Oportunidades +EV</button>
             <button class="tab" data-tab="matches" onclick="switchTab('matches')">⚽ Todos os Jogos</button>
-            <button class="tab" data-tab="leagues" onclick="switchTab('leagues')">🏆 Ligas</button>
-            <button class="tab" data-tab="performance" onclick="switchTab('performance'); loadDashboard()">📊 Dashboard</button>
+            <button class="tab" data-tab="performance" onclick="switchTab('performance')">📊 Dashboard</button>
         </div>
 
         <!-- OPPORTUNITIES -->
@@ -1072,9 +1377,15 @@
                 <span class="section-count" id="opp-count">0</span>
                 <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:8px">Clique nas colunas para ordenar | Use os filtros abaixo dos cabeçalhos</span>
             </div>
-            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
-                <button onclick="clearAllFilters()" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:11px">🔄 Limpar Filtros</button>
+            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+                <button onclick="clearAllFiltersGlobal()" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:11px">🔄 Limpar Filtros</button>
+                <button class="btn-export" id="btn-export" onclick="exportToExcel()">📥 Exportar Excel</button>
                 <span id="filter-status" style="font-size:11px;color:var(--text-muted)"></span>
+            </div>
+            <div class="filter-views-bar" id="fv-bar-main">
+                <span class="fv-label">📌 Visões:</span>
+                <div id="fv-chips-main"></div>
+                <button class="fv-btn-save" onclick="openSaveFilterView('main')">💾 Salvar Visão</button>
             </div>
             <div class="table-wrap">
                 <table id="opp-table">
@@ -1093,6 +1404,9 @@
                             <th class="sortable" data-sort="edge" data-type="num" onclick="sortTable(this)">Edge</th>
                             <th class="sortable" data-sort="prob" data-type="num" onclick="sortTable(this)">Prob.</th>
                             <th class="sortable" data-sort="confidence" data-type="str" onclick="sortTable(this)">Nível</th>
+                            <th class="sortable" data-sort="conf_score" data-type="num" onclick="sortTable(this)">Score</th>
+                            <th class="sortable" data-sort="analysis_type" data-type="str" onclick="sortTable(this)">Tipo</th>
+                            <th class="sortable" data-sort="pnl" data-type="num" onclick="sortTable(this)">P&L</th>
                         </tr>
                         <tr class="col-filter-row">
                             <th></th>
@@ -1105,12 +1419,15 @@
                             <th><div id="cf-game-status"></div></th>
                             <th><div id="cf-result"></div></th>
                             <th><div id="cf-market"></div></th>
-                            <th><input class="col-filter" type="text" id="cf-selection" placeholder="Seleção..." oninput="applyColumnFilters()"></th>
+                            <th><div id="cf-selection"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-odd-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-odd-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-fair-odd-min" placeholder="Min" step="0.1" oninput="applyColumnFilters()"><input type="number" id="cf-fair-odd-max" placeholder="Max" step="0.1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-edge-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-edge-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
                             <th><div class="col-filter-num"><input type="number" id="cf-prob-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-prob-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
                             <th><div id="cf-confidence"></div></th>
+                            <th><div class="col-filter-num"><input type="number" id="cf-score-min" placeholder="Min" step="1" oninput="applyColumnFilters()"><input type="number" id="cf-score-max" placeholder="Max" step="1" oninput="applyColumnFilters()"></div></th>
+                            <th><div id="cf-analysis-type"></div></th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody id="opp-tbody"></tbody>
@@ -1135,35 +1452,25 @@
                 <input class="filter-input" type="text" id="filter-match-search" placeholder="Buscar time..." oninput="filterMatches()">
             </div>
             <div class="table-wrap">
-                <table>
+                <table id="match-table">
                     <thead>
                         <tr>
                             <th>Jogo</th>
                             <th>Liga</th>
                             <th>Data/Hora</th>
-                            <th>xG Casa</th>
-                            <th>xG Fora</th>
-                            <th>H%</th>
-                            <th>D%</th>
-                            <th>A%</th>
+                            <th>Status</th>
+                            <th>Resultado</th>
+                            <th>xG</th>
+                            <th>1x2</th>
                             <th>O/U 2.5</th>
                             <th>BTTS</th>
-                            <th>Corners</th>
-                            <th>Cartões</th>
                             <th>Clima</th>
+                            <th>Oportunidades</th>
                         </tr>
                     </thead>
                     <tbody id="match-tbody"></tbody>
                 </table>
             </div>
-        </div>
-
-        <!-- LEAGUES -->
-        <div class="section" id="sec-leagues">
-            <div class="section-title">
-                <span class="icon">🏆</span> Ligas Analisadas
-            </div>
-            <div class="league-grid" id="league-grid"></div>
         </div>
 
         <!-- PERFORMANCE DASHBOARD -->
@@ -1200,6 +1507,10 @@
                         <div id="df-selection"></div>
                     </div>
                     <div class="dash-filter-group">
+                        <label>🔬 Tipo Análise</label>
+                        <div id="df-analysis-type"></div>
+                    </div>
+                    <div class="dash-filter-group">
                         <label>💰 Odd Casa Min</label>
                         <input type="number" id="df-odd-min" step="0.1" placeholder="1.0" oninput="applyDashboardFilters()">
                     </div>
@@ -1223,13 +1534,14 @@
                         <label>📐 Edge Max</label>
                         <input type="number" id="df-edge-max" step="1" placeholder="100%" oninput="applyDashboardFilters()">
                     </div>
-                    <div class="dash-filter-group">
-                        <label>🏦 Bookmaker</label>
-                        <div id="df-bookmaker"></div>
-                    </div>
                     <div class="dash-filter-group" style="align-self:flex-end">
-                        <button class="btn-clear-dash" onclick="clearDashboardFilters()">🗑 Limpar</button>
+                        <button class="btn-clear-dash" onclick="clearAllFiltersGlobal()">🔄 Limpar Filtros</button>
                     </div>
+                </div>
+                <div class="filter-views-bar" style="padding:8px 0 4px">
+                    <span class="fv-label">📌 Visões:</span>
+                    <div id="fv-chips-dash"></div>
+                    <button class="fv-btn-save" onclick="openSaveFilterView('dash')">💾 Salvar Visão</button>
                 </div>
                 <div class="dash-filter-summary" id="dash-filter-summary"></div>
             </div>
@@ -1243,6 +1555,18 @@
         </div>
     </div>
 </main>
+
+<!-- SAVE FILTER VIEW MODAL -->
+<div class="fv-save-modal" id="fv-save-modal" onclick="closeSaveFilterView(event)">
+    <div class="fv-save-modal-box" onclick="event.stopPropagation()">
+        <h3>💾 Salvar Visão de Filtro</h3>
+        <input type="text" id="fv-name-input" placeholder="Nome da visão (ex: Alta Confiança, Pré-Jogo...)" maxlength="40" onkeydown="if(event.key==='Enter')confirmSaveFilterView()">
+        <div class="fv-btns">
+            <button class="fv-btn-cancel" onclick="closeSaveFilterView()">Cancelar</button>
+            <button class="fv-btn-confirm" onclick="confirmSaveFilterView()">✅ Salvar</button>
+        </div>
+    </div>
+</div>
 
 <!-- DETAIL MODAL -->
 <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
@@ -1269,6 +1593,211 @@ let stats = {};
 let apiStatus = {};
 let engineRunning = false;
 let timerInterval = null;
+
+// ═══════════════════════════════════════════
+// FILTER VIEWS SYSTEM (saved filter presets)
+// ═══════════════════════════════════════════
+const FV_STORAGE_KEY = 'apostasIA_filterViews';
+let _fvSaveTarget = 'main'; // 'main' or 'dash'
+let _fvActiveId = null; // single active view id (shared)
+
+// Mapping between main ↔ dashboard filter IDs
+const _fvFieldMap = {
+    // multi-selects main→dash
+    'ms:cf-league': 'ms:df-league', 'ms:cf-market': 'ms:df-market',
+    'ms:cf-selection': 'ms:df-selection', 'ms:cf-confidence': 'ms:df-confidence',
+    'ms:cf-analysis-type': 'ms:df-analysis-type',
+    // numeric main→dash
+    'cf-odd-min': 'df-odd-min', 'cf-odd-max': 'df-odd-max',
+    'cf-fair-odd-min': 'df-fair-odd-min', 'cf-fair-odd-max': 'df-fair-odd-max',
+    'cf-edge-min': 'df-edge-min', 'cf-edge-max': 'df-edge-max',
+};
+// Build reverse map dash→main
+const _fvFieldMapReverse = {};
+for (const [k, v] of Object.entries(_fvFieldMap)) _fvFieldMapReverse[v] = k;
+
+function _fvLoad() {
+    try { return JSON.parse(localStorage.getItem(FV_STORAGE_KEY) || '[]'); } catch { return []; }
+}
+function _fvSave(views) {
+    localStorage.setItem(FV_STORAGE_KEY, JSON.stringify(views));
+}
+
+// Convert a saved state to be used in the OTHER tab
+function _fvConvertState(state, fromTarget) {
+    const map = fromTarget === 'main' ? _fvFieldMap : _fvFieldMapReverse;
+    const converted = {};
+    for (const [key, val] of Object.entries(state)) {
+        if (key === '_sort' || key === '_source') continue;
+        const mappedKey = map[key];
+        if (mappedKey) converted[mappedKey] = val;
+    }
+    return converted;
+}
+
+// Capture current filter state for main table
+function _captureMainFilters() {
+    const state = { _source: 'main' };
+    ['cf-team'].forEach(id => { const el = document.getElementById(id); if (el && el.value) state[id] = el.value; });
+    ['cf-dt-start','cf-dt-end'].forEach(id => { const el = document.getElementById(id); if (el && el.value) state[id] = el.value; });
+    ['cf-odd-min','cf-odd-max','cf-fair-odd-min','cf-fair-odd-max','cf-edge-min','cf-edge-max','cf-prob-min','cf-prob-max','cf-score-min','cf-score-max'].forEach(id => {
+        const el = document.getElementById(id); if (el && el.value !== '') state[id] = el.value;
+    });
+    ['cf-league','cf-game-status','cf-result','cf-market','cf-selection','cf-confidence','cf-analysis-type'].forEach(id => {
+        if (msRegistry[id] && msRegistry[id].hasActiveFilter()) state['ms:'+id] = msRegistry[id].getRawSelected();
+    });
+    state._sort = { ...currentSort };
+    return state;
+}
+
+// Capture current filter state for dashboard
+function _captureDashFilters() {
+    const state = { _source: 'dash' };
+    ['df-date-start','df-date-end'].forEach(id => { const el = document.getElementById(id); if (el && el.value) state[id] = el.value; });
+    ['df-odd-min','df-odd-max','df-fair-odd-min','df-fair-odd-max','df-edge-min','df-edge-max'].forEach(id => {
+        const el = document.getElementById(id); if (el && el.value !== '') state[id] = el.value;
+    });
+    ['df-market','df-selection','df-confidence','df-country','df-league','df-analysis-type'].forEach(id => {
+        if (msRegistry[id] && msRegistry[id].hasActiveFilter()) state['ms:'+id] = msRegistry[id].getRawSelected();
+    });
+    return state;
+}
+
+// Apply a saved filter state to main
+function _applyMainFilters(state) {
+    ['cf-team','cf-dt-start','cf-dt-end','cf-odd-min','cf-odd-max','cf-fair-odd-min','cf-fair-odd-max','cf-edge-min','cf-edge-max','cf-prob-min','cf-prob-max','cf-score-min','cf-score-max'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = state[id] || '';
+    });
+    ['cf-league','cf-game-status','cf-result','cf-market','cf-selection','cf-confidence','cf-analysis-type'].forEach(id => {
+        if (msRegistry[id]) {
+            const key = 'ms:'+id;
+            if (state[key] && state[key].length) { msRegistry[id].setSelected(state[key]); } else { msRegistry[id].reset(); }
+        }
+    });
+    if (state._sort) {
+        currentSort = { ...state._sort };
+        document.querySelectorAll('#opp-table th.sortable').forEach(h => h.classList.remove('sort-asc','sort-desc'));
+        const th = document.querySelector(`#opp-table th[data-sort="${currentSort.key}"]`);
+        if (th) th.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+    applyColumnFilters();
+}
+
+// Apply a saved filter state to dashboard
+function _applyDashFilters(state) {
+    ['df-date-start','df-date-end','df-odd-min','df-odd-max','df-fair-odd-min','df-fair-odd-max','df-edge-min','df-edge-max'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = state[id] || '';
+    });
+    ['df-market','df-selection','df-confidence','df-country','df-league','df-analysis-type'].forEach(id => {
+        if (msRegistry[id]) {
+            const key = 'ms:'+id;
+            if (state[key] && state[key].length) { msRegistry[id].setSelected(state[key]); } else { msRegistry[id].reset(); }
+        }
+    });
+    applyDashboardFilters();
+}
+
+function openSaveFilterView(target) {
+    _fvSaveTarget = target;
+    const modal = document.getElementById('fv-save-modal');
+    const input = document.getElementById('fv-name-input');
+    input.value = '';
+    modal.classList.add('show');
+    setTimeout(() => input.focus(), 80);
+}
+
+function closeSaveFilterView(e) {
+    if (e && e.target !== document.getElementById('fv-save-modal')) return;
+    document.getElementById('fv-save-modal').classList.remove('show');
+}
+
+function confirmSaveFilterView() {
+    const name = document.getElementById('fv-name-input').value.trim();
+    if (!name) { document.getElementById('fv-name-input').style.borderColor = 'var(--accent-red)'; return; }
+
+    const state = _fvSaveTarget === 'main' ? _captureMainFilters() : _captureDashFilters();
+    const views = _fvLoad();
+    const id = 'fv_' + Date.now();
+    views.push({ id, name, target: _fvSaveTarget, state, createdAt: new Date().toISOString() });
+    _fvSave(views);
+    closeSaveFilterView();
+    renderFilterViews();
+}
+
+function deleteFilterView(id, e) {
+    if (e) { e.stopPropagation(); e.preventDefault(); }
+    const views = _fvLoad().filter(v => v.id !== id);
+    _fvSave(views);
+    if (_fvActiveId === id) _fvActiveId = null;
+    renderFilterViews();
+}
+
+function loadFilterView(id, applyTo) {
+    const views = _fvLoad();
+    const view = views.find(v => v.id === id);
+    if (!view) return;
+
+    // Toggle: se já ativo, desativa
+    if (_fvActiveId === id) {
+        _fvActiveId = null;
+        clearAllFiltersGlobal();
+        renderFilterViews();
+        return;
+    }
+
+    _fvActiveId = id;
+
+    // Determinar onde aplicar: se applyTo é dado, usar; senão, aplicar na aba atual
+    const currentTab = document.querySelector('.tab.active')?.dataset?.tab;
+    const targetTab = applyTo || (currentTab === 'performance' ? 'dash' : 'main');
+
+    if (targetTab === 'main') {
+        // Se a view veio do main, aplica direto; se veio do dash, converte
+        const mainState = view.target === 'main' ? view.state : _fvConvertState(view.state, 'dash');
+        _applyMainFilters(mainState);
+    } else {
+        // Se a view veio do dash, aplica direto; se veio do main, converte
+        const dashState = view.target === 'dash' ? view.state : _fvConvertState(view.state, 'main');
+        _applyDashFilters(dashState);
+    }
+
+    renderFilterViews();
+}
+
+function renderFilterViews() {
+    const views = _fvLoad();
+
+    // Main chips - ALL views
+    const mainContainer = document.getElementById('fv-chips-main');
+    if (mainContainer) {
+        mainContainer.innerHTML = views.map(v => {
+            const active = _fvActiveId === v.id ? 'fv-active' : '';
+            const sourceIcon = v.target === 'main' ? '🎯' : '📊';
+            return `<span class="fv-chip ${active}" onclick="loadFilterView('${v.id}','main')" title="${v.target === 'main' ? 'Salvo na tela principal' : 'Salvo no dashboard'} — Clique para aplicar">
+                ${sourceIcon} ${v.name}
+                <span class="fv-delete" onclick="deleteFilterView('${v.id}', event)" title="Excluir">✕</span>
+            </span>`;
+        }).join('');
+    }
+
+    // Dashboard chips - ALL views
+    const dashContainer = document.getElementById('fv-chips-dash');
+    if (dashContainer) {
+        dashContainer.innerHTML = views.map(v => {
+            const active = _fvActiveId === v.id ? 'fv-active' : '';
+            const sourceIcon = v.target === 'main' ? '🎯' : '📊';
+            return `<span class="fv-chip ${active}" onclick="loadFilterView('${v.id}','dash')" title="${v.target === 'main' ? 'Salvo na tela principal' : 'Salvo no dashboard'} — Clique para aplicar">
+                ${sourceIcon} ${v.name}
+                <span class="fv-delete" onclick="deleteFilterView('${v.id}', event)" title="Excluir">✕</span>
+            </span>`;
+        }).join('');
+    }
+}
+
+// Esc closes filter view save modal
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeSaveFilterView();
+});
 
 // ═══════════════════════════════════════════
 // GAME STATUS HELPER (LIVE / FINISHED / UPCOMING)
@@ -1583,18 +2112,29 @@ async function init() {
     document.getElementById("w-date-start").value = todayStr;
     document.getElementById("w-date-end").value = tomorrowStr;
     
-    // Sincronizar date pickers header <-> welcome
-    document.getElementById("date-start").addEventListener("change", () => {
-        document.getElementById("w-date-start").value = document.getElementById("date-start").value;
+    // Sincronizar date pickers header <-> welcome (sem disparar busca)
+    function _syncDatePickers(source) {
+        if (source === 'header-start') document.getElementById("w-date-start").value = document.getElementById("date-start").value;
+        if (source === 'header-end') document.getElementById("w-date-end").value = document.getElementById("date-end").value;
+        if (source === 'welcome-start') document.getElementById("date-start").value = document.getElementById("w-date-start").value;
+        if (source === 'welcome-end') document.getElementById("date-end").value = document.getElementById("w-date-end").value;
+    }
+
+    // Apenas sincronizar ao mudar (NÃO disparar busca durante digitação)
+    ['date-start', 'date-end'].forEach(id => {
+        const el = document.getElementById(id);
+        const src = id === 'date-start' ? 'header-start' : 'header-end';
+        el.addEventListener("change", () => _syncDatePickers(src));
     });
-    document.getElementById("date-end").addEventListener("change", () => {
-        document.getElementById("w-date-end").value = document.getElementById("date-end").value;
+    ['w-date-start', 'w-date-end'].forEach(id => {
+        const el = document.getElementById(id);
+        const src = id === 'w-date-start' ? 'welcome-start' : 'welcome-end';
+        el.addEventListener("change", () => _syncDatePickers(src));
     });
-    document.getElementById("w-date-start").addEventListener("change", () => {
-        document.getElementById("date-start").value = document.getElementById("w-date-start").value;
-    });
-    document.getElementById("w-date-end").addEventListener("change", () => {
-        document.getElementById("date-end").value = document.getElementById("w-date-end").value;
+
+    // Tecla Enter nos date pickers: disparar busca
+    document.querySelectorAll('#date-start, #date-end, #w-date-start, #w-date-end').forEach(el => {
+        el.addEventListener("keydown", (e) => { if (e.key === 'Enter') { e.target.blur(); _triggerDateLoad(true); } });
     });
 
     // 1. Buscar status da API (1 request apenas)
@@ -1621,11 +2161,25 @@ async function init() {
         }
     } catch(e) {}
 
-    // 3. Se já tem dados em cache (servidor já rodou antes), carregar
-    if (apiStatus.has_data) {
-        await loadCachedData();
-    } else {
-        // Mostrar welcome state
+    // 3. Definir datas iniciais: usar as da última análise se disponíveis
+    let initDateFrom = todayStr;
+    let initDateTo = tomorrowStr;
+    
+    if (apiStatus.analysis_dates && apiStatus.analysis_dates.length > 0) {
+        initDateFrom = apiStatus.analysis_dates[0];
+        initDateTo = apiStatus.analysis_dates[apiStatus.analysis_dates.length - 1];
+        document.getElementById("date-start").value = initDateFrom;
+        document.getElementById("date-end").value = initDateTo;
+        document.getElementById("w-date-start").value = initDateFrom;
+        document.getElementById("w-date-end").value = initDateTo;
+    }
+
+    // 4. SEMPRE buscar dados do Supabase com as datas definidas
+    console.log(`[INIT] Carregando dados do Supabase: ${initDateFrom} → ${initDateTo}`);
+    await loadDataByDates(initDateFrom, initDateTo);
+    
+    // Se não carregou dados, mostrar welcome
+    if (!allOpps || allOpps.length === 0) {
         showWelcomeState();
     }
 }
@@ -1702,15 +2256,134 @@ async function loadCachedData() {
 }
 
 // ═══════════════════════════════════════════
+// LOAD DATA BY DATES (busca do Supabase)
+// ═══════════════════════════════════════════
+let _loadingByDates = false;
+let _lastLoadedDates = '';  // Para evitar recarregar quando nada mudou
+
+// Disparar busca de dados — chamada pelo botão 🔍 e pelo Enter nos date pickers
+function _triggerDateLoad(force) {
+    // Sincronizar header ↔ welcome
+    document.getElementById("w-date-start").value = document.getElementById("date-start").value;
+    document.getElementById("w-date-end").value = document.getElementById("date-end").value;
+
+    const df = document.getElementById("date-start").value;
+    const dt = document.getElementById("date-end").value;
+
+    // Auto-ajustar: se date_from > date_to, ajustar date_to = date_from
+    if (df && dt && df > dt) {
+        document.getElementById("date-end").value = df;
+        document.getElementById("w-date-end").value = df;
+    }
+
+    const finalDf = document.getElementById("date-start").value;
+    const finalDt = document.getElementById("date-end").value;
+    const key = `${finalDf}|${finalDt}`;
+
+    // Só recarregar se as datas são válidas e (mudaram ou forçado)
+    if (finalDf && finalDt && finalDf <= finalDt && (force || key !== _lastLoadedDates)) {
+        _lastLoadedDates = key;
+        loadDataByDates(finalDf, finalDt);
+    }
+}
+async function loadDataByDates(dateFrom, dateTo) {
+    if (_loadingByDates) return;
+    _loadingByDates = true;
+    _lastLoadedDates = `${dateFrom}|${dateTo}`;  // Marcar como carregado
+    
+    const badge = document.getElementById("badge-status");
+    badge.textContent = "● CARREGANDO...";
+    badge.style.color = "var(--accent-yellow)";
+    badge.style.borderColor = "var(--accent-yellow)";
+    
+    // Visual feedback nos date pickers
+    document.querySelectorAll('.date-picker-group').forEach(el => el.classList.add('loading'));
+    
+    try {
+        const res = await fetch(`/api/load-by-dates?date_from=${dateFrom}&date_to=${dateTo}`);
+        const data = await res.json();
+        
+        if (!data.ok) {
+            console.error("Erro ao carregar por datas:", data.error);
+            badge.textContent = "● ERRO";
+            badge.style.color = "var(--accent-red)";
+            badge.style.borderColor = "var(--accent-red)";
+            return;
+        }
+        
+        // Atualizar dados globais
+        stats = data.stats;
+        allOpps = data.opportunities;
+        allMatches = data.matches;
+        allLeagues = data.leagues;
+        
+        if (allOpps.length === 0 && allMatches.length === 0) {
+            // Sem dados para essas datas — mostrar mensagem
+            showDashboard();
+            const tableBody = document.querySelector("#opp-table tbody");
+            if (tableBody) tableBody.innerHTML = `<tr><td colspan="20" style="text-align:center;padding:40px;color:var(--text-muted)">
+                <div style="font-size:32px;margin-bottom:12px">📅</div>
+                <div style="font-size:14px;font-weight:600">Nenhum dado encontrado para ${dateFrom} → ${dateTo}</div>
+                <div style="font-size:12px;margin-top:8px">Clique em <strong>▶ Executar</strong> ou <strong>📊 Análise Retroativa</strong> para buscar dados dessas datas.</div>
+            </td></tr>`;
+            
+            // Atualizar stats
+            const riDates = document.getElementById("ri-dates");
+            if (riDates) riDates.textContent = `${dateFrom} → ${dateTo} (sem dados)`;
+            
+            // Limpar dashboard também
+            dashboardLoaded = false;
+            loadDashboard(true);
+            
+            badge.textContent = `● Sem dados (${dateFrom} → ${dateTo})`;
+            badge.style.color = "var(--accent-yellow)";
+            badge.style.borderColor = "var(--accent-yellow)";
+        } else {
+            // Renderizar normalmente
+            renderAll();
+            showDashboard();
+            
+            // Atualizar dashboard com os novos dados
+            dashboardLoaded = false;  // Forçar repopulação dos filtros
+            loadDashboard(true);
+            
+            badge.textContent = `● ${allOpps.length} opps (${dateFrom} → ${dateTo})`;
+            badge.style.color = "var(--accent-green)";
+            badge.style.borderColor = "var(--accent-green)";
+        }
+        
+        console.log(`[LOAD-BY-DATES] ${allOpps.length} oportunidades, ${allMatches.length} jogos (${dateFrom} → ${dateTo})`);
+    } catch(e) {
+        console.error("Erro loadDataByDates:", e);
+        badge.textContent = "● ERRO";
+        badge.style.color = "var(--accent-red)";
+        badge.style.borderColor = "var(--accent-red)";
+    } finally {
+        _loadingByDates = false;
+        document.querySelectorAll('.date-picker-group').forEach(el => el.classList.remove('loading'));
+    }
+}
+
+// ═══════════════════════════════════════════
 // EXECUTE ENGINE (manual only)
 // ═══════════════════════════════════════════
-async function executeEngine() {
+async function executeEngine(autoCheckResults) {
     if (engineRunning) return;
     
+    const startDate = document.getElementById("date-start").value;
+    const endDate = document.getElementById("date-end").value;
+    const today = new Date().toISOString().slice(0,10);
+    const isPastAnalysis = endDate < today;
+    const nDays = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
+    const estRequests = nDays * 310;
+    
     // Confirmar com o usuário
-    const cost = "~620";
     const avail = apiStatus.available || "?";
-    if (!confirm(`Executar pipeline de análise?\n\nCusto estimado: ${cost} requests\nDisponíveis hoje: ${avail}\n\nIsso pode levar 5-8 minutos.`)) {
+    const modeMsg = isPastAnalysis 
+        ? `📊 ANÁLISE RETROATIVA (${nDays} dia${nDays>1?'s':''})\n\nPeríodo: ${startDate} → ${endDate}\nOs jogos já finalizados serão incluídos.\n${autoCheckResults ? '✅ Resultados serão verificados automaticamente ao final.\n' : ''}`
+        : `Executar pipeline de análise? (${nDays} dia${nDays>1?'s':''})\n\nPeríodo: ${startDate} → ${endDate}`;
+    
+    if (!confirm(`${modeMsg}\nCusto estimado: ~${estRequests} requests\nDisponíveis hoje: ${avail}\n\nIsso pode levar ${Math.max(3, nDays * 4)}-${Math.max(8, nDays * 8)} minutos.`)) {
         return;
     }
     
@@ -1734,14 +2407,15 @@ async function executeEngine() {
         document.getElementById("progress-timer").textContent = `${m}:${s}`;
         
         // Update phase messages based on time
-        if (seconds < 5) document.getElementById("progress-phase").textContent = "Verificando status da conta...";
-        else if (seconds < 15) document.getElementById("progress-phase").textContent = "Buscando fixtures globais (T e T+1)...";
-        else if (seconds < 60) document.getElementById("progress-phase").textContent = "Buscando standings de ligas...";
-        else if (seconds < 180) document.getElementById("progress-phase").textContent = "Buscando odds reais de mercado...";
-        else if (seconds < 300) document.getElementById("progress-phase").textContent = "Buscando dados de lesões...";
-        else if (seconds < 360) document.getElementById("progress-phase").textContent = "Buscando clima (OpenWeatherMap)...";
-        else if (seconds < 420) document.getElementById("progress-phase").textContent = "Executando modelos (Dixon-Coles + Monte Carlo)...";
-        else document.getElementById("progress-phase").textContent = "Finalizando análise de valor...";
+        const dateLabel = isPastAnalysis ? `[Retroativa ${startDate}→${endDate}] ` : '';
+        if (seconds < 5) document.getElementById("progress-phase").textContent = dateLabel + "Verificando status da conta...";
+        else if (seconds < 15) document.getElementById("progress-phase").textContent = dateLabel + `Buscando fixtures (${nDays} dia${nDays>1?'s':''})...`;
+        else if (seconds < 60) document.getElementById("progress-phase").textContent = dateLabel + "Buscando standings de ligas...";
+        else if (seconds < 180) document.getElementById("progress-phase").textContent = dateLabel + "Buscando odds reais de mercado...";
+        else if (seconds < 300) document.getElementById("progress-phase").textContent = dateLabel + "Buscando dados de lesões...";
+        else if (seconds < 360) document.getElementById("progress-phase").textContent = dateLabel + "Buscando clima (OpenWeatherMap)...";
+        else if (seconds < 420) document.getElementById("progress-phase").textContent = dateLabel + "Executando modelos (Dixon-Coles + Monte Carlo)...";
+        else document.getElementById("progress-phase").textContent = dateLabel + "Finalizando análise de valor...";
     }, 1000);
 
     try {
@@ -1761,21 +2435,8 @@ async function executeEngine() {
             return;
         }
 
-        // Carregar dados
-        const [statsRes, oppsRes, matchesRes, leaguesRes] = await Promise.all([
-            fetch("/api/stats").then(r => r.json()),
-            fetch("/api/opportunities").then(r => r.json()),
-            fetch("/api/matches").then(r => r.json()),
-            fetch("/api/leagues").then(r => r.json()),
-        ]);
-
-        stats = statsRes;
-        allOpps = oppsRes;
-        allMatches = matchesRes;
-        allLeagues = leaguesRes;
-
-        renderAll();
-        showDashboard();
+        // Carregar dados do Supabase com as mesmas datas
+        await loadDataByDates(startDate, endDate);
         
         // Atualizar status da API
         try {
@@ -1783,6 +2444,17 @@ async function executeEngine() {
             apiStatus = await statusRes.json();
             updateApiQuotaDisplay();
         } catch(e) {}
+
+        // Se é análise retroativa ou autoCheckResults, verificar resultados automaticamente
+        if (isPastAnalysis || autoCheckResults) {
+            document.getElementById("progress-phase").textContent = "⏳ Verificando resultados dos jogos finalizados...";
+            document.getElementById("progress-overlay").classList.add("show");
+            try {
+                await checkResults(true);  // silencioso (não mostra alert)
+            } catch(e2) {
+                console.error("Erro ao verificar resultados:", e2);
+            }
+        }
 
     } catch (e) {
         clearInterval(timerInterval);
@@ -1842,21 +2514,12 @@ async function recalculateEngine() {
             return;
         }
 
-        // Recarregar dados
-        const [statsRes, oppsRes, matchesRes, leaguesRes] = await Promise.all([
-            fetch("/api/stats").then(r => r.json()),
-            fetch("/api/opportunities").then(r => r.json()),
-            fetch("/api/matches").then(r => r.json()),
-            fetch("/api/leagues").then(r => r.json()),
-        ]);
-
-        stats = statsRes;
-        allOpps = oppsRes;
-        allMatches = matchesRes;
-        allLeagues = leaguesRes;
-
-        renderAll();
-        showDashboard();
+        // Recarregar dados do Supabase
+        const curDf = document.getElementById("date-start").value;
+        const curDt = document.getElementById("date-end").value;
+        if (curDf && curDt) {
+            await loadDataByDates(curDf, curDt);
+        }
 
         alert(`✅ Recalculo concluido!\n\n${data.total_opportunities} oportunidades encontradas\n0 requisicoes a API`);
 
@@ -1876,9 +2539,313 @@ async function recalculateEngine() {
 }
 
 // ═══════════════════════════════════════════
+// EXPORTAR EXCEL — Exporta dados visíveis em tela
+// ═══════════════════════════════════════════
+function exportToExcel() {
+    const btn = document.getElementById("btn-export");
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = "⏳ Gerando...";
+
+    try {
+        // Pegar as oportunidades atualmente filtradas/visíveis na tabela
+        const rows = document.querySelectorAll("#opp-table tbody tr");
+        if (!rows.length) {
+            alert("Nenhuma oportunidade visível para exportar.");
+            btn.disabled = false;
+            btn.textContent = "📥 Exportar Excel";
+            return;
+        }
+
+        // Construir dados para exportação a partir de allOpps (respeitando filtros atuais)
+        // Pegar IDs visíveis pela tabela (cada tr tem onclick com índice)
+        const exportData = [];
+        
+        // Filtrar as mesmas oportunidades que estão visíveis
+        const team = (document.getElementById('cf-team')?.value || '').toLowerCase();
+        const leagueFilter = msRegistry['cf-league'] ? msRegistry['cf-league'].getSelected() : [];
+        const dtStartRaw = document.getElementById('cf-dt-start')?.value || '';
+        const dtEndRaw = document.getElementById('cf-dt-end')?.value || '';
+        const dtStart = dtStartRaw ? new Date(dtStartRaw) : null;
+        const dtEnd = dtEndRaw ? new Date(dtEndRaw) : null;
+        const gameStatusFilter = msRegistry['cf-game-status'] ? msRegistry['cf-game-status'].getSelected() : [];
+        const resultFilter = msRegistry['cf-result'] ? msRegistry['cf-result'].getSelected() : [];
+        const marketFilter = msRegistry['cf-market'] ? msRegistry['cf-market'].getSelected() : [];
+        const selectionFilter = msRegistry['cf-selection'] ? msRegistry['cf-selection'].getSelected() : [];
+        const oddMin = parseFloat(document.getElementById('cf-odd-min')?.value) || null;
+        const oddMax = parseFloat(document.getElementById('cf-odd-max')?.value) || null;
+        const fairOddMin = parseFloat(document.getElementById('cf-fair-odd-min')?.value) || null;
+        const fairOddMax = parseFloat(document.getElementById('cf-fair-odd-max')?.value) || null;
+        const edgeMin = parseFloat(document.getElementById('cf-edge-min')?.value) || null;
+        const edgeMax = parseFloat(document.getElementById('cf-edge-max')?.value) || null;
+        const probMin = parseFloat(document.getElementById('cf-prob-min')?.value) || null;
+        const probMax = parseFloat(document.getElementById('cf-prob-max')?.value) || null;
+        const confidenceFilter = msRegistry['cf-confidence'] ? msRegistry['cf-confidence'].getSelected() : [];
+        const scoreMin = parseFloat(document.getElementById('cf-score-min')?.value) || null;
+        const scoreMax = parseFloat(document.getElementById('cf-score-max')?.value) || null;
+        const analysisTypeFilter = msRegistry['cf-analysis-type'] ? msRegistry['cf-analysis-type'].getSelected() : [];
+
+        let filtered = allOpps.filter(o => {
+            if (team && !(o.home_team.toLowerCase().includes(team) || o.away_team.toLowerCase().includes(team))) return false;
+            if (leagueFilter.length && !leagueFilter.includes(o.league_name)) return false;
+            if (dtStart || dtEnd) {
+                const timeParts = (o.match_time || '00:00').split(':');
+                const dateParts = (o.match_date || '').split('-');
+                if (dateParts.length >= 3) {
+                    const matchDt = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]), parseInt(timeParts[0]) || 0, parseInt(timeParts[1]) || 0, 0);
+                    if (dtStart && matchDt < dtStart) return false;
+                    if (dtEnd && matchDt > dtEnd) return false;
+                }
+            }
+            if (gameStatusFilter.length) {
+                const gs = getGameStatus(o.match_date, o.match_time);
+                if (!gameStatusFilter.includes(gs.status)) return false;
+            }
+            if (resultFilter.length && !resultFilter.includes(o.result_status || 'PENDENTE')) return false;
+            if (marketFilter.length && !marketFilter.some(m => o.market.includes(m))) return false;
+            if (selectionFilter.length && !selectionFilter.includes(o.selection)) return false;
+            if (oddMin !== null && o.market_odd < oddMin) return false;
+            if (oddMax !== null && o.market_odd > oddMax) return false;
+            if (fairOddMin !== null && (o.fair_odd || 0) < fairOddMin) return false;
+            if (fairOddMax !== null && (o.fair_odd || 0) > fairOddMax) return false;
+            if (edgeMin !== null && o.edge < edgeMin) return false;
+            if (edgeMax !== null && o.edge > edgeMax) return false;
+            if (probMin !== null && o.model_prob < probMin) return false;
+            if (probMax !== null && o.model_prob > probMax) return false;
+            if (confidenceFilter.length && !confidenceFilter.includes(o.confidence)) return false;
+            if (scoreMin !== null && (o.confidence_score || 0) < scoreMin) return false;
+            if (scoreMax !== null && (o.confidence_score || 0) > scoreMax) return false;
+            if (analysisTypeFilter.length && !analysisTypeFilter.includes(o.analysis_type || 'PRE_JOGO')) return false;
+            return true;
+        });
+
+        // Aplicar mesma ordenação
+        filtered.sort((a, b) => {
+            const va = getSortValue(a, currentSort.key);
+            const vb = getSortValue(b, currentSort.key);
+            let cmp = 0;
+            if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb;
+            else cmp = String(va).localeCompare(String(vb));
+            return currentSort.dir === 'asc' ? cmp : -cmp;
+        });
+
+        // Calcular P&L para cada
+        function calcPnl(status, odd) {
+            if (status === 'GREEN') return parseFloat((odd - 1).toFixed(2));
+            if (status === 'RED') return -1;
+            if (status === 'VOID') return 0;
+            return null;
+        }
+
+        // Montar linhas do Excel
+        filtered.forEach((o, i) => {
+            const gs = getGameStatus(o.match_date, o.match_time);
+            const pnl = calcPnl(o.result_status, o.market_odd);
+            const m = allMatches.find(x => x.match_id === o.match_id);
+
+            exportData.push({
+                "#": i + 1,
+                "Data": o.match_date,
+                "Hora": o.match_time,
+                "Status Jogo": gs.label,
+                "Time Casa": o.home_team,
+                "Time Fora": o.away_team,
+                "Liga": o.league_name,
+                "País": o.league_country,
+                "Mercado": o.market,
+                "Seleção": o.selection,
+                "Odd Casa": o.market_odd,
+                "Odd Justa": o.fair_odd,
+                "Prob. Modelo (%)": o.model_prob,
+                "Prob. Implícita (%)": o.implied_prob,
+                "Edge (%)": o.edge,
+                "Edge Detalhado": o.edge_pct,
+                "Confiança": o.confidence,
+                "Score Confiança": o.confidence_score || 0,
+                "Tipo Análise": o.analysis_type || "PRE_JOGO",
+                "Kelly": o.kelly_bet_pct,
+                "xG Casa": o.home_xg,
+                "xG Fora": o.away_xg,
+                "Resultado": o.result_status || "PENDENTE",
+                "Placar FT": o.result_score || "",
+                "Placar HT": o.result_ht_score || "",
+                "Escanteios": o.result_corners || "",
+                "Cartões": o.result_cards || "",
+                "Finalizações": o.result_shots || "",
+                "P&L (u)": pnl !== null ? pnl : "",
+                "Bookmaker": o.bookmaker || "",
+                "Reasoning": o.reasoning || "",
+                "Clima": o.weather_note || "",
+                "Fadiga": o.fatigue_note || "",
+                "Urgência Casa": o.urgency_home,
+                "Urgência Fora": o.urgency_away,
+                "Match ID": o.match_id,
+            });
+        });
+
+        // Gerar Excel usando SheetJS
+        const ws = XLSX.utils.json_to_sheet(exportData);
+
+        // Ajustar larguras das colunas
+        const colWidths = [
+            { wch: 5 },  // #
+            { wch: 12 }, // Data
+            { wch: 6 },  // Hora
+            { wch: 12 }, // Status Jogo
+            { wch: 22 }, // Time Casa
+            { wch: 22 }, // Time Fora
+            { wch: 25 }, // Liga
+            { wch: 12 }, // País
+            { wch: 25 }, // Mercado
+            { wch: 20 }, // Seleção
+            { wch: 10 }, // Odd Casa
+            { wch: 10 }, // Odd Justa
+            { wch: 12 }, // Prob Modelo
+            { wch: 13 }, // Prob Implícita
+            { wch: 10 }, // Edge
+            { wch: 10 }, // Edge Det
+            { wch: 10 }, // Confiança
+            { wch: 10 }, // Kelly
+            { wch: 8 },  // xG Casa
+            { wch: 8 },  // xG Fora
+            { wch: 11 }, // Resultado
+            { wch: 10 }, // Placar FT
+            { wch: 10 }, // Placar HT
+            { wch: 10 }, // Escanteios
+            { wch: 10 }, // Cartões
+            { wch: 12 }, // Finalizações
+            { wch: 10 }, // P&L
+            { wch: 12 }, // Bookmaker
+            { wch: 50 }, // Reasoning
+            { wch: 20 }, // Clima
+            { wch: 20 }, // Fadiga
+            { wch: 11 }, // Urgência Casa
+            { wch: 11 }, // Urgência Fora
+            { wch: 12 }, // Match ID
+        ];
+        ws['!cols'] = colWidths;
+
+        const wb = XLSX.utils.book_new();
+        
+        // Aba 1: Oportunidades
+        XLSX.utils.book_append_sheet(wb, ws, "Oportunidades");
+
+        // Aba 2: Resumo por Data
+        const dateGroups = {};
+        filtered.forEach(o => {
+            const d = o.match_date;
+            if (!dateGroups[d]) dateGroups[d] = { total: 0, green: 0, red: 0, void_: 0, pending: 0, profit: 0 };
+            dateGroups[d].total++;
+            const pnl = calcPnl(o.result_status, o.market_odd);
+            if (o.result_status === 'GREEN') { dateGroups[d].green++; dateGroups[d].profit += pnl; }
+            else if (o.result_status === 'RED') { dateGroups[d].red++; dateGroups[d].profit += pnl; }
+            else if (o.result_status === 'VOID') { dateGroups[d].void_++; }
+            else { dateGroups[d].pending++; }
+        });
+        const dateRows = Object.entries(dateGroups).sort(([a],[b]) => a.localeCompare(b)).map(([date, g]) => ({
+            "Data": date,
+            "Total": g.total,
+            "Green": g.green,
+            "Red": g.red,
+            "Void": g.void_,
+            "Pendente": g.pending,
+            "Resolvidas": g.green + g.red + g.void_,
+            "Taxa Acerto (%)": g.green + g.red > 0 ? parseFloat(((g.green / (g.green + g.red)) * 100).toFixed(1)) : "",
+            "P&L (u)": parseFloat(g.profit.toFixed(2)),
+            "ROI (%)": g.green + g.red > 0 ? parseFloat(((g.profit / (g.green + g.red)) * 100).toFixed(1)) : "",
+        }));
+        
+        // Totais
+        const totalG = filtered.filter(o => o.result_status === 'GREEN').length;
+        const totalR = filtered.filter(o => o.result_status === 'RED').length;
+        const totalV = filtered.filter(o => o.result_status === 'VOID').length;
+        const totalPend = filtered.filter(o => !o.result_status || o.result_status === 'PENDENTE').length;
+        const totalProfit = filtered.reduce((s, o) => s + (calcPnl(o.result_status, o.market_odd) || 0), 0);
+        dateRows.push({
+            "Data": "TOTAL",
+            "Total": filtered.length,
+            "Green": totalG,
+            "Red": totalR,
+            "Void": totalV,
+            "Pendente": totalPend,
+            "Resolvidas": totalG + totalR + totalV,
+            "Taxa Acerto (%)": totalG + totalR > 0 ? parseFloat(((totalG / (totalG + totalR)) * 100).toFixed(1)) : "",
+            "P&L (u)": parseFloat(totalProfit.toFixed(2)),
+            "ROI (%)": totalG + totalR > 0 ? parseFloat(((totalProfit / (totalG + totalR)) * 100).toFixed(1)) : "",
+        });
+
+        const ws2 = XLSX.utils.json_to_sheet(dateRows);
+        ws2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 10 }];
+        XLSX.utils.book_append_sheet(wb, ws2, "Resumo por Data");
+
+        // Aba 3: Resumo por Mercado
+        const mktGroups = {};
+        filtered.forEach(o => {
+            const k = o.market;
+            if (!mktGroups[k]) mktGroups[k] = { total: 0, green: 0, red: 0, profit: 0 };
+            mktGroups[k].total++;
+            const pnl = calcPnl(o.result_status, o.market_odd);
+            if (o.result_status === 'GREEN') { mktGroups[k].green++; mktGroups[k].profit += pnl; }
+            else if (o.result_status === 'RED') { mktGroups[k].red++; mktGroups[k].profit += pnl; }
+        });
+        const mktRows = Object.entries(mktGroups).sort(([,a],[,b]) => (b.profit - a.profit)).map(([mkt, g]) => ({
+            "Mercado": mkt,
+            "Total": g.total,
+            "Green": g.green,
+            "Red": g.red,
+            "Taxa Acerto (%)": g.green + g.red > 0 ? parseFloat(((g.green / (g.green + g.red)) * 100).toFixed(1)) : "",
+            "P&L (u)": parseFloat(g.profit.toFixed(2)),
+            "ROI (%)": g.green + g.red > 0 ? parseFloat(((g.profit / (g.green + g.red)) * 100).toFixed(1)) : "",
+        }));
+        const ws3 = XLSX.utils.json_to_sheet(mktRows);
+        ws3['!cols'] = [{ wch: 30 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 10 }];
+        XLSX.utils.book_append_sheet(wb, ws3, "Resumo por Mercado");
+
+        // Aba 4: Resumo por Seleção
+        const selGroups = {};
+        filtered.forEach(o => {
+            const k = o.selection;
+            if (!selGroups[k]) selGroups[k] = { total: 0, green: 0, red: 0, profit: 0 };
+            selGroups[k].total++;
+            const pnl = calcPnl(o.result_status, o.market_odd);
+            if (o.result_status === 'GREEN') { selGroups[k].green++; selGroups[k].profit += pnl; }
+            else if (o.result_status === 'RED') { selGroups[k].red++; selGroups[k].profit += pnl; }
+        });
+        const selRows = Object.entries(selGroups).sort(([,a],[,b]) => (b.profit - a.profit)).map(([sel, g]) => ({
+            "Seleção": sel,
+            "Total": g.total,
+            "Green": g.green,
+            "Red": g.red,
+            "Taxa Acerto (%)": g.green + g.red > 0 ? parseFloat(((g.green / (g.green + g.red)) * 100).toFixed(1)) : "",
+            "P&L (u)": parseFloat(g.profit.toFixed(2)),
+            "ROI (%)": g.green + g.red > 0 ? parseFloat(((g.profit / (g.green + g.red)) * 100).toFixed(1)) : "",
+        }));
+        const ws4 = XLSX.utils.json_to_sheet(selRows);
+        ws4['!cols'] = [{ wch: 25 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 10 }];
+        XLSX.utils.book_append_sheet(wb, ws4, "Resumo por Seleção");
+
+        // Nome do arquivo com datas
+        const dateStart = document.getElementById("date-start")?.value || "export";
+        const dateFim = document.getElementById("date-end")?.value || "";
+        const fileName = `ApostasIA_${dateStart}_${dateFim}_${filtered.length}opps.xlsx`;
+        
+        XLSX.writeFile(wb, fileName);
+
+        btn.textContent = `✅ Exportado! (${filtered.length} linhas)`;
+        setTimeout(() => { btn.textContent = "📥 Exportar Excel"; }, 3000);
+    } catch (err) {
+        console.error("Erro ao exportar:", err);
+        alert("Erro ao gerar Excel: " + err.message);
+        btn.textContent = "📥 Exportar Excel";
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ═══════════════════════════════════════════
 // CHECK RESULTS — Verificar jogos finalizados
 // ═══════════════════════════════════════════
-async function checkResults() {
+async function checkResults(silent) {
     const btn = document.getElementById("btn-check-results");
     btn.disabled = true;
     
@@ -1918,35 +2885,46 @@ async function checkResults() {
         const elapsedStr = elapsed > 60 ? `${Math.floor(elapsed/60)}m${elapsed%60}s` : `${elapsed}s`;
         
         if (!data.ok) {
-            alert("Erro: " + (data.error || "desconhecido"));
+            if (!silent) alert("Erro: " + (data.error || "desconhecido"));
             return;
         }
         
-        // Mostrar resultado detalhado
-        let msg = `✅ Verificação concluída em ${elapsedStr}\n\n`;
-        msg += `📋 Total pendentes: ${data.total_pending || 0}\n`;
-        msg += `⏭ Ignorados (ainda em jogo/futuro): ${data.skipped_not_finished || 0}\n`;
-        msg += `🔍 Jogos consultados (encerrados): ${data.checked}\n`;
-        msg += `📊 Jogos com resultado: ${data.finished}\n`;
-        msg += `✏️ Oportunidades resolvidas: ${data.resolved}\n`;
-        if (data.resolved > 0) {
-            msg += `\n🟢 GREEN: ${data.green}\n🔴 RED: ${data.red}\n⬜ VOID: ${data.void || 0}`;
+        // Mostrar resultado detalhado (apenas se não for silencioso)
+        if (!silent) {
+            let msg = `✅ Verificação concluída em ${elapsedStr}\n\n`;
+            msg += `📋 Total pendentes: ${data.total_pending || 0}\n`;
+            msg += `⏭ Ignorados (ainda em jogo/futuro): ${data.skipped_not_finished || 0}\n`;
+            msg += `🔍 Jogos consultados (encerrados): ${data.checked}\n`;
+            msg += `📊 Jogos com resultado: ${data.finished}\n`;
+            msg += `✏️ Oportunidades resolvidas: ${data.resolved}\n`;
+            if (data.resolved > 0) {
+                msg += `\n🟢 GREEN: ${data.green}\n🔴 RED: ${data.red}\n⬜ VOID: ${data.void || 0}`;
+            }
+            if (data.resolved === 0 && data.checked === 0) {
+                msg += `\nℹ️ ${data.msg || 'Nenhum jogo encerrado para verificar.'}`;
+            }
+            alert(msg);
+        } else {
+            // Modo silencioso: exibir resumo no console e no botão
+            const summary = `G:${data.green||0} R:${data.red||0} (${data.resolved||0} resolvidas)`;
+            console.log(`[CHECK-RESULTS] ${summary}`);
         }
-        if (data.resolved === 0 && data.checked === 0) {
-            msg += `\nℹ️ ${data.msg || 'Nenhum jogo encerrado para verificar.'}`;
-        }
-        
-        alert(msg);
         
         // Recarregar dados para mostrar resultados atualizados na tabela
         btn.innerHTML = "🔄 Atualizando tabela...";
-        await loadCachedData();
-        loadDashboard(true); // Forçar reload do dashboard
+        const curDf = document.getElementById("date-start").value;
+        const curDt = document.getElementById("date-end").value;
+        if (curDf && curDt) {
+            await loadDataByDates(curDf, curDt);
+        } else {
+            await loadCachedData();
+            loadDashboard(true);
+        }
         
     } catch (e) {
         clearInterval(timerInterval);
         console.error(e);
-        alert("Erro de conexão: " + e.message);
+        if (!silent) alert("Erro de conexão: " + e.message);
     } finally {
         btn.disabled = false;
         btn.innerHTML = "✅ Resultados";
@@ -1960,30 +2938,30 @@ let dashboardRawData = null;  // { resolved: [...], pending_count: N }
 let dashboardLoaded = false;
 
 async function loadDashboard(forceReload) {
-    if (dashboardLoaded && dashboardRawData && !forceReload) {
-        applyDashboardFilters();
+    // Dashboard agora usa os mesmos dados da tela principal (allOpps)
+    // Isso garante 100% de consistência entre as telas
+    if (!allOpps || !allOpps.length) {
+        const container = document.getElementById("dashboard-content");
+        container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted)"><div style="font-size:48px;margin-bottom:16px">📊</div><div style="font-size:15px">Nenhum dado carregado ainda.<br>Execute uma análise primeiro.</div></div>';
         return;
     }
+
+    // Montar dashboardRawData a partir de allOpps (mesma fonte da tela principal)
+    const resolved = allOpps.filter(o => ['GREEN', 'RED', 'VOID'].includes(o.result_status));
+    const pendingCount = allOpps.filter(o => !o.result_status || o.result_status === 'PENDENTE').length;
+    dashboardRawData = { resolved, pending_count: pendingCount, all: allOpps };
     
-    const container = document.getElementById("dashboard-content");
-    container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted)"><div style="font-size:32px;animation:pulse 1.5s infinite">⏳</div><div style="margin-top:12px;font-size:14px">Carregando dashboard...</div></div>';
-    
-    try {
-        const res = await fetch("/api/dashboard");
-        const result = await res.json();
-        
-        if (!result.ok || !result.data || (!result.data.resolved?.length && !result.data.pending_count)) {
-            container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted)"><div style="font-size:48px;margin-bottom:16px">📊</div><div style="font-size:15px">Nenhum dado de performance ainda.<br>Clique em <strong>✅ Resultados</strong> para verificar jogos.</div></div>';
-            return;
-        }
-        
-        dashboardRawData = result.data;
+    if (!dashboardLoaded || forceReload) {
+        populateDashboardFilters(allOpps);  // Usar TODOS para popular filtros (não só resolvidas)
         dashboardLoaded = true;
-        populateDashboardFilters(dashboardRawData.resolved || []);
+    }
+
+    // Apply pending sync if any
+    if (_pendingSync === 'mainToDash') {
+        _pendingSync = null;
+        syncFiltersMainToDash();  // this calls applyDashboardFilters internally
+    } else {
         applyDashboardFilters();
-    } catch (e) {
-        console.error(e);
-        container.innerHTML = `<div style="color:var(--accent-red);padding:30px;text-align:center">Erro ao carregar dashboard: ${e.message}</div>`;
     }
 }
 
@@ -1994,8 +2972,6 @@ function populateDashboardFilters(items) {
     const confidences = uniq(items.map(o => o.confidence));
     const countries = uniq(items.map(o => o.league_country));
     const leagues = uniq(items.map(o => o.league_name));
-    const bookmakers = uniq(items.map(o => o.bookmaker));
-
     const initMs = (id, placeholder, items) => {
         if (!msRegistry[id]) {
             msRegistry[id] = new MultiSelect(id, { placeholder, onChange: () => applyDashboardFilters() });
@@ -2008,7 +2984,9 @@ function populateDashboardFilters(items) {
     initMs('df-confidence', 'Todas', confidences);
     initMs('df-country', 'Todos', countries);
     initMs('df-league', 'Todas', leagues);
-    initMs('df-bookmaker', 'Todos', bookmakers);
+
+    const analysisTypes = uniq(items.map(o => o.analysis_type || 'PRE_JOGO'));
+    initMs('df-analysis-type', 'Todos', analysisTypes);
 }
 
 function clearDashboardFilters() {
@@ -2016,7 +2994,7 @@ function clearDashboardFilters() {
         const el = document.getElementById(id); if (el) el.value = '';
     });
     // Reset all dashboard multi-selects
-    ['df-market','df-selection','df-confidence','df-country','df-league','df-bookmaker'].forEach(id => {
+    ['df-market','df-selection','df-confidence','df-country','df-league','df-analysis-type'].forEach(id => {
         if (msRegistry[id]) msRegistry[id].reset();
     });
     applyDashboardFilters();
@@ -2024,9 +3002,9 @@ function clearDashboardFilters() {
 
 function applyDashboardFilters() {
     if (!dashboardRawData) return;
-    const all = dashboardRawData.resolved || [];
-    const pendingCount = dashboardRawData.pending_count || 0;
-
+    // Usar TODOS os dados (allOpps) como base
+    const allData = dashboardRawData.all || allOpps || [];
+    
     // Read filter values — multi-selects return [] if all/none selected
     const dateStart = document.getElementById('df-date-start')?.value || '';
     const dateEnd = document.getElementById('df-date-end')?.value || '';
@@ -2035,7 +3013,7 @@ function applyDashboardFilters() {
     const confidenceFilter = msRegistry['df-confidence'] ? msRegistry['df-confidence'].getSelected() : [];
     const countryFilter = msRegistry['df-country'] ? msRegistry['df-country'].getSelected() : [];
     const leagueFilter = msRegistry['df-league'] ? msRegistry['df-league'].getSelected() : [];
-    const bookmakerFilter = msRegistry['df-bookmaker'] ? msRegistry['df-bookmaker'].getSelected() : [];
+    const analysisTypeFilter = msRegistry['df-analysis-type'] ? msRegistry['df-analysis-type'].getSelected() : [];
     const oddMin = parseFloat(document.getElementById('df-odd-min')?.value) || null;
     const oddMax = parseFloat(document.getElementById('df-odd-max')?.value) || null;
     const fairOddMin = parseFloat(document.getElementById('df-fair-odd-min')?.value) || null;
@@ -2043,10 +3021,10 @@ function applyDashboardFilters() {
     const edgeMin = parseFloat(document.getElementById('df-edge-min')?.value) || null;
     const edgeMax = parseFloat(document.getElementById('df-edge-max')?.value) || null;
 
-    const hasFilter = dateStart || dateEnd || marketFilter.length || selectionFilter.length || confidenceFilter.length || countryFilter.length || leagueFilter.length || bookmakerFilter.length || oddMin || oddMax || fairOddMin || fairOddMax || edgeMin || edgeMax;
+    const hasFilter = dateStart || dateEnd || marketFilter.length || selectionFilter.length || confidenceFilter.length || countryFilter.length || leagueFilter.length || analysisTypeFilter.length || oddMin || oddMax || fairOddMin || fairOddMax || edgeMin || edgeMax;
 
-    // Filter
-    const filtered = all.filter(o => {
+    // Filter ALL data (resolved + pending)
+    const filtered = allData.filter(o => {
         if (dateStart && (o.match_date || '') < dateStart) return false;
         if (dateEnd && (o.match_date || '') > dateEnd) return false;
         if (marketFilter.length && !marketFilter.includes(o.market)) return false;
@@ -2054,7 +3032,7 @@ function applyDashboardFilters() {
         if (confidenceFilter.length && !confidenceFilter.includes(o.confidence)) return false;
         if (countryFilter.length && !countryFilter.includes(o.league_country)) return false;
         if (leagueFilter.length && !leagueFilter.includes(o.league_name)) return false;
-        if (bookmakerFilter.length && !bookmakerFilter.includes(o.bookmaker)) return false;
+        if (analysisTypeFilter.length && !analysisTypeFilter.includes(o.analysis_type || 'PRE_JOGO')) return false;
         if (oddMin && (o.market_odd || 0) < oddMin) return false;
         if (oddMax && (o.market_odd || 0) > oddMax) return false;
         if (fairOddMin && (o.fair_odd || 0) < fairOddMin) return false;
@@ -2064,18 +3042,22 @@ function applyDashboardFilters() {
         return true;
     });
 
+    // Separar resolvidas e pendentes dos dados filtrados
+    const resolvedFiltered = filtered.filter(o => ['GREEN', 'RED', 'VOID'].includes(o.result_status));
+    const pendingFiltered = filtered.filter(o => !o.result_status || o.result_status === 'PENDENTE');
+
     // Show filter summary
     const summaryEl = document.getElementById('dash-filter-summary');
     if (summaryEl) {
         if (hasFilter) {
             summaryEl.className = 'dash-filter-summary active';
-            summaryEl.innerHTML = `🔍 Filtro ativo: <strong>${filtered.length}</strong> de ${all.length} oportunidades resolvidas`;
+            summaryEl.innerHTML = `🔍 Filtro ativo: <strong>${filtered.length}</strong> de ${allData.length} oportunidades (${resolvedFiltered.length} resolvidas, ${pendingFiltered.length} pendentes)`;
         } else {
             summaryEl.className = 'dash-filter-summary';
         }
     }
 
-    renderDashboard(filtered, pendingCount, all.length);
+    renderDashboard(resolvedFiltered, pendingFiltered.length, filtered.length);
 }
 
 // ═══════════════════════════════════════════
@@ -2219,6 +3201,7 @@ function renderDashboard(items, pendingCount, totalAll) {
     const bySelection = groupBy(items, o => o.selection);
     const byLeague = groupBy(items, o => o.league_name);
     const byDate = groupBy(items, o => o.match_date);
+    const byAnalysisType = groupBy(items, o => (o.analysis_type || 'PRE_JOGO') === 'PRE_JOGO' ? '🟢 Pré-Jogo' : '🔵 Retroativa');
 
     // 3-column grid for main breakdowns
     html += '<div class="dash-grid-3">';
@@ -2230,16 +3213,87 @@ function renderDashboard(items, pendingCount, totalAll) {
     html += '<div class="dash-grid-3">';
     html += _renderBreakdownCard('💰 Por Faixa de Odds', byOdds);
     html += _renderBreakdownCard('🌍 Por País', byCountry);
+    html += _renderBreakdownCard('🔬 Por Tipo de Análise', byAnalysisType);
+    html += '</div>';
+
+    html += '<div class="dash-grid-3">';
     html += _renderBreakdownCard('▶ Por Seleção', bySelection);
     html += '</div>';
 
     // Full-width tables
     html += '<div class="dash-grid-2">';
     html += _renderBreakdownCard('🏆 Por Liga', byLeague);
-    html += _renderBreakdownCard('📅 Por Data', byDate.sort((a,b) => (b.label||'').localeCompare(a.label||'')));
+    html += _renderBreakdownCard('📅 Por Data', byDate.sort((a,b) => (a.label||'').localeCompare(b.label||'')), true);
     html += '</div>';
 
+    // ═══════════════════════════════
+    // COMBO ANALYZER SECTION
+    // ═══════════════════════════════
+    html += `<div class="combo-analyzer">
+        <div class="combo-analyzer-header">
+            <div class="combo-analyzer-title">
+                <span class="ca-icon">🧬</span> Analisador de Combinações Lucrativas
+                <span style="font-size:10px;font-weight:400;color:var(--text-muted);margin-left:4px">— Identifica padrões de variáveis com melhor performance</span>
+            </div>
+            <div class="combo-analyzer-controls">
+                <div class="ca-ctrl">
+                    <label>Profundidade:</label>
+                    <div class="ca-depth-btns">
+                        <button class="ca-depth-btn ${_caState.depth===1?'active':''}" data-depth="1" onclick="_caUpdateDepth(1)" title="Variáveis individuais">1 var</button>
+                        <button class="ca-depth-btn ${_caState.depth===2?'active':''}" data-depth="2" onclick="_caUpdateDepth(2)" title="Pares de variáveis">2 vars</button>
+                        <button class="ca-depth-btn ${_caState.depth===3?'active':''}" data-depth="3" onclick="_caUpdateDepth(3)" title="Trios de variáveis (mais lento)">3 vars</button>
+                    </div>
+                </div>
+                <div class="ca-ctrl">
+                    <label>Min. Amostra:</label>
+                    <input type="number" value="${_caState.minSample}" min="2" max="100" onchange="_caUpdateMinSample(this.value)">
+                </div>
+                <div class="ca-ctrl">
+                    <label>Ordenar:</label>
+                    <select onchange="_caUpdateSort(this.value)">
+                        <option value="score" ${_caState.sortBy==='score'?'selected':''}>⭐ Score Composto</option>
+                        <option value="roi" ${_caState.sortBy==='roi'?'selected':''}>📈 ROI</option>
+                        <option value="hitRate" ${_caState.sortBy==='hitRate'?'selected':''}>🎯 Taxa de Acerto</option>
+                        <option value="profit" ${_caState.sortBy==='profit'?'selected':''}>💰 P&L</option>
+                        <option value="sample" ${_caState.sortBy==='sample'?'selected':''}>📊 Amostra</option>
+                    </select>
+                </div>
+                <div class="ca-ctrl">
+                    <label>Mostrar:</label>
+                    <select onchange="_caUpdateMaxResults(this.value)">
+                        <option value="10" ${_caState.maxResults===10?'selected':''}>Top 10</option>
+                        <option value="20" ${_caState.maxResults===20?'selected':''}>Top 20</option>
+                        <option value="50" ${_caState.maxResults===50?'selected':''}>Top 50</option>
+                        <option value="100" ${_caState.maxResults===100?'selected':''}>Top 100</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="combo-analyzer-body">
+            <div class="ca-vars-panel">
+                <div class="ca-vars-title">
+                    🎛️ Controle de Variáveis
+                    <div class="ca-vars-legend">
+                        <span><span style="color:var(--accent-blue)">●</span> Auto</span>
+                        <span><span style="color:var(--accent-green)">●</span> Obrigatória</span>
+                        <span><span style="color:var(--accent-red)">●</span> Excluída</span>
+                    </div>
+                </div>
+                <div class="ca-vars-grid" id="ca-var-chips"></div>
+            </div>
+            <div id="ca-container">
+                <div class="ca-empty"><div class="ca-empty-icon">⏳</div><div>Processando combinações...</div></div>
+            </div>
+        </div>
+    </div>`;
+
     container.innerHTML = html;
+
+    // Render variable mode chips
+    _caRenderVarChips();
+
+    // Render combo analyzer async (to not block the main render)
+    setTimeout(() => _caRender(items), 50);
 }
 
 // ── SVG Donut ──
@@ -2351,9 +3405,9 @@ function _buildProfitChart(items) {
 }
 
 // ── Breakdown Card ──
-function _renderBreakdownCard(title, items) {
+function _renderBreakdownCard(title, items, skipSort) {
     if (!items || !items.length) return '';
-    const sorted = [...items].sort((a, b) => b.roi - a.roi || b.profit - a.profit);
+    const sorted = skipSort ? items : [...items].sort((a, b) => b.roi - a.roi || b.profit - a.profit);
 
     let h = `<div class="dash-bd-card">
         <div class="dash-bd-header">
@@ -2392,6 +3446,443 @@ function _renderBreakdownCard(title, items) {
 
 
 // ═══════════════════════════════════════════
+// COMBO ANALYZER ENGINE — Identificador de Padrões Lucrativos
+// ═══════════════════════════════════════════
+let _caState = {
+    depth: 2, minSample: 5, sortBy: 'score', maxResults: 20,
+    // Variable modes: 'auto' (system decides), 'force' (must include), 'exclude' (never include)
+    varModes: {} // key → 'auto'|'force'|'exclude'
+};
+
+function _caGetVarMode(key) { return _caState.varModes[key] || 'auto'; }
+function _caSetVarMode(key, mode) {
+    if (mode === 'auto') { delete _caState.varModes[key]; } else { _caState.varModes[key] = mode; }
+    // Re-render variable chips UI
+    _caRenderVarChips();
+    // Re-run analysis
+    if (dashboardRawData) applyDashboardFilters();
+}
+function _caCycleVarMode(key) {
+    const cur = _caGetVarMode(key);
+    const next = cur === 'auto' ? 'force' : cur === 'force' ? 'exclude' : 'auto';
+    _caSetVarMode(key, next);
+}
+
+function _caRenderVarChips() {
+    const container = document.getElementById('ca-var-chips');
+    if (!container) return;
+    const dims = _caDimensions();
+    container.innerHTML = dims.map(d => {
+        const mode = _caGetVarMode(d.key);
+        const stClass = mode === 'force' ? 'state-force' : mode === 'exclude' ? 'state-exclude' : '';
+        return `<div class="ca-var-chip ${stClass}">
+            <div class="ca-var-chip-label">${d.label}</div>
+            <div class="ca-var-chip-btns">
+                <button class="ca-var-btn vmode-auto ${mode==='auto'?'active':''}" onclick="_caSetVarMode('${d.key}','auto')" title="Automático — sistema decide">Auto</button>
+                <button class="ca-var-btn vmode-force ${mode==='force'?'active':''}" onclick="_caSetVarMode('${d.key}','force')" title="Obrigatória — sempre incluída">✓</button>
+                <button class="ca-var-btn vmode-exclude ${mode==='exclude'?'active':''}" onclick="_caSetVarMode('${d.key}','exclude')" title="Excluída — nunca usada">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function _caDimensions() {
+    return [
+        { key: 'market',     label: 'Mercado',    css: 'dim-market',    extract: o => o.market },
+        { key: 'selection',  label: 'Seleção',    css: 'dim-selection', extract: o => o.selection },
+        { key: 'confidence', label: 'Confiança',  css: 'dim-confidence',extract: o => o.confidence },
+        { key: 'edgeRange',  label: 'Edge',       css: 'dim-edge',     extract: o => {
+            const e = o.edge || 0;
+            if (e < 3) return '0-3%'; if (e < 5) return '3-5%'; if (e < 10) return '5-10%';
+            if (e < 20) return '10-20%'; if (e < 50) return '20-50%'; return '50%+';
+        }},
+        { key: 'oddsRange',  label: 'Odds',       css: 'dim-odds',     extract: o => {
+            const odd = o.market_odd || 0;
+            if (odd < 1.3) return '1.00-1.30'; if (odd < 1.5) return '1.30-1.50';
+            if (odd < 1.8) return '1.50-1.80'; if (odd < 2.0) return '1.80-2.00';
+            if (odd < 2.5) return '2.00-2.50'; if (odd < 3.0) return '2.50-3.00';
+            if (odd < 5.0) return '3.00-5.00'; return '5.00+';
+        }},
+        { key: 'country',    label: 'País',       css: 'dim-country',  extract: o => o.league_country },
+        { key: 'league',     label: 'Liga',       css: 'dim-league',   extract: o => o.league_name },
+        { key: 'analysisType',label:'Tipo',       css: 'dim-analysis', extract: o => o.analysis_type || 'PRE_JOGO' },
+        { key: 'timeOfDay',  label: 'Horário',    css: 'dim-time',     extract: o => {
+            const h = parseInt((o.match_time || '12:00').split(':')[0]);
+            if (h < 12) return '🌅 Manhã'; if (h < 18) return '☀️ Tarde'; return '🌙 Noite';
+        }},
+    ];
+}
+
+function _caComputeMetrics(items) {
+    const g = items.filter(x => x.result_status === 'GREEN');
+    const r = items.filter(x => x.result_status === 'RED');
+    const v = items.filter(x => x.result_status === 'VOID');
+    const pend = items.filter(x => !x.result_status || x.result_status === 'PENDENTE');
+    const decided = g.length + r.length;
+    const hitRate = decided > 0 ? (g.length / decided * 100) : 0;
+    const profitG = g.reduce((s, x) => s + ((x.market_odd || 0) - 1), 0);
+    const profit = profitG - r.length;
+    const roi = decided > 0 ? (profit / decided * 100) : 0;
+    const avgOdd = items.length > 0 ? items.reduce((s, x) => s + (x.market_odd || 0), 0) / items.length : 0;
+    const avgEdge = items.length > 0 ? items.reduce((s, x) => s + (x.edge || 0), 0) / items.length : 0;
+
+    // Consistency: standard deviation of per-day ROI (lower = more consistent)
+    const byDay = {};
+    items.forEach(x => { const d = x.match_date || '?'; if (!byDay[d]) byDay[d] = []; byDay[d].push(x); });
+    const dailyRois = Object.values(byDay).map(dayItems => {
+        const dg = dayItems.filter(x => x.result_status === 'GREEN');
+        const dr = dayItems.filter(x => x.result_status === 'RED');
+        const dd = dg.length + dr.length;
+        if (dd === 0) return 0;
+        const dp = dg.reduce((s, x) => s + ((x.market_odd||0)-1), 0) - dr.length;
+        return (dp / dd) * 100;
+    });
+    const avgDailyRoi = dailyRois.length ? dailyRois.reduce((a, b) => a + b, 0) / dailyRois.length : 0;
+    const stdDev = dailyRois.length > 1 ? Math.sqrt(dailyRois.reduce((s, r) => s + (r - avgDailyRoi) ** 2, 0) / dailyRois.length) : 50;
+    const consistency = Math.max(0, 100 - stdDev);
+
+    // Composite Score: ROI (40%) + Hit Rate (30%) + Sample bonus (20%) + Consistency (10%)
+    const sampleBonus = Math.min(100, Math.log2(Math.max(decided, 1) + 1) * 20);
+    const roiNorm = Math.max(0, Math.min(100, roi + 30)); // normalize ROI to ~0-100
+    const score = decided >= 2
+        ? (roiNorm * 0.40) + (hitRate * 0.30) + (sampleBonus * 0.20) + (consistency * 0.10)
+        : 0;
+
+    return {
+        total: items.length, green: g.length, red: r.length, voids: v.length, pending: pend.length,
+        decided, hitRate: Math.round(hitRate * 10) / 10, profit: Math.round(profit * 100) / 100,
+        roi: Math.round(roi * 10) / 10, avgOdd: Math.round(avgOdd * 100) / 100,
+        avgEdge: Math.round(avgEdge * 10) / 10, consistency: Math.round(consistency),
+        score: Math.round(score * 10) / 10, items
+    };
+}
+
+function _caGenerateCombinations(items, depth) {
+    const allDims = _caDimensions();
+
+    // Separate dims by mode
+    const forcedIdxs = [];  // must appear in every combo
+    const autoIdxs = [];    // optional — system mixes
+    allDims.forEach((d, i) => {
+        const mode = _caGetVarMode(d.key);
+        if (mode === 'exclude') return; // skip entirely
+        if (mode === 'force') forcedIdxs.push(i);
+        else autoIdxs.push(i);
+    });
+
+    const combos = [];
+
+    // Pre-compute dimension values for each item
+    const dimValues = items.map(o => {
+        const vals = {};
+        allDims.forEach(d => vals[d.key] = d.extract(o));
+        return vals;
+    });
+
+    // Effective depth = total dims per combo. Forced dims always present.
+    // Additional "auto" slots = depth - forcedIdxs.length (but at least 0)
+    const autoSlots = Math.max(0, depth - forcedIdxs.length);
+
+    // Generate combos of auto dims to fill remaining slots
+    const autoIdxCombos = [];
+    const nA = autoIdxs.length;
+
+    if (autoSlots === 0) {
+        // Only forced dims (if any)
+        if (forcedIdxs.length > 0) autoIdxCombos.push([]);
+    } else {
+        // Depth 0 (just forced): always include if forced exists
+        if (forcedIdxs.length > 0) autoIdxCombos.push([]);
+        // Depth 1 autos
+        for (let i = 0; i < nA; i++) autoIdxCombos.push([autoIdxs[i]]);
+        // Depth 2 autos
+        if (autoSlots >= 2) for (let i = 0; i < nA; i++) for (let j = i + 1; j < nA; j++) autoIdxCombos.push([autoIdxs[i], autoIdxs[j]]);
+        // Depth 3 autos
+        if (autoSlots >= 3) for (let i = 0; i < nA; i++) for (let j = i + 1; j < nA; j++) for (let k = j + 1; k < nA; k++) autoIdxCombos.push([autoIdxs[i], autoIdxs[j], autoIdxs[k]]);
+    }
+
+    autoIdxCombos.forEach(autoArr => {
+        // Combine forced + this auto set
+        const idxArr = [...forcedIdxs, ...autoArr];
+        if (idxArr.length === 0) return;
+
+        const groupMap = {};
+        items.forEach((o, oi) => {
+            const key = idxArr.map(idx => dimValues[oi][allDims[idx].key]).join('|||');
+            if (!groupMap[key]) groupMap[key] = {
+                dimVals: idxArr.map(idx => ({
+                    key: allDims[idx].key, label: allDims[idx].label,
+                    css: allDims[idx].css, value: dimValues[oi][allDims[idx].key]
+                })),
+                items: []
+            };
+            groupMap[key].items.push(o);
+        });
+
+        Object.values(groupMap).forEach(g => {
+            combos.push({ dims: g.dimVals, ...(_caComputeMetrics(g.items)) });
+        });
+    });
+
+    return combos;
+}
+
+function _caRender(items) {
+    const { depth, minSample, sortBy, maxResults } = _caState;
+    const container = document.getElementById('ca-container');
+    if (!container) return;
+
+    // Generate all combinations
+    const allCombos = _caGenerateCombinations(items, depth);
+
+    // Filter by min sample
+    const filtered = allCombos.filter(c => c.decided >= minSample);
+
+    // Sort
+    const sortFns = {
+        score: (a, b) => b.score - a.score,
+        roi: (a, b) => b.roi - a.roi || b.score - a.score,
+        hitRate: (a, b) => b.hitRate - a.hitRate || b.score - a.score,
+        profit: (a, b) => b.profit - a.profit || b.score - a.score,
+        sample: (a, b) => b.decided - a.decided || b.score - a.score,
+    };
+    filtered.sort(sortFns[sortBy] || sortFns.score);
+
+    const top = filtered.slice(0, maxResults);
+    const totalCombos = allCombos.length;
+    const profitable = allCombos.filter(c => c.decided >= minSample && c.roi > 0).length;
+    const avgScore = top.length ? (top.reduce((s, c) => s + c.score, 0) / top.length).toFixed(1) : 0;
+
+    let html = '';
+
+    // Summary bar
+    html += `<div class="ca-summary-bar">
+        <div class="ca-summary-chip">🔬 Combinações analisadas: <strong>${totalCombos.toLocaleString()}</strong></div>
+        <div class="ca-summary-chip">✅ Acima do mínimo (${minSample}+): <strong>${filtered.length}</strong></div>
+        <div class="ca-summary-chip" style="${profitable > 0 ? 'border-color:rgba(0,230,138,0.3)' : ''}">💰 Lucrativas: <strong style="color:var(--accent-green)">${profitable}</strong></div>
+        <div class="ca-summary-chip">⭐ Score médio top ${top.length}: <strong>${avgScore}</strong></div>
+    </div>`;
+
+    if (!top.length) {
+        html += '<div class="ca-empty"><div class="ca-empty-icon">🔍</div><div>Nenhuma combinação encontrada com amostra mínima de <strong>' + minSample + '</strong> apostas resolvidas.<br>Tente reduzir o mínimo ou carregar mais dados.</div></div>';
+        container.innerHTML = html;
+        return;
+    }
+
+    // Heatmap of single dimensions
+    html += _caRenderHeatmap(items);
+
+    // Cards grid
+    html += '<div class="ca-cards-grid">';
+    top.forEach((combo, idx) => {
+        const medal = idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : '';
+        const rankIcon = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+
+        // Dimension tags
+        const dimTags = combo.dims.map(d => `<span class="ca-dim-tag ${d.css}">${d.label}: ${d.value}</span>`).join('');
+
+        // Metrics colors
+        const roiColor = combo.roi >= 10 ? 'var(--accent-green)' : combo.roi >= 0 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+        const hrColor = combo.hitRate >= 55 ? 'var(--accent-green)' : combo.hitRate >= 45 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+        const profitColor = combo.profit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+        const profitSign = combo.profit >= 0 ? '+' : '';
+        const roiSign = combo.roi >= 0 ? '+' : '';
+
+        // Encode combo for button actions
+        const comboJson = encodeURIComponent(JSON.stringify(combo.dims));
+
+        html += `<div class="ca-card">
+            <div class="ca-card-rank ${medal}">${rankIcon}</div>
+            <div class="ca-card-name">${dimTags}</div>
+            <div class="ca-card-score">
+                <div class="ca-score-bar"><div class="ca-score-fill" style="width:${Math.min(combo.score, 100)}%"></div></div>
+                <div class="ca-score-val">${combo.score}</div>
+            </div>
+            <div class="ca-card-metrics">
+                <div class="ca-metric">
+                    <div class="ca-metric-label">ROI</div>
+                    <div class="ca-metric-val" style="color:${roiColor}">${roiSign}${combo.roi}%</div>
+                </div>
+                <div class="ca-metric">
+                    <div class="ca-metric-label">Acerto</div>
+                    <div class="ca-metric-val" style="color:${hrColor}">${combo.hitRate}%</div>
+                </div>
+                <div class="ca-metric">
+                    <div class="ca-metric-label">P&L</div>
+                    <div class="ca-metric-val" style="color:${profitColor}">${profitSign}${combo.profit.toFixed(2)}u</div>
+                </div>
+                <div class="ca-metric">
+                    <div class="ca-metric-label">Amostra</div>
+                    <div class="ca-metric-val" style="color:var(--text-primary)">${combo.decided}<span style="font-size:9px;color:var(--text-muted);font-weight:400"> (${combo.total})</span></div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-bottom:6px">
+                <span>✅ ${combo.green}G</span>
+                <span>❌ ${combo.red}R</span>
+                <span>Odd méd: ${combo.avgOdd}</span>
+                <span>Edge méd: ${combo.avgEdge}%</span>
+                <span title="Consistência entre dias">📊 ${combo.consistency}%</span>
+            </div>
+            <div class="ca-card-actions">
+                <button class="ca-btn ca-btn-apply" onclick="_caApplyAsFilter('${comboJson}')">🔍 Aplicar como Filtro</button>
+                <button class="ca-btn ca-btn-save" onclick="_caSaveAsView('${comboJson}')">💾 Salvar como Visão</button>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+
+    container.innerHTML = html;
+}
+
+function _caRenderHeatmap(items) {
+    const dims = _caDimensions().filter(d => _caGetVarMode(d.key) !== 'exclude');
+    // For each single dimension, compute the best value by ROI
+    let html = '<div class="ca-heatmap"><div class="ca-heatmap-title">🗺️ Mapa de Calor — Melhores valores por dimensão</div><div class="ca-heatmap-grid">';
+
+    dims.forEach(dim => {
+        const groups = {};
+        items.forEach(o => {
+            const v = dim.extract(o);
+            if (!groups[v]) groups[v] = [];
+            groups[v].push(o);
+        });
+
+        // Find best value by ROI (min 3 decided)
+        let best = null, bestRoi = -Infinity;
+        Object.entries(groups).forEach(([val, arr]) => {
+            const g = arr.filter(x => x.result_status === 'GREEN');
+            const r = arr.filter(x => x.result_status === 'RED');
+            const d = g.length + r.length;
+            if (d < 3) return;
+            const pft = g.reduce((s, x) => s + ((x.market_odd||0)-1), 0) - r.length;
+            const roi = (pft / d) * 100;
+            if (roi > bestRoi) { bestRoi = roi; best = { val, roi, total: arr.length, decided: d, green: g.length, red: r.length }; }
+        });
+
+        if (!best) return;
+
+        const bgAlpha = Math.min(0.6, Math.max(0.1, best.roi / 100));
+        const bgColor = best.roi >= 0
+            ? `rgba(0,230,138,${bgAlpha})`
+            : `rgba(239,68,68,${Math.min(0.5, Math.abs(best.roi) / 100)})`;
+        const sign = best.roi >= 0 ? '+' : '';
+
+        html += `<div class="ca-heat-cell" style="background:${bgColor}" onclick="_caApplyDimFilter('${dim.key}','${best.val.replace(/'/g, "\\'")}')">
+            <div class="ca-heat-cell-name" title="${dim.label}: ${best.val}">${dim.label}</div>
+            <div class="ca-heat-cell-val" style="color:${best.roi >= 0 ? '#fff' : '#fca5a5'}">${sign}${best.roi.toFixed(1)}%</div>
+            <div class="ca-heat-cell-sub">${best.val} (${best.green}G/${best.red}R de ${best.decided})</div>
+        </div>`;
+    });
+
+    html += '</div></div>';
+    return html;
+}
+
+function _caApplyDimFilter(dimKey, dimValue) {
+    _caApplyAsFilter(encodeURIComponent(JSON.stringify([{ key: dimKey, value: dimValue }])));
+}
+
+function _caApplyAsFilter(encodedDims) {
+    const dims = JSON.parse(decodeURIComponent(encodedDims));
+
+    // Reset all dashboard filters first
+    clearDashboardFilters();
+
+    // Wait a tick for clearDashboardFilters to execute, then apply specific filters
+    setTimeout(() => {
+        dims.forEach(d => {
+            switch (d.key) {
+                case 'market':
+                    if (msRegistry['df-market']) msRegistry['df-market'].setSelected([d.value]);
+                    break;
+                case 'selection':
+                    if (msRegistry['df-selection']) msRegistry['df-selection'].setSelected([d.value]);
+                    break;
+                case 'confidence':
+                    if (msRegistry['df-confidence']) msRegistry['df-confidence'].setSelected([d.value]);
+                    break;
+                case 'country':
+                    if (msRegistry['df-country']) msRegistry['df-country'].setSelected([d.value]);
+                    break;
+                case 'league':
+                    if (msRegistry['df-league']) msRegistry['df-league'].setSelected([d.value]);
+                    break;
+                case 'analysisType':
+                    if (msRegistry['df-analysis-type']) msRegistry['df-analysis-type'].setSelected([d.value]);
+                    break;
+                case 'edgeRange': {
+                    const match = d.value.match(/^([\d.]+)-([\d.]+)/);
+                    if (match) {
+                        const el1 = document.getElementById('df-edge-min');
+                        const el2 = document.getElementById('df-edge-max');
+                        if (el1) el1.value = match[1];
+                        if (el2) el2.value = match[2];
+                    } else if (d.value === '50%+') {
+                        const el1 = document.getElementById('df-edge-min');
+                        if (el1) el1.value = '50';
+                    }
+                    break;
+                }
+                case 'oddsRange': {
+                    const match = d.value.match(/^([\d.]+)-([\d.]+)/);
+                    if (match) {
+                        const el1 = document.getElementById('df-odd-min');
+                        const el2 = document.getElementById('df-odd-max');
+                        if (el1) el1.value = match[1];
+                        if (el2) el2.value = match[2];
+                    } else if (d.value === '5.00+') {
+                        const el1 = document.getElementById('df-odd-min');
+                        if (el1) el1.value = '5.0';
+                    }
+                    break;
+                }
+                case 'timeOfDay':
+                    // Time of day doesn't have a direct filter, so we skip
+                    break;
+            }
+        });
+
+        // Re-apply filters to update dashboard
+        applyDashboardFilters();
+
+        // Scroll to top of dashboard to show updated results
+        document.getElementById('sec-performance')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+}
+
+function _caSaveAsView(encodedDims) {
+    const dims = JSON.parse(decodeURIComponent(encodedDims));
+    const viewName = dims.map(d => `${d.label}: ${d.value}`).join(' + ');
+
+    // First apply the filter
+    _caApplyAsFilter(encodedDims);
+
+    // Then save as a view after filters are applied
+    setTimeout(() => {
+        const state = _captureDashFilters();
+        const views = _fvLoad();
+        const id = 'fv_' + Date.now();
+        views.push({ id, name: '🧬 ' + viewName, target: 'dash', state, createdAt: new Date().toISOString() });
+        _fvSave(views);
+        renderFilterViews();
+    }, 120);
+}
+
+function _caUpdateDepth(newDepth) {
+    _caState.depth = newDepth;
+    document.querySelectorAll('.ca-depth-btn').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.depth) === newDepth);
+    });
+    // Re-render with current filtered data
+    if (dashboardRawData) applyDashboardFilters();
+}
+
+function _caUpdateSort(val) { _caState.sortBy = val; if (dashboardRawData) applyDashboardFilters(); }
+function _caUpdateMinSample(val) { _caState.minSample = parseInt(val) || 3; if (dashboardRawData) applyDashboardFilters(); }
+function _caUpdateMaxResults(val) { _caState.maxResults = parseInt(val) || 20; if (dashboardRawData) applyDashboardFilters(); }
+
+
+// ═══════════════════════════════════════════
 // RENDER ALL
 // ═══════════════════════════════════════════
 function renderAll() {
@@ -2400,7 +3891,7 @@ function renderAll() {
     populateFilters();
     applyColumnFilters();  // Aplica sort padrão (data asc) e filtros
     renderMatches();
-    renderLeagues();
+    renderFilterViews();
 }
 
 function renderRunInfo() {
@@ -2415,11 +3906,152 @@ function renderRunInfo() {
 // ═══════════════════════════════════════════
 // TABS
 // ═══════════════════════════════════════════
+let _previousTab = 'opportunities';
+let _pendingSync = null;  // 'mainToDash' | 'dashToMain' | null
+
 function switchTab(tab) {
+    // When going to dashboard: flag pending sync (will run AFTER loadDashboard completes)
+    if (_previousTab === 'opportunities' && tab === 'performance') {
+        _pendingSync = 'mainToDash';
+    }
+    // When leaving dashboard → main: sync immediately (main data already loaded)
+    if (_previousTab === 'performance' && tab === 'opportunities') {
+        syncFiltersDashToMain();
+    }
+    _previousTab = tab;
+
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
     document.querySelector(`.tab[data-tab="${tab}"]`).classList.add("active");
     document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
     document.getElementById(`sec-${tab}`).classList.add("active");
+
+    // Ao abrir o dashboard, sempre recarregar com dados atuais
+    if (tab === 'performance') {
+        loadDashboard(true);
+    }
+}
+
+// ═══════════════════════════════════════════
+// SYNC FILTERS BETWEEN MAIN & DASHBOARD
+// ═══════════════════════════════════════════
+
+// Helper: sync a multi-select value from one to another
+function _syncMultiSelect(fromId, toId) {
+    const from = msRegistry[fromId];
+    const to = msRegistry[toId];
+    if (!from || !to) return;
+
+    // Check if source has an active filter (some but not all items selected)
+    if (from.hasActiveFilter()) {
+        // Copy the raw selection (actual selected values)
+        const rawSelected = from.getRawSelected();
+        to.setSelected(rawSelected);
+    } else {
+        // No active filter → clear target filter too (= show all)
+        to.reset();
+    }
+}
+
+// Helper: sync a numeric input value
+function _syncInput(fromId, toId) {
+    const from = document.getElementById(fromId);
+    const to = document.getElementById(toId);
+    if (from && to) to.value = from.value;
+}
+
+// Main screen → Dashboard
+function syncFiltersMainToDash() {
+    // Multi-selects (same type on both screens)
+    _syncMultiSelect('cf-league', 'df-league');
+    _syncMultiSelect('cf-market', 'df-market');
+    _syncMultiSelect('cf-confidence', 'df-confidence');
+    _syncMultiSelect('cf-analysis-type', 'df-analysis-type');
+
+    // Selection: both are multi-selects now
+    _syncMultiSelect('cf-selection', 'df-selection');
+
+    // Date: cf-dt-start/end (datetime-local) → df-date-start/end (date)
+    const dtStart = document.getElementById('cf-dt-start')?.value || '';
+    const dtEnd = document.getElementById('cf-dt-end')?.value || '';
+    const dfDateStart = document.getElementById('df-date-start');
+    const dfDateEnd = document.getElementById('df-date-end');
+    if (dfDateStart) dfDateStart.value = dtStart ? dtStart.substring(0, 10) : '';
+    if (dfDateEnd) dfDateEnd.value = dtEnd ? dtEnd.substring(0, 10) : '';
+
+    // Numeric inputs
+    _syncInput('cf-odd-min', 'df-odd-min');
+    _syncInput('cf-odd-max', 'df-odd-max');
+    _syncInput('cf-fair-odd-min', 'df-fair-odd-min');
+    _syncInput('cf-fair-odd-max', 'df-fair-odd-max');
+    _syncInput('cf-edge-min', 'df-edge-min');
+    _syncInput('cf-edge-max', 'df-edge-max');
+
+    // Country: main screen doesn't have a country filter, so leave dashboard's as is
+    // Result filter: dashboard only shows resolved, so skip
+
+    applyDashboardFilters();
+}
+
+// Dashboard → Main screen
+function syncFiltersDashToMain() {
+    // Multi-selects
+    _syncMultiSelect('df-league', 'cf-league');
+    _syncMultiSelect('df-market', 'cf-market');
+    _syncMultiSelect('df-confidence', 'cf-confidence');
+    _syncMultiSelect('df-analysis-type', 'cf-analysis-type');
+
+    // Selection: both are multi-selects now
+    _syncMultiSelect('df-selection', 'cf-selection');
+
+    // Date: df-date-start/end (date) → cf-dt-start/end (datetime-local)
+    const dateStart = document.getElementById('df-date-start')?.value || '';
+    const dateEnd = document.getElementById('df-date-end')?.value || '';
+    const cfDtStart = document.getElementById('cf-dt-start');
+    const cfDtEnd = document.getElementById('cf-dt-end');
+    if (cfDtStart) cfDtStart.value = dateStart ? dateStart + 'T00:00' : '';
+    if (cfDtEnd) cfDtEnd.value = dateEnd ? dateEnd + 'T23:59' : '';
+
+    // Numeric inputs
+    _syncInput('df-odd-min', 'cf-odd-min');
+    _syncInput('df-odd-max', 'cf-odd-max');
+    _syncInput('df-fair-odd-min', 'cf-fair-odd-min');
+    _syncInput('df-fair-odd-max', 'cf-fair-odd-max');
+    _syncInput('df-edge-min', 'cf-edge-min');
+    _syncInput('df-edge-max', 'cf-edge-max');
+
+    applyColumnFilters();
+}
+
+// Global clear: limpa filtros de AMBAS as telas
+function clearAllFiltersGlobal() {
+    // ── Clear main screen filters ──
+    ['cf-team', 'cf-dt-start', 'cf-dt-end',
+     'cf-odd-min', 'cf-odd-max', 'cf-fair-odd-min', 'cf-fair-odd-max',
+     'cf-edge-min', 'cf-edge-max',
+     'cf-prob-min', 'cf-prob-max',
+     'cf-score-min', 'cf-score-max'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    ['cf-league', 'cf-game-status', 'cf-result', 'cf-market', 'cf-selection', 'cf-confidence', 'cf-analysis-type'].forEach(id => {
+        if (msRegistry[id]) msRegistry[id].reset();
+    });
+    currentSort = { key: 'date', dir: 'asc' };
+    document.querySelectorAll('#opp-table th.sortable').forEach(h => {
+        h.classList.remove('sort-asc', 'sort-desc');
+    });
+
+    // ── Clear dashboard filters ──
+    ['df-date-start','df-date-end','df-odd-min','df-odd-max','df-fair-odd-min','df-fair-odd-max','df-edge-min','df-edge-max'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    ['df-market','df-selection','df-confidence','df-country','df-league','df-analysis-type'].forEach(id => {
+        if (msRegistry[id]) msRegistry[id].reset();
+    });
+
+    // Re-apply on both screens
+    applyColumnFilters();
+    if (dashboardRawData) applyDashboardFilters();
 }
 
 // ═══════════════════════════════════════════
@@ -2543,6 +4175,14 @@ function renderOpportunities(data) {
             <td class="edge-cell ${edgeClass}">${o.edge_pct}</td>
             <td style="font-size:12px">${o.model_prob}%</td>
             <td><span class="badge ${confClass}">${o.confidence}</span></td>
+            <td style="font-size:11px;text-align:center;font-weight:600;color:${(o.confidence_score||0) >= 65 ? 'var(--accent-green)' : (o.confidence_score||0) >= 42 ? 'var(--accent-yellow)' : 'var(--accent-red)'}">${(o.confidence_score||0).toFixed(0)}</td>
+            <td style="font-size:10px;text-align:center">${(o.analysis_type||'PRE_JOGO') === 'PRE_JOGO' ? '<span title="Análise feita antes do jogo" style="color:var(--accent-green)">🟢 Pré</span>' : '<span title="Análise retroativa (jogo já iniciado/encerrado)" style="color:var(--accent-blue)">🔵 Retro</span>'}</td>
+            <td style="font-weight:700;font-size:12px;text-align:center;white-space:nowrap">${
+                resultStatus === 'GREEN' ? `<span style="color:var(--accent-green)">+${(o.market_odd - 1).toFixed(2)}u</span>` 
+                : resultStatus === 'RED' ? `<span style="color:var(--accent-red)">-1.00u</span>` 
+                : resultStatus === 'VOID' ? `<span style="color:var(--text-muted)">0.00u</span>` 
+                : '<span style="color:var(--text-muted)">--</span>'
+            }</td>
         </tr>`;
     }).join("");
 }
@@ -2555,24 +4195,93 @@ function renderMatches(data) {
     document.getElementById("match-count").textContent = matches.length;
     const tbody = document.getElementById("match-tbody");
 
+    // Pre-build opp summary per match
+    const oppsByMatch = {};
+    allOpps.forEach(o => {
+        if (!oppsByMatch[o.match_id]) oppsByMatch[o.match_id] = [];
+        oppsByMatch[o.match_id].push(o);
+    });
+
     tbody.innerHTML = matches.map(m => {
-        const weatherIcon = m.weather_rain > 5 ? "🌧️" : m.weather_wind > 20 ? "💨" : m.weather_temp > 30 ? "🌡️" : "☀️";
+        // Weather — only show real data
+        const hasWeather = m.has_real_weather;
+        const weatherIcon = !hasWeather ? '❓' : m.weather_rain > 5 ? "🌧️" : m.weather_wind > 20 ? "💨" : m.weather_temp > 30 ? "🌡️" : "☀️";
+        const weatherText = hasWeather ? `${weatherIcon} ${m.weather_temp}°C` : `<span style="color:var(--text-muted)">N/D</span>`;
+
+        // Game status
+        const gs = getGameStatus(m.match_date, m.match_time);
+        const statusBadge = gs.status === 'LIVE'
+            ? '<span class="game-live">🔴 AO VIVO</span>'
+            : gs.status === 'FINISHED'
+            ? '<span class="game-finished">✔ Encerrado</span>'
+            : `<span class="game-upcoming">${gs.timeLabel}</span>`;
+
+        // Opportunities summary
+        const mOpps = oppsByMatch[m.match_id] || [];
+        const nOpps = mOpps.length;
+        const greens = mOpps.filter(o => o.result_status === 'GREEN').length;
+        const reds = mOpps.filter(o => o.result_status === 'RED').length;
+        const voids = mOpps.filter(o => o.result_status === 'VOID').length;
+        const pending = nOpps - greens - reds - voids;
+        const bestEdge = nOpps > 0 ? Math.max(...mOpps.map(o => o.edge || 0)) : 0;
+        const hasHigh = mOpps.some(o => o.confidence === 'ALTO');
+        const hasMed = mOpps.some(o => o.confidence === 'MÉDIO');
+
+        let oppsHtml = '';
+        if (nOpps === 0) {
+            oppsHtml = '<span style="color:var(--text-muted);font-size:11px">—</span>';
+        } else {
+            const edgeColor = bestEdge >= 10 ? 'var(--accent-green)' : bestEdge >= 5 ? 'var(--accent-yellow)' : 'var(--text-secondary)';
+            const confDot = hasHigh ? '🟢' : hasMed ? '🟡' : '🔴';
+            let resultSummary = '';
+            if (greens + reds + voids > 0) {
+                const parts = [];
+                if (greens) parts.push(`<span style="color:var(--accent-green)">${greens}✅</span>`);
+                if (reds) parts.push(`<span style="color:var(--accent-red)">${reds}❌</span>`);
+                if (voids) parts.push(`<span style="color:var(--text-muted)">${voids}⬜</span>`);
+                if (pending) parts.push(`<span style="color:var(--accent-yellow)">${pending}⏳</span>`);
+                resultSummary = `<div style="font-size:10px;margin-top:2px">${parts.join(' ')}</div>`;
+            }
+            oppsHtml = `<div style="text-align:center">
+                <span style="font-weight:800;color:${edgeColor};font-family:'JetBrains Mono';font-size:12px">${nOpps}</span>
+                <span style="font-size:10px;color:var(--text-muted)">op${nOpps>1?'s':''}</span>
+                ${confDot}
+                <span style="font-size:10px;color:${edgeColor};font-family:'JetBrains Mono'">${bestEdge.toFixed(1)}%</span>
+                ${resultSummary}
+            </div>`;
+        }
+
+        // Result score (from opportunities if available)
+        let resultHtml = '';
+        const resolvedOpp = mOpps.find(o => o.result_score);
+        if (resolvedOpp && resolvedOpp.result_score) {
+            const score = resolvedOpp.result_score;
+            const htScore = resolvedOpp.result_ht_score ? `<div style="font-size:9px;color:var(--text-muted)">HT: ${resolvedOpp.result_ht_score}</div>` : '';
+            resultHtml = `<span class="score-inline">${score}</span>${htScore}`;
+        } else if (gs.status === 'FINISHED') {
+            resultHtml = '<span style="color:var(--text-muted);font-size:10px">Enc.</span>';
+        } else {
+            resultHtml = '<span style="color:var(--text-muted);font-size:11px">—</span>';
+        }
+
+        // Fatigue
         const fatigueIcons = (m.home_fatigue ? "⚡H " : "") + (m.away_fatigue ? "⚡A" : "");
 
-        return `<tr onclick="showMatchDetail(${m.match_id})" style="cursor:pointer">
-            <td class="team-cell">${m.home_team} <span class="vs">vs</span> ${m.away_team}${fatigueIcons ? '<br><span style="font-size:11px;color:var(--accent-yellow)">' + fatigueIcons + '</span>' : ''}</td>
-            <td style="font-size:12px">${m.league_name}</td>
-            <td style="font-size:12px;color:var(--text-secondary)">${m.match_date}<br>${m.match_time}</td>
-            <td class="odd-cell" style="color:var(--accent-green)">${m.home_xg}</td>
-            <td class="odd-cell" style="color:var(--accent-blue)">${m.away_xg}</td>
-            <td style="font-weight:700">${m.prob_home}%</td>
-            <td>${m.prob_draw}%</td>
-            <td>${m.prob_away}%</td>
-            <td>${m.prob_over25}%</td>
-            <td>${m.prob_btts}%</td>
-            <td>${m.corners_expected}</td>
-            <td>${m.cards_expected}</td>
-            <td>${weatherIcon} ${m.weather_temp}°C</td>
+        // Row class
+        const rowClass = gs.status === 'LIVE' ? 'row-live' : gs.status === 'FINISHED' ? 'row-finished' : '';
+
+        return `<tr class="${rowClass}" onclick="showMatchDetail(${m.match_id})" style="cursor:pointer">
+            <td class="team-cell">${m.home_team} <span class="vs">vs</span> ${m.away_team}${fatigueIcons ? '<br><span style="font-size:10px;color:var(--accent-yellow)">' + fatigueIcons + '</span>' : ''}</td>
+            <td style="font-size:11px">${m.league_name}<br><span style="font-size:10px;color:var(--text-muted)">${m.league_country}</span></td>
+            <td style="font-size:12px;color:var(--text-secondary);white-space:nowrap">${m.match_date}<br>${m.match_time}</td>
+            <td>${statusBadge}</td>
+            <td style="text-align:center">${resultHtml}</td>
+            <td style="white-space:nowrap"><span class="odd-cell" style="color:var(--accent-green)">${m.home_xg}</span> <span style="color:var(--text-muted);font-size:10px">×</span> <span class="odd-cell" style="color:var(--accent-blue)">${m.away_xg}</span></td>
+            <td style="font-size:11px;white-space:nowrap"><span style="font-weight:700">${m.prob_home}%</span> / ${m.prob_draw}% / ${m.prob_away}%</td>
+            <td style="font-size:12px">${m.prob_over25}%</td>
+            <td style="font-size:12px">${m.prob_btts}%</td>
+            <td style="font-size:11px">${weatherText}</td>
+            <td>${oppsHtml}</td>
         </tr>`;
     }).join("");
 }
@@ -2647,11 +4356,20 @@ function getSortValue(o, key) {
         case 'kelly': return parseFloat((o.kelly_bet_pct || '0').replace('%', '')) || 0;
         case 'prob': return o.model_prob || 0;
         case 'confidence': return o.confidence === 'ALTO' ? 3 : o.confidence === 'MÉDIO' ? 2 : 1;
+        case 'conf_score': return o.confidence_score || 0;
+        case 'analysis_type': return (o.analysis_type || 'PRE_JOGO') === 'PRE_JOGO' ? 2 : 1;
         case 'dq': return (o.data_quality || 0) * 100;
         case 'result': return o.result_status === 'GREEN' ? 3 : o.result_status === 'RED' ? 2 : o.result_status === 'VOID' ? 1 : 0;
         case 'game_status': {
             const gs = getGameStatus(o.match_date, o.match_time);
             return gs.status === 'LIVE' ? 3 : gs.status === 'UPCOMING' ? 2 : 1;
+        }
+        case 'pnl': {
+            const rs = o.result_status || 'PENDENTE';
+            if (rs === 'GREEN') return (o.market_odd || 0) - 1;
+            if (rs === 'RED') return -1;
+            if (rs === 'VOID') return 0;
+            return -999; // PENDENTE goes to bottom
         }
         default: return 0;
     }
@@ -2835,13 +4553,27 @@ class MultiSelect {
 
     reset() {
         this.selected.clear();
+        this._renderList();
         this._updateTrigger();
     }
 
     setSelected(values) {
-        this.selected = new Set(values);
+        this.selected = new Set(values.filter(v => this.items.some(it => it.value === v)));
         this._renderList();
         this._updateTrigger();
+    }
+
+    // Returns the raw internal selected set (not empty when "all" selected)
+    getRawSelected() {
+        return [...this.selected];
+    }
+
+    getAllItems() {
+        return this.items.map(it => it.value);
+    }
+
+    hasActiveFilter() {
+        return this.selected.size > 0 && this.selected.size < this.items.length;
     }
 }
 
@@ -2861,7 +4593,7 @@ function applyColumnFilters() {
     const gameStatusFilter = msRegistry['cf-game-status'] ? msRegistry['cf-game-status'].getSelected() : [];
     const resultFilter = msRegistry['cf-result'] ? msRegistry['cf-result'].getSelected() : [];
     const marketFilter = msRegistry['cf-market'] ? msRegistry['cf-market'].getSelected() : [];
-    const selection = (document.getElementById('cf-selection')?.value || '').toLowerCase();
+    const selectionFilter = msRegistry['cf-selection'] ? msRegistry['cf-selection'].getSelected() : [];
     const oddMin = parseFloat(document.getElementById('cf-odd-min')?.value) || null;
     const oddMax = parseFloat(document.getElementById('cf-odd-max')?.value) || null;
     const fairOddMin = parseFloat(document.getElementById('cf-fair-odd-min')?.value) || null;
@@ -2871,6 +4603,9 @@ function applyColumnFilters() {
     const probMin = parseFloat(document.getElementById('cf-prob-min')?.value) || null;
     const probMax = parseFloat(document.getElementById('cf-prob-max')?.value) || null;
     const confidenceFilter = msRegistry['cf-confidence'] ? msRegistry['cf-confidence'].getSelected() : [];
+    const scoreMin = parseFloat(document.getElementById('cf-score-min')?.value) || null;
+    const scoreMax = parseFloat(document.getElementById('cf-score-max')?.value) || null;
+    const analysisTypeFilter = msRegistry['cf-analysis-type'] ? msRegistry['cf-analysis-type'].getSelected() : [];
 
     let filtered = allOpps.filter(o => {
         if (team && !(o.home_team.toLowerCase().includes(team) || o.away_team.toLowerCase().includes(team))) return false;
@@ -2895,7 +4630,7 @@ function applyColumnFilters() {
         }
         if (resultFilter.length && !resultFilter.includes(o.result_status || 'PENDENTE')) return false;
         if (marketFilter.length && !marketFilter.some(m => o.market.includes(m))) return false;
-        if (selection && !o.selection.toLowerCase().includes(selection)) return false;
+        if (selectionFilter.length && !selectionFilter.includes(o.selection)) return false;
         if (oddMin !== null && o.market_odd < oddMin) return false;
         if (oddMax !== null && o.market_odd > oddMax) return false;
         if (fairOddMin !== null && (o.fair_odd || 0) < fairOddMin) return false;
@@ -2905,6 +4640,9 @@ function applyColumnFilters() {
         if (probMin !== null && o.model_prob < probMin) return false;
         if (probMax !== null && o.model_prob > probMax) return false;
         if (confidenceFilter.length && !confidenceFilter.includes(o.confidence)) return false;
+        if (scoreMin !== null && (o.confidence_score || 0) < scoreMin) return false;
+        if (scoreMax !== null && (o.confidence_score || 0) > scoreMax) return false;
+        if (analysisTypeFilter.length && !analysisTypeFilter.includes(o.analysis_type || 'PRE_JOGO')) return false;
         return true;
     });
 
@@ -2933,22 +4671,7 @@ function applyColumnFilters() {
 }
 
 function clearAllFilters() {
-    ['cf-team', 'cf-selection', 'cf-dt-start', 'cf-dt-end',
-     'cf-odd-min', 'cf-odd-max', 'cf-fair-odd-min', 'cf-fair-odd-max',
-     'cf-edge-min', 'cf-edge-max',
-     'cf-prob-min', 'cf-prob-max'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-    });
-    // Reset all multi-selects on main screen
-    ['cf-league', 'cf-game-status', 'cf-result', 'cf-market', 'cf-confidence'].forEach(id => {
-        if (msRegistry[id]) msRegistry[id].reset();
-    });
-    currentSort = { key: 'date', dir: 'asc' };
-    document.querySelectorAll('#opp-table th.sortable').forEach(h => {
-        h.classList.remove('sort-asc', 'sort-desc');
-    });
-    applyColumnFilters();
+    clearAllFiltersGlobal();
 }
 
 function populateFilters() {
@@ -2989,11 +4712,24 @@ function populateFilters() {
     }
     msRegistry['cf-market'].setItems(markets);
 
+    // Selection
+    const selections = [...new Set(allOpps.map(o => o.selection))].filter(Boolean).sort();
+    if (!msRegistry['cf-selection']) {
+        msRegistry['cf-selection'] = new MultiSelect('cf-selection', { placeholder: 'Todas', onChange: () => applyColumnFilters() });
+    }
+    msRegistry['cf-selection'].setItems(selections);
+
     // Confidence
     if (!msRegistry['cf-confidence']) {
         msRegistry['cf-confidence'] = new MultiSelect('cf-confidence', { placeholder: 'Todos', onChange: () => applyColumnFilters() });
     }
     msRegistry['cf-confidence'].setItems(['ALTO', 'MÉDIO', 'BAIXO']);
+
+    // Analysis type
+    if (!msRegistry['cf-analysis-type']) {
+        msRegistry['cf-analysis-type'] = new MultiSelect('cf-analysis-type', { placeholder: 'Todos', onChange: () => applyColumnFilters() });
+    }
+    msRegistry['cf-analysis-type'].setItems(['PRE_JOGO', 'RETROATIVA']);
 
     // Match filters - league multi-select
     const matchLeagues = [...new Set(allMatches.map(m => m.league_name))].filter(Boolean).sort();
@@ -3137,7 +4873,8 @@ function showOppDetail(idx) {
             </div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                 ${o.odds_suspect ? '<span style="background:rgba(255,165,0,0.15);color:var(--accent-yellow);padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;border:1px solid rgba(255,165,0,0.3)">⚠️ VERIFICAR</span>' : ''}
-                <span class="badge ${confClass}" style="font-size:12px;padding:5px 12px">${o.confidence}</span>
+                <span class="badge ${confClass}" style="font-size:12px;padding:5px 12px">${o.confidence} <span style="font-size:10px;opacity:0.8">(${(o.confidence_score||0).toFixed(0)})</span></span>
+                <span style="background:${(o.analysis_type||'PRE_JOGO') === 'PRE_JOGO' ? 'rgba(0,255,100,0.1);color:var(--accent-green);border:1px solid rgba(0,255,100,0.3)' : 'rgba(100,149,237,0.1);color:var(--accent-blue);border:1px solid rgba(100,149,237,0.3)'};padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700">${(o.analysis_type||'PRE_JOGO') === 'PRE_JOGO' ? '🟢 Pré-Jogo' : '🔵 Retroativa'}</span>
                 <span style="background:var(--accent-green-dim);color:var(--accent-green);padding:5px 14px;border-radius:6px;font-weight:800;font-size:16px;font-family:'JetBrains Mono'">${o.edge_pct}</span>
                 <span style="background:rgba(255,255,255,0.05);padding:5px 12px;border-radius:6px;font-size:12px;color:${dqColor};font-weight:700;border:1px solid ${dqColor}40">Dados: ${dqPct}%</span>
             </div>
@@ -3510,7 +5247,7 @@ function showOppDetail(idx) {
                         <div style="margin-bottom:4px">Jogos: ${v(m.home_games_played, '?')} disputados, ${v(m.home_games_remaining, '?')} restantes</div>
                         <div style="margin-bottom:4px">Distância p/ título: <strong style="color:${(v(m.home_points_to_title, 99) <= 10) ? 'var(--accent-green)' : 'var(--text-secondary)'}">${v(m.home_points_to_title, 99) !== 99 ? m.home_points_to_title + ' pts' : 'N/D'}</strong></div>
                         <div>Distância p/ rebaixamento: <strong style="color:${(v(m.home_points_to_relegation, 99) <= 5) ? 'var(--accent-red)' : 'var(--text-secondary)'}">${v(m.home_points_to_relegation, 99) !== 99 ? m.home_points_to_relegation + ' pts' : 'N/D'}</strong></div>
-                        <div style="margin-top:6px">Urgência: <strong>${v(m.urgency_home, 0).toFixed ? m.urgency_home.toFixed(1) : v(m.urgency_home, '?')}</strong>/1.0</div>
+                        <div style="margin-top:6px">Urgência: <strong>${m.urgency_home != null ? Number(m.urgency_home).toFixed(1) : '?'}</strong>/1.0</div>
                     </div>
                 </div>
                 <div class="ctx-card">
@@ -3520,7 +5257,7 @@ function showOppDetail(idx) {
                         <div style="margin-bottom:4px">Jogos: ${v(m.away_games_played, '?')} disputados, ${v(m.away_games_remaining, '?')} restantes</div>
                         <div style="margin-bottom:4px">Distância p/ título: <strong style="color:${(v(m.away_points_to_title, 99) <= 10) ? 'var(--accent-green)' : 'var(--text-secondary)'}">${v(m.away_points_to_title, 99) !== 99 ? m.away_points_to_title + ' pts' : 'N/D'}</strong></div>
                         <div>Distância p/ rebaixamento: <strong style="color:${(v(m.away_points_to_relegation, 99) <= 5) ? 'var(--accent-red)' : 'var(--text-secondary)'}">${v(m.away_points_to_relegation, 99) !== 99 ? m.away_points_to_relegation + ' pts' : 'N/D'}</strong></div>
-                        <div style="margin-top:6px">Urgência: <strong>${v(m.urgency_away, 0).toFixed ? m.urgency_away.toFixed(1) : v(m.urgency_away, '?')}</strong>/1.0</div>
+                        <div style="margin-top:6px">Urgência: <strong>${m.urgency_away != null ? Number(m.urgency_away).toFixed(1) : '?'}</strong>/1.0</div>
                     </div>
                 </div>
             </div>
@@ -4170,13 +5907,16 @@ function buildDetailedAnalysis(o) {
     L.push(`  calculada pelo modelo (${o.fair_odd.toFixed(2)}), gerando um`);
     L.push(`  edge de ${o.edge_pct} — oportunidade de valor positivo (+EV).`);
     L.push("");
-    L.push(`  Confiança: ${o.confidence}`);
-    if (o.confidence === "ALTO")
-        L.push("  Critério: Edge >8% + Prob >35% + condições favoráveis");
-    else if (o.confidence === "MÉDIO")
-        L.push("  Critério: Edge >5% mas com algum fator adverso");
-    else
-        L.push("  Critério: Edge moderado com incertezas nos dados");
+    L.push(`  Confiança: ${o.confidence} (Score: ${(o.confidence_score||0).toFixed(1)}/100)`);
+    L.push(`  Tipo de Análise: ${(o.analysis_type||'PRE_JOGO') === 'PRE_JOGO' ? 'Pré-Jogo (antes do início)' : 'Retroativa (jogo já iniciado/encerrado)'}`);
+    L.push("");
+    L.push("  Score de Confiança considera:");
+    L.push("  - Edge (sweet spot: 5-10%)");
+    L.push("  - Faixa de Odds (odds baixas = mais previsível)");
+    L.push("  - Probabilidade do modelo");
+    L.push("  - Qualidade dos dados (odds reais, standings reais)");
+    L.push("  - Condições contextuais (clima, fadiga)");
+    L.push("  - Concordância modelo vs mercado");
 
     return L.join("\n");
 }
@@ -4188,24 +5928,48 @@ function showMatchDetail(matchId) {
     document.getElementById("modal-title").textContent = `${m.home_team} vs ${m.away_team}`;
     document.getElementById("modal-subtitle").textContent = `${m.league_name} — ${m.league_country} | ${m.match_date} ${m.match_time}`;
 
-    const formHtml = (form) => form.map(f => `<div class="form-dot form-${f}">${f}</div>`).join("");
+    const formHtml = (form) => {
+        if (!form || !form.length) return '<span style="color:var(--text-muted)">Sem dados</span>';
+        return form.map(f => `<div class="form-dot form-${f}">${f}</div>`).join("");
+    };
     const matchOpps = allOpps.filter(o => o.match_id === matchId);
     const oppsHtml = matchOpps.length > 0 ? matchOpps.map(o => {
         const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
-        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px">
+        const oppIdx = allOpps.indexOf(o);
+        const resultBadge = o.result_status && o.result_status !== 'PENDENTE'
+            ? `<span class="result-${o.result_status.toLowerCase()}" style="font-size:9px;padding:2px 6px">${o.result_status === 'GREEN' ? '✅' : o.result_status === 'RED' ? '❌' : '⬜'} ${o.result_status}</span>`
+            : '<span class="result-pending" style="font-size:9px;padding:2px 6px">⏳</span>';
+        return `<div onclick="showOppDetail(${oppIdx})" style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px;cursor:pointer;border-radius:8px;transition:background 0.15s" onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background='transparent'">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <span class="badge ${confClass}">${o.confidence}</span>
-                <span>${o.market}: <strong>${o.selection}</strong></span>
+                ${resultBadge}
+                <span class="badge ${confClass}">${o.confidence} <span style="font-size:9px;opacity:0.7">(${(o.confidence_score||0).toFixed(0)})</span></span>
+                <span class="market-tag ${getMarketClass(o.market)}">${o.market}</span>
+                <span style="font-weight:700">${o.selection}</span>
                 <span style="font-family:'JetBrains Mono';font-size:12px;color:var(--text-secondary)">@${o.market_odd.toFixed(2)}</span>
             </div>
             <div style="display:flex;align-items:center;gap:10px">
-                <span style="font-weight:800;color:var(--accent-green);font-family:'JetBrains Mono'">${o.edge_pct}</span>
+                <span style="font-size:11px;color:var(--text-muted)">Prob: ${o.model_prob.toFixed(0)}%</span>
+                <span style="font-weight:800;color:var(--accent-green);font-family:'JetBrains Mono';font-size:14px">${o.edge_pct}</span>
                 ${bookmakerBadgeHtml(o.bookmaker, o.home_team, o.away_team, o.market, o.selection, true, o.league_country, o.league_name)}
+                <span style="font-size:11px;color:var(--accent-blue)">Ver detalhes →</span>
             </div>
         </div>`;
     }).join("") : '<div style="color:var(--text-muted);padding:8px 0">Nenhuma oportunidade +EV identificada para este jogo</div>';
 
+    // Calculate game status
+    const gs = getGameStatus(m.match_date, m.match_time);
+    const statusBadge = gs.status === 'LIVE'
+        ? '<span class="game-live">🔴 AO VIVO</span>'
+        : gs.status === 'FINISHED'
+        ? '<span class="game-finished">✔ ENCERRADO</span>'
+        : `<span class="game-upcoming">📅 ${gs.timeLabel}</span>`;
+
     document.getElementById("modal-body").innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+            ${statusBadge}
+            <span style="font-size:11px;color:var(--text-muted)">${matchOpps.length} oportunidade(s) +EV</span>
+        </div>
+
         <div class="detail-grid">
             <div class="detail-item">
                 <div class="detail-label">xG Casa</div>
@@ -4233,7 +5997,7 @@ function showMatchDetail(matchId) {
             </div>
             <div class="detail-item">
                 <div class="detail-label">Clima</div>
-                <div class="detail-value">${m.weather_desc} | ${m.weather_temp}°C | 💨${m.weather_wind.toFixed(0)}km/h${m.weather_rain > 0 ? ' | 🌧️' + m.weather_rain + 'mm' : ''}</div>
+                <div class="detail-value">${m.has_real_weather ? (m.weather_desc + ' | ' + m.weather_temp + '°C | 💨' + m.weather_wind.toFixed(0) + 'km/h' + (m.weather_rain > 0 ? ' | 🌧️' + m.weather_rain + 'mm' : '')) : '<span style="color:var(--text-muted)">Dados de clima não disponíveis</span>'}</div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">Árbitro</div>
@@ -4258,8 +6022,8 @@ function showMatchDetail(matchId) {
             <div class="form-dots">${formHtml(m.away_form)}</div>
         </div>
 
-        ${m.injuries_home.length > 0 ? `<div style="margin-bottom:12px"><div class="detail-label" style="margin-bottom:6px">🏥 Lesões ${m.home_team}</div><div style="font-size:13px;color:var(--accent-red)">${m.injuries_home.join('<br>')}</div></div>` : ''}
-        ${m.injuries_away.length > 0 ? `<div style="margin-bottom:12px"><div class="detail-label" style="margin-bottom:6px">🏥 Lesões ${m.away_team}</div><div style="font-size:13px;color:var(--accent-red)">${m.injuries_away.join('<br>')}</div></div>` : ''}
+        ${m.injuries_home && m.injuries_home.length > 0 ? `<div style="margin-bottom:12px"><div class="detail-label" style="margin-bottom:6px">🏥 Lesões ${m.home_team}</div><div style="font-size:13px;color:var(--accent-red)">${m.injuries_home.join('<br>')}</div></div>` : ''}
+        ${m.injuries_away && m.injuries_away.length > 0 ? `<div style="margin-bottom:12px"><div class="detail-label" style="margin-bottom:6px">🏥 Lesões ${m.away_team}</div><div style="font-size:13px;color:var(--accent-red)">${m.injuries_away.join('<br>')}</div></div>` : ''}
         ${m.home_fatigue || m.away_fatigue ? `<div style="margin-bottom:12px;padding:10px;background:var(--accent-yellow-dim);border-radius:8px;font-size:13px;color:var(--accent-yellow)">⚡ Fadiga: ${m.home_fatigue ? m.home_team + ' (Casa)' : ''} ${m.away_fatigue ? m.away_team + ' (Fora)' : ''} — jogou nas últimas 72h</div>` : ''}
 
         <div style="margin-top:16px;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm)">
@@ -4268,7 +6032,7 @@ function showMatchDetail(matchId) {
         </div>
 
         <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-            <div class="detail-label" style="margin-bottom:12px">🎯 Oportunidades de Valor (+EV)</div>
+            <div class="detail-label" style="margin-bottom:12px">🎯 Oportunidades de Valor (+EV) — <span style="font-weight:400;color:var(--text-muted);font-size:11px">clique para ver detalhes completos</span></div>
             ${oppsHtml}
         </div>
     `;

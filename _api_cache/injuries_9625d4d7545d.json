@@ -1,0 +1,1 @@
+{"_cached_at": "2026-02-10T14:00:22.102344", "_endpoint": "injuries", "_params": {"fixture": 1494355}, "data": {"get": "injuries", "parameters": {"fixture": "1494355"}, "errors": [], "results": 0, "paging": {"current": 1, "total": 1}, "response": []}}
