@@ -12,11 +12,16 @@ import sys
 import io
 
 # ═══ FIX ENCODING WINDOWS (cp1252 → utf-8) ═══
-# Força UTF-8 em TODOS os streams de I/O do Python no Windows
-# Isso evita UnicodeEncodeError com emojis/acentos em qualquer print()
-os.environ["PYTHONIOENCODING"] = "utf-8"
-os.environ["PYTHONUTF8"] = "1"
+# PYTHONUTF8 só funciona se definido ANTES do interpretador iniciar.
+# Se não estiver ativo, relança o script como subprocess com a variável correta.
+if os.name == 'nt' and not getattr(sys.flags, 'utf8_mode', False):
+    import subprocess
+    os.environ["PYTHONUTF8"] = "1"
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    result = subprocess.run([sys.executable] + sys.argv, env=os.environ)
+    sys.exit(result.returncode)
 
+# Garantia extra: reconfigura streams para UTF-8 com fallback seguro
 def _force_utf8():
     """Força encoding UTF-8 em stdout e stderr."""
     for stream_name in ('stdout', 'stderr'):
