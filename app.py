@@ -64,6 +64,9 @@ import numpy as np
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+# Detectar se estamos rodando no Vercel (variável definida automaticamente)
+IS_VERCEL = bool(os.environ.get("VERCEL"))
+
 # No Vercel, o filesystem do código é read-only; usar /tmp para cache
 _base_dir = os.path.dirname(__file__)
 try:
@@ -84,6 +87,15 @@ _cache = {
     "last_run_at": None,
     "api_calls_used": 0,
 }
+
+@app.route("/api/info")
+def api_info():
+    """Retorna informações do ambiente (Vercel vs local)."""
+    return jsonify({
+        "is_vercel": IS_VERCEL,
+        "pipeline_available": not IS_VERCEL,
+    })
+
 
 # ═══════════════════════════════════════════════
 # CONVERSÃO DE FUSO HORÁRIO (UTC → Brasília)
@@ -1180,6 +1192,11 @@ def index():
 def api_run():
     """Executa o engine e retorna os resultados.
     Aceita JSON com date_from e date_to para datas customizadas."""
+    if IS_VERCEL:
+        return jsonify({
+            "ok": False,
+            "error": "O pipeline de análise leva vários minutos e excede o timeout do Vercel. Execute pelo servidor local (python app.py)."
+        }), 503
     from flask import request
     try:
         data = request.get_json(silent=True) or {}
@@ -1218,6 +1235,11 @@ def api_recalculate():
     ZERO requisicoes a API — apenas reprocessa com codigo atualizado.
     Ideal para aplicar novos mercados/modelos sem gastar creditos.
     """
+    if IS_VERCEL:
+        return jsonify({
+            "ok": False,
+            "error": "Recálculo excede o timeout do Vercel. Execute pelo servidor local (python app.py)."
+        }), 503
     try:
         recalculate_engine()
     except Exception as e:
@@ -1669,6 +1691,11 @@ def api_check_results():
     - Agrupa por match_id direto das oportunidades pendentes elegíveis.
     - Usa skip_cache=True para buscar resultado atualizado da API (não o cache antigo NS).
     """
+    if IS_VERCEL:
+        return jsonify({
+            "ok": False,
+            "error": "Verificação de resultados excede o timeout do Vercel. Execute pelo servidor local (python app.py)."
+        }), 503
     from data_ingestion import fetch_finished_fixtures
 
     try:

@@ -1593,6 +1593,7 @@ let stats = {};
 let apiStatus = {};
 let engineRunning = false;
 let timerInterval = null;
+let isVercel = false; // detectado via /api/info
 
 // ═══════════════════════════════════════════
 // FILTER VIEWS SYSTEM (saved filter presets)
@@ -2137,6 +2138,26 @@ async function init() {
         el.addEventListener("keydown", (e) => { if (e.key === 'Enter') { e.target.blur(); _triggerDateLoad(true); } });
     });
 
+    // 0.5. Detectar se estamos no Vercel
+    try {
+        const infoRes = await fetch("/api/info");
+        const info = await infoRes.json();
+        isVercel = info.is_vercel;
+        if (isVercel) {
+            // Desabilitar botões de pipeline no Vercel
+            document.querySelectorAll('#btn-run, #btn-recalc, #btn-check-results, #btn-run-big, #btn-run-retro').forEach(btn => {
+                if (btn.id === 'btn-run') { btn.textContent = '☁️ Modo Visualização'; btn.disabled = true; btn.title = 'Pipeline só roda no servidor local'; }
+                if (btn.id === 'btn-recalc') { btn.style.display = 'none'; }
+                if (btn.id === 'btn-check-results') { btn.style.display = 'none'; }
+                if (btn.id === 'btn-run-big') { btn.textContent = '☁️ Modo Visualização (Vercel)'; btn.disabled = true; btn.style.opacity = '0.6'; btn.style.cursor = 'not-allowed'; }
+                if (btn.id === 'btn-run-retro') { btn.style.display = 'none'; }
+            });
+            // Atualizar mensagem de boas-vindas
+            const welcomeSub = document.querySelector('.welcome-sub');
+            if (welcomeSub) welcomeSub.innerHTML = 'Versão online — visualize oportunidades e resultados salvos no Supabase.<br>Para executar o pipeline de análise, use o <strong>servidor local</strong> (python app.py).';
+        }
+    } catch(e) {}
+
     // 1. Buscar status da API (1 request apenas)
     try {
         const res = await fetch("/api/status");
@@ -2426,12 +2447,21 @@ async function executeEngine(autoCheckResults) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ start_date: startDate, end_date: endDate })
         });
-        const runData = await runRes.json();
+        
+        // Tratar resposta não-JSON (timeout Vercel, etc.)
+        let runData;
+        const contentType = runRes.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+            runData = await runRes.json();
+        } else {
+            const text = await runRes.text();
+            runData = { ok: false, error: text || `Erro HTTP ${runRes.status}` };
+        }
         
         clearInterval(timerInterval);
         
         if (!runData.ok) {
-            alert("Erro ao executar: " + (runData.error || "desconhecido"));
+            alert("Erro: " + (runData.error || "desconhecido"));
             return;
         }
 
