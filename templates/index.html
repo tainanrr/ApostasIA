@@ -3233,6 +3233,16 @@ function renderDashboard(items, pendingCount, totalAll) {
     const byDate = groupBy(items, o => o.match_date);
     const byAnalysisType = groupBy(items, o => (o.analysis_type || 'PRE_JOGO') === 'PRE_JOGO' ? '🟢 Pré-Jogo' : '🔵 Retroativa');
 
+    // Ordenar byOdds por faixa crescente (extrair primeiro número do label)
+    byOdds.sort((a, b) => parseFloat(a.label) - parseFloat(b.label));
+
+    // Gráficos logo após Lucro Acumulado: Seleção, Odds, Data
+    html += '<div class="dash-grid-3">';
+    html += _renderBreakdownCard('▶ Por Seleção', bySelection);
+    html += _renderBreakdownCard('💰 Por Faixa de Odds', byOdds, true);
+    html += _renderBreakdownCard('📅 Por Data', byDate.sort((a,b) => (a.label||'').localeCompare(b.label||'')), true);
+    html += '</div>';
+
     // 3-column grid for main breakdowns
     html += '<div class="dash-grid-3">';
     html += _renderBreakdownCard('🎯 Por Mercado', byMarket);
@@ -3241,19 +3251,9 @@ function renderDashboard(items, pendingCount, totalAll) {
     html += '</div>';
 
     html += '<div class="dash-grid-3">';
-    html += _renderBreakdownCard('💰 Por Faixa de Odds', byOdds);
     html += _renderBreakdownCard('🌍 Por País', byCountry);
     html += _renderBreakdownCard('🔬 Por Tipo de Análise', byAnalysisType);
-    html += '</div>';
-
-    html += '<div class="dash-grid-3">';
-    html += _renderBreakdownCard('▶ Por Seleção', bySelection);
-    html += '</div>';
-
-    // Full-width tables
-    html += '<div class="dash-grid-2">';
     html += _renderBreakdownCard('🏆 Por Liga', byLeague);
-    html += _renderBreakdownCard('📅 Por Data', byDate.sort((a,b) => (a.label||'').localeCompare(b.label||'')), true);
     html += '</div>';
 
     // ═══════════════════════════════
