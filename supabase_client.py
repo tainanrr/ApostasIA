@@ -401,8 +401,8 @@ def save_matches(run_id: str, matches: list[dict]) -> int:
                 "league_id": m.get("league_id", 0),
                 "home_team_id": m.get("home_team_id", 0),
                 "away_team_id": m.get("away_team_id", 0),
-                "home_fatigue": m.get("home_fatigue", 0),
-                "away_fatigue": m.get("away_fatigue", 0),
+                "home_fatigue": float(m.get("home_fatigue") or 0),
+                "away_fatigue": float(m.get("away_fatigue") or 0),
                 "urgency_home": m.get("urgency_home", 0.5),
                 "urgency_away": m.get("urgency_away", 0.5),
                 "injuries_home": m.get("injuries_home"),
@@ -453,12 +453,12 @@ def save_matches(run_id: str, matches: list[dict]) -> int:
                 "away_possession": m.get("away_possession", 0),
                 "weather_rain": m.get("weather_rain", 0),
                 "data_quality": m.get("data_quality", 0),
-                "has_real_odds": m.get("has_real_odds", False),
-                "has_real_standings": m.get("has_real_standings", False),
-                "has_real_weather": m.get("has_real_weather", False),
-                "home_has_real_data": m.get("home_has_real_data", False),
-                "away_has_real_data": m.get("away_has_real_data", False),
-                "odds_home_away_suspect": m.get("odds_home_away_suspect", False),
+                "has_real_odds": 1 if m.get("has_real_odds") else 0,
+                "has_real_standings": 1 if m.get("has_real_standings") else 0,
+                "has_real_weather": 1 if m.get("has_real_weather") else 0,
+                "home_has_real_data": 1 if m.get("home_has_real_data") else 0,
+                "away_has_real_data": 1 if m.get("away_has_real_data") else 0,
+                "odds_home_away_suspect": 1 if m.get("odds_home_away_suspect") else 0,
                 "league_avg_goals": m.get("league_avg_goals", 2.7),
                 "model_home_shots": m.get("model_home_shots", 0),
                 "model_away_shots": m.get("model_away_shots", 0),
@@ -481,9 +481,10 @@ def save_matches(run_id: str, matches: list[dict]) -> int:
                 "odds_x2": m.get("odds_x2", 0),
             }
             # Só adicionar campos extras que não sejam None (para compatibilidade com schemas antigos)
+            # Converter booleans → int para colunas numeric no Supabase
             for k, v in _extra_fields.items():
                 if v is not None:
-                    row[k] = v
+                    row[k] = int(v) if isinstance(v, bool) else v
             
             # JSONB fields - serializar
             import json
