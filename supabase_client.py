@@ -336,7 +336,7 @@ def save_opportunities(run_id: str, opportunities: list[dict]) -> int:
             except Exception as batch_err:
                 err_msg = str(batch_err)
                 if any(col in err_msg for col in _new_columns) and not _retry_without_new:
-                    print(f"[SUPABASE] ⚠️  Colunas novas ausentes, tentando sem elas...")
+                    print(f"[SUPABASE] AVISO: Colunas novas ausentes, tentando sem elas...")
                     _retry_without_new = True
                     batch = [{k: v for k, v in r.items() if k not in _new_columns} for r in batch]
                     try:
@@ -523,7 +523,7 @@ def save_matches(run_id: str, matches: list[dict]) -> int:
                 err_msg = str(batch_err).lower()
                 if "column" in err_msg and ("does not exist" in err_msg or "not found" in err_msg):
                     if use_full_schema:
-                        print(f"[SUPABASE] ⚠️  Schema matches incompleto — salvando apenas campos básicos")
+                        print(f"[SUPABASE] AVISO: Schema matches incompleto - salvando apenas campos basicos")
                         print(f"[SUPABASE]    Execute o SQL de migração para habilitar todos os campos detalhados")
                         use_full_schema = False
                         # Retry este batch com campos básicos
@@ -619,7 +619,7 @@ def _upsert_opportunities(run_id: str, new_opportunities: list[dict]):
                 break
             offset += page_size
 
-        print(f"[SUPABASE] {len(existing_pendentes)} pendentes existentes no range {date_from}→{date_to}")
+        print(f"[SUPABASE] {len(existing_pendentes)} pendentes existentes no range {date_from} -> {date_to}")
 
         # 3. Mapear existentes por (match_id, market_lower, selection_lower)
         #    Pode haver múltiplas (de runs diferentes) → acumular IDs
@@ -917,14 +917,14 @@ def batch_update_results(updates: list[dict]) -> int:
                             count += 1
                             if _extra_cols_available is None:
                                 _extra_cols_available = True
-                                print("[SUPABASE] ✅ Colunas extras (ht_score, corners, cards, shots, detail) disponíveis")
+                                print("[SUPABASE] OK: Colunas extras (ht_score, corners, cards, shots, detail) disponiveis")
                             continue  # Sucesso com detalhes, próximo
                     except Exception as detail_err:
                         err_str = str(detail_err)
                         if "could not find" in err_str.lower() or "PGRST204" in err_str:
                             _extra_cols_available = False
-                            print("[SUPABASE] ⚠️  Colunas extras não encontradas no Supabase — salvando sem detalhes")
-                            print("[SUPABASE] 💡 Execute o SQL de migração no Supabase para habilitar: result_ht_score, result_corners, result_cards, result_shots, result_detail")
+                            print("[SUPABASE] AVISO: Colunas extras nao encontradas no Supabase - salvando sem detalhes")
+                            print("[SUPABASE] DICA: Execute o SQL de migracao no Supabase para habilitar: result_ht_score, result_corners, result_cards, result_shots, result_detail")
                         else:
                             raise detail_err
 
@@ -1069,7 +1069,7 @@ def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
                 break
             offset += page_size
 
-        print(f"[SUPABASE] Oportunidades {date_from}→{date_to}: {len(all_data)} encontradas")
+        print(f"[SUPABASE] Oportunidades {date_from} -> {date_to}: {len(all_data)} encontradas")
         return all_data
     except Exception as e:
         print(f"[SUPABASE] Erro ao buscar oportunidades por data: {e}")
@@ -1105,7 +1105,7 @@ def get_matches_by_dates(date_from: str, date_to: str) -> list[dict]:
                 break
             offset += page_size
 
-        print(f"[SUPABASE] Matches {date_from}→{date_to}: {len(all_data)} encontradas")
+        print(f"[SUPABASE] Matches {date_from} -> {date_to}: {len(all_data)} encontradas")
         return all_data
     except Exception as e:
         print(f"[SUPABASE] Erro ao buscar partidas por data: {e}")

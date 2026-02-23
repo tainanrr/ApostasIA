@@ -64,6 +64,35 @@ import numpy as np
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+
+@app.errorhandler(500)
+def handle_500(e):
+    """Captura erros 500 e retorna JSON com detalhes (e loga em arquivo)."""
+    import traceback as _tb
+    err_msg = str(e)
+    try:
+        with open("_error_log.txt", "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*60}\n[500 ERROR] {err_msg}\n")
+            _tb.print_exc(file=f)
+    except Exception:
+        pass
+    return jsonify({"ok": False, "error": err_msg}), 500
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Captura qualquer excecao nao tratada e retorna JSON."""
+    import traceback as _tb
+    err_msg = str(e)
+    try:
+        with open("_error_log.txt", "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*60}\n[UNHANDLED ERROR] {err_msg}\n")
+            _tb.print_exc(file=f)
+    except Exception:
+        pass
+    return jsonify({"ok": False, "error": err_msg}), 500
+
+
 # Detectar se estamos rodando no Vercel (variável definida automaticamente)
 IS_VERCEL = bool(os.environ.get("VERCEL"))
 
@@ -136,7 +165,7 @@ def _convert_cached_data_timezone(matches: list[dict], opps: list[dict]):
             o["match_date"] = new_d
             o["match_time"] = new_t
     if converted > 0:
-        print(f"[TZ] Convertidos {converted} horários de UTC → Brasília (UTC-3)")
+        print(f"[TZ] Convertidos {converted} horarios de UTC -> Brasilia (UTC-3)")
 
 
 # ═══════════════════════════════════════════════
@@ -301,7 +330,7 @@ def _save_cache_to_disk():
         final_count = len(merged_opps)
         print(f"[CACHE] Dados salvos em {CACHE_FILE} ({final_count} oportunidades, {len(merged_matches)} partidas)")
         if prev_count > 0:
-            print(f"[CACHE] Mesclagem: {prev_count} anteriores + {new_count} novas → {final_count} total")
+            print(f"[CACHE] Mesclagem: {prev_count} anteriores + {new_count} novas -> {final_count} total")
     except Exception as e:
         print(f"[CACHE] Erro ao salvar: {e}")
 
@@ -1206,7 +1235,7 @@ def api_run():
 
         if date_from and date_to:
             analysis_dates = config.build_date_range(date_from, date_to)
-            print(f"[API/RUN] Datas customizadas: {date_from} → {date_to} ({len(analysis_dates)} dias)")
+            print(f"[API/RUN] Datas customizadas: {date_from} -> {date_to} ({len(analysis_dates)} dias)")
         elif date_from:
             analysis_dates = [date_from]
             print(f"[API/RUN] Data única: {date_from}")
@@ -1336,7 +1365,7 @@ def api_load_by_dates():
     if not date_from or not date_to:
         return jsonify({"ok": False, "error": "date_from e date_to são obrigatórios"}), 400
 
-    print(f"[API/LOAD-BY-DATES] Buscando dados Supabase: {date_from} → {date_to}")
+    print(f"[API/LOAD-BY-DATES] Buscando dados Supabase: {date_from} -> {date_to}")
 
     try:
         raw_opps = supabase_client.get_opportunities_by_dates(date_from, date_to)
@@ -1361,7 +1390,7 @@ def api_load_by_dates():
         deduped_opps = list(seen.values())
         removed = len(raw_opps) - len(deduped_opps)
         if removed > 0:
-            print(f"[API/LOAD-BY-DATES] Deduplicadas: {removed} oportunidades removidas ({len(raw_opps)} → {len(deduped_opps)})")
+            print(f"[API/LOAD-BY-DATES] Deduplicadas: {removed} oportunidades removidas ({len(raw_opps)} -> {len(deduped_opps)})")
 
         # Converter do formato Supabase → formato frontend
         frontend_opps = [_supabase_opp_to_frontend(o) for o in deduped_opps]
@@ -1438,6 +1467,13 @@ def api_load_by_dates():
 
     except Exception as e:
         import traceback
+        # Log para arquivo para debug no Windows (stderr pode não aparecer)
+        try:
+            with open("_error_log.txt", "a", encoding="utf-8") as f:
+                f.write(f"\n{'='*60}\n[LOAD-BY-DATES ERROR] {e}\n")
+                traceback.print_exc(file=f)
+        except Exception:
+            pass
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -2108,7 +2144,7 @@ def api_dashboard():
                 unique_resolved.append(o)
         
         if len(unique_resolved) < len(resolved):
-            print(f"[DASHBOARD] Dedup: {len(resolved)} → {len(unique_resolved)} oportunidades únicas")
+            print(f"[DASHBOARD] Dedup: {len(resolved)} -> {len(unique_resolved)} oportunidades unicas")
 
         # Serializar campos necessários para cada oportunidade
         clean = []
@@ -2335,7 +2371,7 @@ def _fix_supabase_confidence_and_analysis_type():
                     .execute()
                 )
                 fixed_count = len(result.data or [])
-                print(f"[FIX] ✅ Corrigidas {fixed_count} oportunidades do dia 09/02 → PRE_JOGO")
+                print(f"[FIX] Corrigidas {fixed_count} oportunidades do dia 09/02 -> PRE_JOGO")
             else:
                 print("[FIX] Dia 09/02: já está como PRE_JOGO (nenhuma correção necessária)")
     except Exception as e:

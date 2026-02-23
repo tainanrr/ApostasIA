@@ -8,6 +8,10 @@
 
 # Cache local (dados temporários)
 _cache_data.json
+_api_cache/
+
+# Logs de erro
+_error_log.txt
 
 # Python
 __pycache__/

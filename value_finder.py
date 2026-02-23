@@ -262,25 +262,152 @@ def _is_odd_valid(odd: float, market: str) -> bool:
     return min_v <= odd <= max_v
 
 
+# ═══════════════════════════════════════════════════════
+# FAIXAS ESTATÍSTICAS DE PLAUSIBILIDADE PARA O/U GOLS
+# Baseado em dados históricos reais do futebol.
+# Formato: (min_odd_under, max_odd_under)
+# Se a odd Under estiver FORA desta faixa → dados da API suspeitos.
+# ═══════════════════════════════════════════════════════
+_GOALS_OU_PLAUSIBLE_RANGES = {
+    # Under 0.5: ~10-20% probabilidade → odds 5.00-10.00
+    "under_0.5": (4.00, 15.00),
+    # Under 1.5: ~25-45% probabilidade → odds 2.20-4.00
+    "under_1.5": (1.80, 5.00),
+    # Under 2.5: ~45-70% probabilidade → odds 1.40-2.20
+    "under_2.5": (1.25, 2.80),
+    # Under 3.5: ~70-90% probabilidade → odds 1.10-1.45
+    "under_3.5": (1.05, 1.75),
+    # Under 4.5: ~85-97% probabilidade → odds 1.03-1.18
+    "under_4.5": (1.01, 1.40),
+    # Under 5.5: ~93-99% probabilidade → odds 1.01-1.08
+    "under_5.5": (1.00, 1.20),
+    # Over 0.5: ~80-92% probabilidade → odds 1.06-1.25
+    "over_0.5": (1.01, 1.35),
+    # Over 1.5: ~55-75% probabilidade → odds 1.30-1.80
+    "over_1.5": (1.15, 2.20),
+    # Over 2.5: ~30-55% probabilidade → odds 1.80-3.30
+    "over_2.5": (1.50, 4.00),
+    # Over 3.5: ~10-30% probabilidade → odds 3.30-10.00
+    "over_3.5": (2.20, 12.00),
+    # Over 4.5: ~3-12% probabilidade → odds 8.00-30.00
+    "over_4.5": (5.00, 40.00),
+    # Over 5.5: ~1-5% probabilidade → odds 15.00-100.00
+    "over_5.5": (8.00, 120.00),
+}
+
+
+def _is_odd_plausible_for_line(sel_key: str, odd: float, market_key: str) -> bool:
+    """
+    Verifica se uma odd é estatisticamente plausível para a linha específica.
+    
+    Detecta o problema de odds INVERTIDAS ou de LINHAS TROCADAS que a API-Football
+    às vezes retorna. Exemplo real: Under 3.5 a 2.00 (quando deveria ser ~1.25).
+    
+    Retorna True se plausível, False se claramente errada.
+    Aplica-se APENAS a mercados de gols Over/Under (goals_ou).
+    """
+    # Só aplicar para mercados de gols totais O/U
+    if market_key != "goals_ou":
+        return True
+
+    plausible = _GOALS_OU_PLAUSIBLE_RANGES.get(sel_key)
+    if not plausible:
+        return True  # Linha não mapeada → aceitar
+
+    min_odd, max_odd = plausible
+    if odd < min_odd or odd > max_odd:
+        print(f"[ODDS-CHECK] ⚠️ Odd IMPLAUSÍVEL detectada: {sel_key} = {odd:.2f} "
+              f"(faixa esperada: {min_odd:.2f}-{max_odd:.2f}) → REJEITADA")
+        return False
+
+    return True
+
+
+def _is_ou_pair_consistent(sel_key: str, sel_odd: float, market_odds_dict: dict,
+                            market_key: str) -> bool:
+    """
+    Verifica consistência do par Over/Under para a mesma linha.
+    
+    Regras:
+    1. A soma das probabilidades implícitas (1/over + 1/under) deve estar entre 1.02 e 1.15
+       (margem do bookmaker de 2-15%)
+    2. Para linhas >= 3.5 gols no futebol, Under DEVE ser favorito (odd menor)
+    
+    Detecta odds que foram trocadas (Over onde deveria ser Under e vice-versa)
+    ou odds de linhas diferentes misturadas.
+    """
+    # Só aplicar para mercados de gols totais O/U
+    if market_key != "goals_ou":
+        return True
+
+    # Determinar o par Over/Under
+    if sel_key.startswith("under_"):
+        line = sel_key.replace("under_", "")
+        pair_key = f"over_{line}"
+        under_odd = sel_odd
+        over_odd = market_odds_dict.get(pair_key, 0)
+    elif sel_key.startswith("over_"):
+        line = sel_key.replace("over_", "")
+        pair_key = f"under_{line}"
+        over_odd = sel_odd
+        under_odd = market_odds_dict.get(pair_key, 0)
+    else:
+        return True
+
+    # Se não temos o par, não podemos validar
+    if over_odd <= 1.0 or under_odd <= 1.0:
+        return True
+
+    # Verificar soma de probabilidades implícitas (margem do bookmaker)
+    implied_sum = (1.0 / over_odd) + (1.0 / under_odd)
+    if implied_sum < 0.95 or implied_sum > 1.20:
+        print(f"[ODDS-CHECK] ⚠️ Par O/U inconsistente: Over {line} = {over_odd:.2f}, "
+              f"Under {line} = {under_odd:.2f}, soma implícita = {implied_sum:.3f} "
+              f"(esperado: 1.02-1.15) → REJEITADA")
+        return False
+
+    # Para linhas altas (>= 3.0), Under DEVE ser favorito no futebol
+    try:
+        line_val = float(line)
+    except ValueError:
+        return True
+
+    if line_val >= 3.0 and under_odd > over_odd:
+        print(f"[ODDS-CHECK] ⚠️ Odds INVERTIDAS detectadas: Under {line} = {under_odd:.2f} > "
+              f"Over {line} = {over_odd:.2f} (Under deveria ser favorito para linha >= 3.0) → REJEITADA")
+        return False
+
+    # Para linhas baixas (<= 1.5), Over DEVE ser favorito no futebol
+    if line_val <= 1.5 and over_odd > under_odd:
+        print(f"[ODDS-CHECK] ⚠️ Odds INVERTIDAS detectadas: Over {line} = {over_odd:.2f} > "
+              f"Under {line} = {under_odd:.2f} (Over deveria ser favorito para linha <= 1.5) → REJEITADA")
+        return False
+
+    return True
+
+
 def _is_odd_cross_validated(market_o: float, all_markets: dict,
                              market_key: str, sel_key: str,
                              threshold: float = 1.5) -> bool:
     """
-    Validação cruzada: compara a odd principal com a mediana das outras casas.
-    Retorna True se a odd é confiável, False se parece erro de dados da API.
+    Validação cruzada MELHORADA: compara a odd principal com a mediana das
+    outras casas E detecta distribuição bimodal (dados da API parcialmente errados).
     
-    Exemplo: Bet365 oferece Under 3.5 a 2.20 mas TODAS as outras casas oferecem ~1.10.
-    Isso é quase certamente um erro de dados, não valor real.
+    Exemplo real: API-Football retornou Under 3.5 = 2.00 para 6 casas, mas 
+    Betfair e 888Sport tinham 1.25. A mediana era 2.00 → validação antiga passava.
     
-    threshold=1.5 → rejeita se a odd é 50%+ acima da mediana das outras casas.
+    Nova lógica:
+    1. Mediana (como antes)
+    2. Detecção de outliers: se existem 2+ casas com odds 40%+ menores que a mediana,
+       as odds baixas provavelmente estão corretas (casas de referência como Betfair)
     """
     if not all_markets:
-        return True  # Sem dados para comparar → aceitar
+        return True
 
     mkt_data = all_markets.get(market_key, {})
     bk_data = mkt_data.get("_bookmakers", {})
     if not bk_data or len(bk_data) < 3:
-        return True  # Poucas casas para comparar → aceitar
+        return True
 
     cross_odds = []
     for bk_vals in bk_data.values():
@@ -291,7 +418,7 @@ def _is_odd_cross_validated(market_o: float, all_markets: dict,
             cross_odds.append(bk_o)
 
     if len(cross_odds) < 3:
-        return True  # Poucas odds encontradas → aceitar
+        return True
 
     cross_sorted = sorted(cross_odds)
     median_o = cross_sorted[len(cross_sorted) // 2]
@@ -299,9 +426,27 @@ def _is_odd_cross_validated(market_o: float, all_markets: dict,
     if median_o <= 1.0:
         return True
 
-    # Se a odd principal é muito acima da mediana → provável erro de API
+    # ── CHECK 1: Odd muito acima da mediana (original) ──
     if market_o > median_o * threshold:
+        print(f"[CROSS-VAL] ⚠️ {sel_key}: odd {market_o:.2f} > mediana {median_o:.2f} × {threshold} → REJEITADA")
         return False
+
+    # ── CHECK 2: Detecção de distribuição bimodal ──
+    # Se existem 2+ bookmakers com odds significativamente MENORES que a mediana,
+    # isso sugere que a maioria da API tem dados errados e os outliers estão corretos.
+    # Exemplo: [1.25, 1.25, 2.00, 2.00, 2.00, 2.02, 2.16, 2.28]
+    #          Mediana=2.00, mas 2 casas em 1.25 (37% menor) → bimodal
+    low_outliers = [o for o in cross_sorted if o < median_o * 0.70]  # 30%+ abaixo da mediana
+    if len(low_outliers) >= 2:
+        # Existem 2+ casas confiáveis com odds MUITO menores
+        # Verificar se a odd principal está no grupo "alto" (possivelmente errado)
+        avg_low = sum(low_outliers) / len(low_outliers)
+        if market_o > avg_low * 1.40:
+            # A odd do bookmaker principal é 40%+ maior que a média dos outliers baixos
+            print(f"[CROSS-VAL] ⚠️ Distribuição BIMODAL detectada para {sel_key}: "
+                  f"odd={market_o:.2f}, grupo_baixo={[round(o,2) for o in low_outliers]} "
+                  f"(média={avg_low:.2f}), mediana_geral={median_o:.2f} → REJEITADA")
+            return False
 
     return True
 
@@ -1262,6 +1407,16 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 if not _is_odd_valid(market_o, market_label):
                     continue
                 if not _is_model_sane(model_p, total_xg, market_label):
+                    continue
+
+                # ── VALIDAÇÃO DE PLAUSIBILIDADE ESTATÍSTICA ──
+                # Detecta odds impossíveis (ex: Under 3.5 a 2.00 quando deveria ser ~1.25)
+                if not _is_odd_plausible_for_line(sel_key, market_o, market_key):
+                    continue
+
+                # ── CONSISTÊNCIA DO PAR OVER/UNDER ──
+                # Detecta odds invertidas (Over favorito quando Under deveria ser)
+                if not _is_ou_pair_consistent(sel_key, market_o, market_odds_dict, market_key):
                     continue
 
                 # ── VALIDAÇÃO CRUZADA entre bookmakers ──
