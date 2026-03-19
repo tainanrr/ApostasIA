@@ -29,6 +29,7 @@ def run_pipeline(days_range: int = 2, trigger: str = "manual"):
     from models import run_models_batch
     from context_engine import apply_context_batch
     from value_finder import find_all_value
+    from app import serialize_opportunity, serialize_match
 
     exec_id = supabase_client.log_execution_start("pipeline", trigger)
     now = datetime.now(config.BR_TIMEZONE)
@@ -62,9 +63,25 @@ def run_pipeline(days_range: int = 2, trigger: str = "manual"):
         }
 
         if opportunities:
-            saved = supabase_client.save_opportunities(opportunities, matches)
-            details["saved_to_supabase"] = saved
-            print(f"[RUNNER] Salvas {saved} oportunidades no Supabase")
+            serialized_opps = [serialize_opportunity(o) for o in opportunities]
+            serialized_matches = [serialize_match(m) for m in matches]
+            stats = {
+                "analysis_dates": dates,
+                "total_matches": len(matches),
+                "total_leagues": n_leagues,
+                "total_opportunities": len(opportunities),
+                "high_conf": sum(1 for o in opportunities if o.confidence == "ALTO"),
+                "med_conf": sum(1 for o in opportunities if o.confidence == "MÉDIO"),
+                "low_conf": sum(1 for o in opportunities if o.confidence == "BAIXO"),
+                "avg_edge": round(sum(o.edge for o in opportunities) / len(opportunities) * 100, 2) if opportunities else 0,
+                "max_edge": round(max(o.edge for o in opportunities) * 100, 2) if opportunities else 0,
+                "run_time": elapsed,
+                "api_calls_this_run": _api_call_count,
+                "mode": "API Real",
+            }
+            supabase_client.save_full_run(stats, serialized_opps, serialized_matches)
+            details["saved_to_supabase"] = len(serialized_opps)
+            print(f"[RUNNER] Salvas {len(serialized_opps)} oportunidades no Supabase")
 
         supabase_client.log_execution_end(exec_id, "success", details)
         print(f"[RUNNER] Pipeline concluído: {len(matches)} jogos, {len(opportunities)} oportunidades em {elapsed}s")
