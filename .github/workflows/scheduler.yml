@@ -1,0 +1,68 @@
+name: ApostasIA Scheduler
+
+on:
+  schedule:
+    # Roda a cada 30 minutos para verificar se há execução agendada
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Ação a executar'
+        required: true
+        type: choice
+        options:
+          - pipeline
+          - results
+          - check-schedule
+      days:
+        description: 'Range de dias (1-5)'
+        required: false
+        default: '2'
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run (scheduled)
+        if: github.event_name == 'schedule'
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          OPENWEATHER_KEY: ${{ secrets.OPENWEATHER_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python runner.py --check-schedule
+
+      - name: Run (manual)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          OPENWEATHER_KEY: ${{ secrets.OPENWEATHER_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          ACTION="${{ inputs.action }}"
+          DAYS="${{ inputs.days }}"
+          if [ "$ACTION" = "check-schedule" ]; then
+            python runner.py --check-schedule
+          elif [ "$ACTION" = "pipeline" ]; then
+            python runner.py --pipeline --days "$DAYS" --trigger github_actions
+          elif [ "$ACTION" = "results" ]; then
+            python runner.py --results --days "$DAYS" --trigger github_actions
+          fi

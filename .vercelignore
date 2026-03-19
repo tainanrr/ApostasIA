@@ -1,0 +1,10 @@
+_api_cache/
+_cache_data.json
+__pycache__/
+*.pyc
+.env
+.env.*
+venv/
+.venv/
+*.xlsx
+DAILY_REPORT.md

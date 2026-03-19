@@ -1,0 +1,1630 @@
+"""
+═══════════════════════════════════════════════════════════════════════
+MÓDULO DE ANÁLISE DE VALOR E IDENTIFICAÇÃO DE +EV
+Engine de Análise Preditiva - Camada de Decisão Financeira
+═══════════════════════════════════════════════════════════════════════
+
+Implementa:
+  - De-Vigging (Power Method / Shin's Method)
+  - Cálculo de Valor Esperado (EV)
+  - Critério de Kelly Fracionário
+  - Classificação de oportunidades
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Optional
+import unicodedata
+
+import numpy as np
+
+import builtins as _builtins
+_original_print = _builtins.print
+def print(*args, **kwargs):
+    try:
+        _original_print(*args, **kwargs)
+    except OSError:
+        pass
+
+import config
+
+
+# ═══ Substituição leve de scipy.optimize.brentq ═══
+
+def brentq(f, a: float, b: float, xtol: float = 1e-12, maxiter: int = 200) -> float:
+    """Método de bisecção (substitui scipy.optimize.brentq sem dependência pesada)."""
+    fa, fb = f(a), f(b)
+    if fa * fb > 0:
+        raise ValueError("f(a) e f(b) devem ter sinais opostos")
+    for _ in range(maxiter):
+        c = (a + b) / 2.0
+        fc = f(c)
+        if abs(fc) < xtol or (b - a) / 2.0 < xtol:
+            return c
+        if fa * fc < 0:
+            b, fb = c, fc
+        else:
+            a, fa = c, fc
+    return (a + b) / 2.0
+from data_ingestion import MatchAnalysis
+from models import predict_corners, predict_cards
+
+
+# ═══════════════════════════════════════════════════════
+# VALIDAÇÃO DE ODDS (filtro de anomalias da API)
+# ═══════════════════════════════════════════════════════
+
+_ODDS_LIMITS = {
+    "1x2":              (config.ODDS_MIN_VALID, config.ODDS_MAX_1X2),
+    "Dupla Chance":     (config.ODDS_MIN_VALID, config.ODDS_MAX_DC),
+    "Gols O/U":         (config.ODDS_MIN_VALID, config.ODDS_MAX_OU),
+    "BTTS":             (config.ODDS_MIN_VALID, config.ODDS_MAX_BTTS),
+    "Escanteios O/U":   (config.ODDS_MIN_VALID, config.ODDS_MAX_CORNERS),
+    "Cartoes O/U":      (config.ODDS_MIN_VALID, config.ODDS_MAX_CARDS),
+    "Clean Sheet":      (config.ODDS_MIN_VALID, config.ODDS_MAX_CS),
+    "Vit. s/ Sofrer":   (config.ODDS_MIN_VALID, config.ODDS_MAX_WTN),
+    "Par/Impar":        (config.ODDS_MIN_VALID, config.ODDS_MAX_OE),
+    "1o Tempo":         (config.ODDS_MIN_VALID, config.ODDS_MAX_HT),
+    "Gols 1o Tempo":    (config.ODDS_MIN_VALID, config.ODDS_MAX_HT),
+    "Gols Casa O/U":    (config.ODDS_MIN_VALID, config.ODDS_MAX_HOME_AWAY_OU),
+    "Gols Fora O/U":    (config.ODDS_MIN_VALID, config.ODDS_MAX_HOME_AWAY_OU),
+    "Placar Exato":     (config.ODDS_MIN_VALID, config.ODDS_MAX_EXACT),
+    "Finaliz. O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Gol O/U": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Casa O/U": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Fora O/U": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "SoT Casa O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "SoT Fora O/U":     (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Gol 1x2": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Finaliz. Totais 1x2": (config.ODDS_MIN_VALID, config.ODDS_MAX_SHOTS),
+    "Fin. Jogador":     (config.ODDS_MIN_VALID, config.ODDS_MAX_PLAYER_SHOTS),
+    "SoT Jogador":      (config.ODDS_MIN_VALID, config.ODDS_MAX_PLAYER_SHOTS),
+    # Backward compatibility
+    "O/U 2.5":          (config.ODDS_MIN_VALID, config.ODDS_MAX_OU),
+    "Corners":          (config.ODDS_MIN_VALID, config.ODDS_MAX_CORNERS),
+    "Cartões":          (config.ODDS_MIN_VALID, config.ODDS_MAX_CARDS),
+}
+
+# ═══════════════════════════════════════════════════════
+# MAPEAMENTO COMPLETO DE MERCADOS (model_probs key → all_markets key → labels)
+# ═══════════════════════════════════════════════════════
+_ALL_MARKETS = {
+    "goals_ou": {
+        "label": "Gols O/U", "selections": {
+            "over_0.5": "Over 0.5 Gols", "under_0.5": "Under 0.5 Gols",
+            "over_1.5": "Over 1.5 Gols", "under_1.5": "Under 1.5 Gols",
+            "over_2.5": "Over 2.5 Gols", "under_2.5": "Under 2.5 Gols",
+            "over_3.5": "Over 3.5 Gols", "under_3.5": "Under 3.5 Gols",
+            "over_4.5": "Over 4.5 Gols", "under_4.5": "Under 4.5 Gols",
+            "over_5.5": "Over 5.5 Gols", "under_5.5": "Under 5.5 Gols",
+        }
+    },
+    "btts": {
+        "label": "BTTS", "selections": {
+            "yes": "Ambas Marcam Sim", "no": "Ambas Marcam Nao"
+        }
+    },
+    "home_goals_ou": {
+        "label": "Gols Casa O/U", "selections": {
+            "over_0.5": "Casa Over 0.5 Gols", "under_0.5": "Casa Under 0.5 Gols",
+            "over_1.5": "Casa Over 1.5 Gols", "under_1.5": "Casa Under 1.5 Gols",
+            "over_2.5": "Casa Over 2.5 Gols", "under_2.5": "Casa Under 2.5 Gols",
+            "over_3.5": "Casa Over 3.5 Gols", "under_3.5": "Casa Under 3.5 Gols",
+        }
+    },
+    "away_goals_ou": {
+        "label": "Gols Fora O/U", "selections": {
+            "over_0.5": "Fora Over 0.5 Gols", "under_0.5": "Fora Under 0.5 Gols",
+            "over_1.5": "Fora Over 1.5 Gols", "under_1.5": "Fora Under 1.5 Gols",
+            "over_2.5": "Fora Over 2.5 Gols", "under_2.5": "Fora Under 2.5 Gols",
+            "over_3.5": "Fora Over 3.5 Gols", "under_3.5": "Fora Under 3.5 Gols",
+        }
+    },
+    "cs_home": {
+        "label": "Clean Sheet", "selections": {
+            "yes": "Clean Sheet Casa Sim", "no": "Clean Sheet Casa Nao"
+        }
+    },
+    "cs_away": {
+        "label": "Clean Sheet", "selections": {
+            "yes": "Clean Sheet Fora Sim", "no": "Clean Sheet Fora Nao"
+        }
+    },
+    "wtn_home": {
+        "label": "Vit. s/ Sofrer", "selections": {
+            "yes": "Vit. s/ Sofrer Casa", "no": "Nao Vit. s/ Sofrer Casa"
+        }
+    },
+    "wtn_away": {
+        "label": "Vit. s/ Sofrer", "selections": {
+            "yes": "Vit. s/ Sofrer Fora", "no": "Nao Vit. s/ Sofrer Fora"
+        }
+    },
+    "odd_even": {
+        "label": "Par/Impar", "selections": {
+            "odd": "Gols Impar", "even": "Gols Par"
+        }
+    },
+    "ht_result": {
+        "label": "1o Tempo", "selections": {
+            "home": "Casa 1o Tempo", "draw": "Empate 1o Tempo", "away": "Fora 1o Tempo"
+        }
+    },
+    "ht_goals_ou": {
+        "label": "Gols 1o Tempo", "selections": {
+            "over_0.5": "Over 0.5 1T", "under_0.5": "Under 0.5 1T",
+            "over_1.5": "Over 1.5 1T", "under_1.5": "Under 1.5 1T",
+            "over_2.5": "Over 2.5 1T", "under_2.5": "Under 2.5 1T",
+        }
+    },
+    "corners_ou": {
+        "label": "Escanteios O/U", "selections": {
+            "over_7.5": "Over 7.5 Esc.", "under_7.5": "Under 7.5 Esc.",
+            "over_8.5": "Over 8.5 Esc.", "under_8.5": "Under 8.5 Esc.",
+            "over_9.5": "Over 9.5 Esc.", "under_9.5": "Under 9.5 Esc.",
+            "over_10.5": "Over 10.5 Esc.", "under_10.5": "Under 10.5 Esc.",
+            "over_11.5": "Over 11.5 Esc.", "under_11.5": "Under 11.5 Esc.",
+            "over_12.5": "Over 12.5 Esc.", "under_12.5": "Under 12.5 Esc.",
+        }
+    },
+    "cards_ou": {
+        "label": "Cartoes O/U", "selections": {
+            "over_2.5": "Over 2.5 Cart.", "under_2.5": "Under 2.5 Cart.",
+            "over_3.5": "Over 3.5 Cart.", "under_3.5": "Under 3.5 Cart.",
+            "over_4.5": "Over 4.5 Cart.", "under_4.5": "Under 4.5 Cart.",
+            "over_5.5": "Over 5.5 Cart.", "under_5.5": "Under 5.5 Cart.",
+            "over_6.5": "Over 6.5 Cart.", "under_6.5": "Under 6.5 Cart.",
+        }
+    },
+    "shots_ou": {
+        "label": "Finaliz. O/U", "selections": {
+            "over_18.5": "Over 18.5 Finaliz.", "under_18.5": "Under 18.5 Finaliz.",
+            "over_20.5": "Over 20.5 Finaliz.", "under_20.5": "Under 20.5 Finaliz.",
+            "over_22.5": "Over 22.5 Finaliz.", "under_22.5": "Under 22.5 Finaliz.",
+            "over_24.5": "Over 24.5 Finaliz.", "under_24.5": "Under 24.5 Finaliz.",
+            "over_26.5": "Over 26.5 Finaliz.", "under_26.5": "Under 26.5 Finaliz.",
+            "over_28.5": "Over 28.5 Finaliz.", "under_28.5": "Under 28.5 Finaliz.",
+        }
+    },
+    "sot_ou": {
+        "label": "Finaliz. Gol O/U", "selections": {
+            "over_4.5": "Over 4.5 Fin. Gol", "under_4.5": "Under 4.5 Fin. Gol",
+            "over_5.5": "Over 5.5 Fin. Gol", "under_5.5": "Under 5.5 Fin. Gol",
+            "over_6.5": "Over 6.5 Fin. Gol", "under_6.5": "Under 6.5 Fin. Gol",
+            "over_7.5": "Over 7.5 Fin. Gol", "under_7.5": "Under 7.5 Fin. Gol",
+            "over_8.5": "Over 8.5 Fin. Gol", "under_8.5": "Under 8.5 Fin. Gol",
+            "over_9.5": "Over 9.5 Fin. Gol", "under_9.5": "Under 9.5 Fin. Gol",
+        }
+    },
+    "home_shots_ou": {
+        "label": "Finaliz. Casa O/U", "selections": {
+            "over_8.5": "Casa Over 8.5 Fin.", "under_8.5": "Casa Under 8.5 Fin.",
+            "over_10.5": "Casa Over 10.5 Fin.", "under_10.5": "Casa Under 10.5 Fin.",
+            "over_12.5": "Casa Over 12.5 Fin.", "under_12.5": "Casa Under 12.5 Fin.",
+            "over_14.5": "Casa Over 14.5 Fin.", "under_14.5": "Casa Under 14.5 Fin.",
+        }
+    },
+    "away_shots_ou": {
+        "label": "Finaliz. Fora O/U", "selections": {
+            "over_8.5": "Fora Over 8.5 Fin.", "under_8.5": "Fora Under 8.5 Fin.",
+            "over_10.5": "Fora Over 10.5 Fin.", "under_10.5": "Fora Under 10.5 Fin.",
+            "over_12.5": "Fora Over 12.5 Fin.", "under_12.5": "Fora Under 12.5 Fin.",
+            "over_14.5": "Fora Over 14.5 Fin.", "under_14.5": "Fora Under 14.5 Fin.",
+        }
+    },
+    "home_sot_ou": {
+        "label": "SoT Casa O/U", "selections": {
+            "over_2.5": "Casa Over 2.5 SoT", "under_2.5": "Casa Under 2.5 SoT",
+            "over_3.5": "Casa Over 3.5 SoT", "under_3.5": "Casa Under 3.5 SoT",
+            "over_4.5": "Casa Over 4.5 SoT", "under_4.5": "Casa Under 4.5 SoT",
+            "over_5.5": "Casa Over 5.5 SoT", "under_5.5": "Casa Under 5.5 SoT",
+        }
+    },
+    "away_sot_ou": {
+        "label": "SoT Fora O/U", "selections": {
+            "over_2.5": "Fora Over 2.5 SoT", "under_2.5": "Fora Under 2.5 SoT",
+            "over_3.5": "Fora Over 3.5 SoT", "under_3.5": "Fora Under 3.5 SoT",
+            "over_4.5": "Fora Over 4.5 SoT", "under_4.5": "Fora Under 4.5 SoT",
+            "over_5.5": "Fora Over 5.5 SoT", "under_5.5": "Fora Under 5.5 SoT",
+        }
+    },
+    # ── Mercados REAIS de Shots do Bet365 (via API-Football) ──
+    "sot_1x2": {
+        "label": "Finaliz. Gol 1x2", "selections": {
+            "home": "Casa + Fin. no Gol", "draw": "Empate Fin. Gol",
+            "away": "Fora + Fin. no Gol"
+        }
+    },
+    "shots_1x2": {
+        "label": "Finaliz. Totais 1x2", "selections": {
+            "home": "Casa + Finaliz.", "draw": "Empate Finaliz.",
+            "away": "Fora + Finaliz."
+        }
+    },
+    "exact_score": {
+        "label": "Placar Exato", "selections": {
+            "1-0": "Exato 1-0", "0-0": "Exato 0-0", "1-1": "Exato 1-1",
+            "2-0": "Exato 2-0", "2-1": "Exato 2-1", "0-1": "Exato 0-1",
+            "0-2": "Exato 0-2", "1-2": "Exato 1-2", "2-2": "Exato 2-2",
+            "3-0": "Exato 3-0", "3-1": "Exato 3-1", "0-3": "Exato 0-3",
+            "1-3": "Exato 1-3", "3-2": "Exato 3-2", "2-3": "Exato 2-3",
+        }
+    },
+    "1x2": {
+        "label": "1x2", "selections": {
+            "home": "Vitoria Casa", "away": "Vitoria Fora"
+        }
+    },
+    "double_chance": {
+        "label": "Dupla Chance", "selections": {
+            "home/draw": "Casa ou Empate (1X)", "draw/away": "Fora ou Empate (X2)",
+            "home/away": "Casa ou Fora (12)"
+        }
+    },
+}
+
+
+def _is_odd_valid(odd: float, market: str) -> bool:
+    """Verifica se uma odd esta dentro dos limites razoaveis para o mercado."""
+    min_v, max_v = _ODDS_LIMITS.get(market, (1.05, config.ODDS_MAX_GENERIC))
+    return min_v <= odd <= max_v
+
+
+# ═══════════════════════════════════════════════════════
+# FAIXAS ESTATÍSTICAS DE PLAUSIBILIDADE PARA O/U GOLS
+# Baseado em dados históricos reais do futebol.
+# Formato: (min_odd_under, max_odd_under)
+# Se a odd Under estiver FORA desta faixa → dados da API suspeitos.
+# ═══════════════════════════════════════════════════════
+_GOALS_OU_PLAUSIBLE_RANGES = {
+    # Under 0.5: ~10-20% probabilidade → odds 5.00-10.00
+    "under_0.5": (4.00, 15.00),
+    # Under 1.5: ~25-45% probabilidade → odds 2.20-4.00
+    "under_1.5": (1.80, 5.00),
+    # Under 2.5: ~45-70% probabilidade → odds 1.40-2.20
+    "under_2.5": (1.25, 2.80),
+    # Under 3.5: ~70-90% probabilidade → odds 1.10-1.45
+    "under_3.5": (1.05, 1.75),
+    # Under 4.5: ~85-97% probabilidade → odds 1.03-1.18
+    "under_4.5": (1.01, 1.40),
+    # Under 5.5: ~93-99% probabilidade → odds 1.01-1.08
+    "under_5.5": (1.00, 1.20),
+    # Over 0.5: ~80-92% probabilidade → odds 1.06-1.25
+    "over_0.5": (1.01, 1.35),
+    # Over 1.5: ~55-75% probabilidade → odds 1.30-1.80
+    "over_1.5": (1.15, 2.20),
+    # Over 2.5: ~30-55% probabilidade → odds 1.80-3.30
+    "over_2.5": (1.50, 4.00),
+    # Over 3.5: ~10-30% probabilidade → odds 3.30-10.00
+    "over_3.5": (2.20, 12.00),
+    # Over 4.5: ~3-12% probabilidade → odds 8.00-30.00
+    "over_4.5": (5.00, 40.00),
+    # Over 5.5: ~1-5% probabilidade → odds 15.00-100.00
+    "over_5.5": (8.00, 120.00),
+}
+
+
+def _is_odd_plausible_for_line(sel_key: str, odd: float, market_key: str) -> bool:
+    """
+    Verifica se uma odd é estatisticamente plausível para a linha específica.
+    
+    Detecta o problema de odds INVERTIDAS ou de LINHAS TROCADAS que a API-Football
+    às vezes retorna. Exemplo real: Under 3.5 a 2.00 (quando deveria ser ~1.25).
+    
+    Retorna True se plausível, False se claramente errada.
+    Aplica-se APENAS a mercados de gols Over/Under (goals_ou).
+    """
+    # Só aplicar para mercados de gols totais O/U
+    if market_key != "goals_ou":
+        return True
+
+    plausible = _GOALS_OU_PLAUSIBLE_RANGES.get(sel_key)
+    if not plausible:
+        return True  # Linha não mapeada → aceitar
+
+    min_odd, max_odd = plausible
+    if odd < min_odd or odd > max_odd:
+        print(f"[ODDS-CHECK] ⚠️ Odd IMPLAUSÍVEL detectada: {sel_key} = {odd:.2f} "
+              f"(faixa esperada: {min_odd:.2f}-{max_odd:.2f}) → REJEITADA")
+        return False
+
+    return True
+
+
+def _is_ou_pair_consistent(sel_key: str, sel_odd: float, market_odds_dict: dict,
+                            market_key: str) -> bool:
+    """
+    Verifica consistência do par Over/Under para a mesma linha.
+    
+    Regras:
+    1. A soma das probabilidades implícitas (1/over + 1/under) deve estar entre 1.02 e 1.15
+       (margem do bookmaker de 2-15%)
+    2. Para linhas >= 3.5 gols no futebol, Under DEVE ser favorito (odd menor)
+    
+    Detecta odds que foram trocadas (Over onde deveria ser Under e vice-versa)
+    ou odds de linhas diferentes misturadas.
+    """
+    # Só aplicar para mercados de gols totais O/U
+    if market_key != "goals_ou":
+        return True
+
+    # Determinar o par Over/Under
+    if sel_key.startswith("under_"):
+        line = sel_key.replace("under_", "")
+        pair_key = f"over_{line}"
+        under_odd = sel_odd
+        over_odd = market_odds_dict.get(pair_key, 0)
+    elif sel_key.startswith("over_"):
+        line = sel_key.replace("over_", "")
+        pair_key = f"under_{line}"
+        over_odd = sel_odd
+        under_odd = market_odds_dict.get(pair_key, 0)
+    else:
+        return True
+
+    # Se não temos o par, não podemos validar
+    if over_odd <= 1.0 or under_odd <= 1.0:
+        return True
+
+    # Verificar soma de probabilidades implícitas (margem do bookmaker)
+    implied_sum = (1.0 / over_odd) + (1.0 / under_odd)
+    if implied_sum < 0.95 or implied_sum > 1.20:
+        print(f"[ODDS-CHECK] ⚠️ Par O/U inconsistente: Over {line} = {over_odd:.2f}, "
+              f"Under {line} = {under_odd:.2f}, soma implícita = {implied_sum:.3f} "
+              f"(esperado: 1.02-1.15) → REJEITADA")
+        return False
+
+    # Para linhas altas (>= 3.0), Under DEVE ser favorito no futebol
+    try:
+        line_val = float(line)
+    except ValueError:
+        return True
+
+    if line_val >= 3.0 and under_odd > over_odd:
+        print(f"[ODDS-CHECK] ⚠️ Odds INVERTIDAS detectadas: Under {line} = {under_odd:.2f} > "
+              f"Over {line} = {over_odd:.2f} (Under deveria ser favorito para linha >= 3.0) → REJEITADA")
+        return False
+
+    # Para linhas baixas (<= 1.5), Over DEVE ser favorito no futebol
+    if line_val <= 1.5 and over_odd > under_odd:
+        print(f"[ODDS-CHECK] ⚠️ Odds INVERTIDAS detectadas: Over {line} = {over_odd:.2f} > "
+              f"Under {line} = {under_odd:.2f} (Over deveria ser favorito para linha <= 1.5) → REJEITADA")
+        return False
+
+    return True
+
+
+def _is_odd_cross_validated(market_o: float, all_markets: dict,
+                             market_key: str, sel_key: str,
+                             threshold: float = 1.5) -> bool:
+    """
+    Validação cruzada MELHORADA: compara a odd principal com a mediana das
+    outras casas E detecta distribuição bimodal (dados da API parcialmente errados).
+    
+    Exemplo real: API-Football retornou Under 3.5 = 2.00 para 6 casas, mas 
+    Betfair e 888Sport tinham 1.25. A mediana era 2.00 → validação antiga passava.
+    
+    Nova lógica:
+    1. Mediana (como antes)
+    2. Detecção de outliers: se existem 2+ casas com odds 40%+ menores que a mediana,
+       as odds baixas provavelmente estão corretas (casas de referência como Betfair)
+    """
+    if not all_markets:
+        return True
+
+    mkt_data = all_markets.get(market_key, {})
+    bk_data = mkt_data.get("_bookmakers", {})
+    if not bk_data or len(bk_data) < 3:
+        return True
+
+    cross_odds = []
+    for bk_vals in bk_data.values():
+        if not isinstance(bk_vals, dict):
+            continue
+        bk_o = bk_vals.get(sel_key, 0)
+        if isinstance(bk_o, (int, float)) and bk_o > 1.0:
+            cross_odds.append(bk_o)
+
+    if len(cross_odds) < 3:
+        return True
+
+    cross_sorted = sorted(cross_odds)
+    median_o = cross_sorted[len(cross_sorted) // 2]
+
+    if median_o <= 1.0:
+        return True
+
+    # ── CHECK 1: Odd muito acima da mediana (original) ──
+    if market_o > median_o * threshold:
+        print(f"[CROSS-VAL] ⚠️ {sel_key}: odd {market_o:.2f} > mediana {median_o:.2f} × {threshold} → REJEITADA")
+        return False
+
+    # ── CHECK 2: Detecção de distribuição bimodal ──
+    # Se existem 2+ bookmakers com odds significativamente MENORES que a mediana,
+    # isso sugere que a maioria da API tem dados errados e os outliers estão corretos.
+    # Exemplo: [1.25, 1.25, 2.00, 2.00, 2.00, 2.02, 2.16, 2.28]
+    #          Mediana=2.00, mas 2 casas em 1.25 (37% menor) → bimodal
+    low_outliers = [o for o in cross_sorted if o < median_o * 0.70]  # 30%+ abaixo da mediana
+    if len(low_outliers) >= 2:
+        # Existem 2+ casas confiáveis com odds MUITO menores
+        # Verificar se a odd principal está no grupo "alto" (possivelmente errado)
+        avg_low = sum(low_outliers) / len(low_outliers)
+        if market_o > avg_low * 1.40:
+            # A odd do bookmaker principal é 40%+ maior que a média dos outliers baixos
+            print(f"[CROSS-VAL] ⚠️ Distribuição BIMODAL detectada para {sel_key}: "
+                  f"odd={market_o:.2f}, grupo_baixo={[round(o,2) for o in low_outliers]} "
+                  f"(média={avg_low:.2f}), mediana_geral={median_o:.2f} → REJEITADA")
+            return False
+
+    return True
+
+
+# ═══════════════════════════════════════════════════════
+# ESTRUTURA DE OPORTUNIDADE
+# ═══════════════════════════════════════════════════════
+
+@dataclass
+class ValueOpportunity:
+    """Representa uma oportunidade de valor identificada."""
+    match_id: int
+    league_name: str
+    league_country: str
+    match_date: str
+    match_time: str
+    home_team: str
+    away_team: str
+    market: str                   # ex: "1x2", "O/U 2.5", "Corners", "Cards"
+    selection: str                # ex: "Vitória Casa", "Over 2.5"
+    market_odd: float             # Odd oferecida pela casa
+    fair_odd: float               # Odd justa calculada pelo modelo
+    model_prob: float             # Probabilidade do modelo
+    implied_prob: float           # Probabilidade implícita (de-vigged)
+    edge: float                   # EV = (model_prob × odd) - 1
+    edge_pct: str                 # Edge formatado em %
+    kelly_fraction: float         # Fração Kelly sugerida
+    kelly_bet_pct: str            # Aposta Kelly formatada
+    confidence: str               # "ALTO", "MÉDIO", "BAIXO"
+    reasoning: str                # Justificativa analítica
+    home_xg: float = 0.0
+    away_xg: float = 0.0
+    weather_note: str = ""
+    fatigue_note: str = ""
+    urgency_home: float = 0.5
+    urgency_away: float = 0.5
+    bookmaker: str = "N/D"
+    data_quality: float = 0.0
+    odds_suspect: bool = False  # True = possível inversão casa/fora
+    confidence_score: float = 0.0  # Score numérico de confiança (0-100)
+    analysis_type: str = "PRE_JOGO"  # "PRE_JOGO" ou "RETROATIVA"
+    result_status: str = "PENDENTE"  # GREEN, RED, VOID, PENDENTE
+    result_score: str = ""           # ex: "2-1"
+    result_ht_score: str = ""        # ex: "1-0" (primeiro tempo)
+    result_corners: str = ""         # ex: "5-3"
+    result_cards: str = ""           # ex: "2-4"
+    result_shots: str = ""           # ex: "12-8 (5-3 gol)"
+
+
+# ═══════════════════════════════════════════════════════
+# 1. DE-VIGGING: REMOÇÃO DA MARGEM DA CASA
+# ═══════════════════════════════════════════════════════
+
+def power_method_devig(odds: list[float]) -> list[float]:
+    """
+    Remove a margem das odds usando o Power Method (Método da Potência).
+
+    O Power Method é superior à normalização multiplicativa porque
+    distribui a margem de forma proporcional ao viés favorito-zebra.
+    Casas de apostas colocam mais margem em longshots.
+
+    Resolve: Σ(1/odd_i^k) = 1 para encontrar k
+
+    Args:
+        odds: Lista de odds decimais [home, draw, away] ou [over, under]
+
+    Returns:
+        Lista de probabilidades justas (sem vig)
+    """
+    if not odds or any(o <= 1.0 for o in odds):
+        # Fallback: normalização simples
+        probs = [1.0 / o for o in odds]
+        total = sum(probs)
+        return [p / total for p in probs]
+
+    def objective(k):
+        return sum((1.0 / o) ** k for o in odds) - 1.0
+
+    try:
+        # Encontrar k via método de Brent
+        # k=1 dá a soma bruta (com vig), k>1 remove o vig
+        k_solution = brentq(objective, 0.5, 2.0, xtol=1e-8)
+        fair_probs = [(1.0 / o) ** k_solution for o in odds]
+        return fair_probs
+    except (ValueError, RuntimeError):
+        # Fallback: normalização multiplicativa
+        probs = [1.0 / o for o in odds]
+        total = sum(probs)
+        return [p / total for p in probs]
+
+
+def shin_method_devig(odds: list[float]) -> list[float]:
+    """
+    Remove a margem usando o método de Shin (1991, 1992).
+
+    Mais preciso para mercados com forte favorito.
+    Resolve iterativamente para o parâmetro z (proporção de informed bettors).
+
+    Args:
+        odds: Lista de odds decimais
+
+    Returns:
+        Lista de probabilidades justas
+    """
+    n = len(odds)
+    implied = [1.0 / o for o in odds]
+    margin = sum(implied) - 1.0
+
+    if margin <= 0:
+        return implied
+
+    try:
+        def shin_objective(z):
+            probs = []
+            for imp in implied:
+                prob = (((z ** 2 + 4 * (1 - z) * imp ** 2 / sum(implied)) ** 0.5)
+                        - z) / (2 * (1 - z))
+                probs.append(prob)
+            return sum(probs) - 1.0
+
+        z = brentq(shin_objective, 0.001, 0.5)
+
+        fair_probs = []
+        for imp in implied:
+            prob = (((z ** 2 + 4 * (1 - z) * imp ** 2 / sum(implied)) ** 0.5)
+                    - z) / (2 * (1 - z))
+            fair_probs.append(max(0.001, prob))
+
+        # Normalizar
+        total = sum(fair_probs)
+        return [p / total for p in fair_probs]
+
+    except (ValueError, RuntimeError):
+        return power_method_devig(odds)
+
+
+def devig_odds(odds: list[float], method: str = "power") -> list[float]:
+    """
+    Interface de de-vigging com seleção de método.
+    """
+    if method == "shin":
+        return shin_method_devig(odds)
+    return power_method_devig(odds)
+
+
+# ═══════════════════════════════════════════════════════
+# 2. CÁLCULO DE VALOR ESPERADO (EV)
+# ═══════════════════════════════════════════════════════
+
+def calculate_edge(model_prob: float, market_odd: float) -> float:
+    """
+    Calcula o Edge (Valor Esperado).
+
+    EV = (P_modelo × Odd_mercado) - 1
+
+    Um EV > 0 indica valor positivo (+EV).
+    """
+    return (model_prob * market_odd) - 1.0
+
+
+def fractional_kelly(model_prob: float, market_odd: float,
+                      fraction: float = None) -> float:
+    """
+    Calcula a fração Kelly de aposta.
+
+    Kelly = (p × (b+1) - 1) / b
+    Kelly Fracionário = Kelly × fraction
+
+    Args:
+        model_prob: Probabilidade estimada pelo modelo
+        market_odd: Odd decimal oferecida
+        fraction: Fração do Kelly (ex: 0.25 = Kelly/4)
+
+    Returns:
+        Fração da banca sugerida (0.0 a MAX_KELLY_BET)
+    """
+    if fraction is None:
+        fraction = config.KELLY_FRACTION
+
+    b = market_odd - 1.0  # Net odds
+    if b <= 0:
+        return 0.0
+
+    kelly = (model_prob * (b + 1) - 1) / b
+
+    if kelly <= 0:
+        return 0.0
+
+    # Aplicar fração e cap
+    kelly_frac = kelly * fraction
+    return min(config.MAX_KELLY_BET, max(0.0, kelly_frac))
+
+
+# ═══════════════════════════════════════════════════════
+# 3. CLASSIFICAÇÃO DE CONFIANÇA
+# ═══════════════════════════════════════════════════════
+
+def calculate_confidence_score(
+    edge: float,
+    model_prob: float,
+    market_odd: float,
+    data_quality: float = 0.5,
+    weather_stable: bool = True,
+    fatigue_free: bool = True,
+    has_real_odds: bool = True,
+    has_real_standings: bool = True,
+    games_played_min: int = 10,
+    model_xg_suspicious: bool = False,
+) -> tuple[str, float]:
+    """
+    Sistema de confiança recalibrado com base em dados reais (1.183 apostas analisadas).
+
+    Descobertas dos dados reais:
+    - Edges muito altos (>30%) têm hit rate MENOR (22% no 09/02 vs 63% para 0-10%)
+    - Odds baixas (<2.0) correlacionam com maior taxa de acerto
+    - Mercados de alta probabilidade (Under conservador, Dupla Chance) são mais previsíveis
+    - Confiança ALTO com threshold simples de edge gerava 71% retroativo mas 49.7% real
+    - Data quality e presença de dados reais são fatores críticos
+
+    Score final = soma ponderada de fatores (0-100), mapeado para ALTO/MÉDIO/BAIXO.
+
+    Retorna (confidence_label, confidence_score)
+    """
+    score = 0.0
+
+    # ═══ FATOR 1: EDGE (máx 25 pts) ═══
+    # Edges moderados (5-15%) são os mais confiáveis
+    # Edges muito altos frequentemente indicam dados incorretos
+    edge_pct = edge * 100
+    if edge_pct <= 0:
+        score += 0
+    elif edge_pct <= 5:
+        score += 10  # Edge baixo mas existente
+    elif edge_pct <= 10:
+        score += 25  # Sweet spot
+    elif edge_pct <= 15:
+        score += 22  # Bom, mas começa a diminuir
+    elif edge_pct <= 25:
+        score += 15  # Moderadamente confiável
+    elif edge_pct <= 40:
+        score += 8   # Edge alto — possível anomalia
+    else:
+        score += 3   # Edge extremo — provável erro de dados
+
+    # ═══ FATOR 2: ODDS (máx 20 pts) ═══
+    # Odds baixas = eventos mais prováveis = mais previsíveis
+    if market_odd <= 1.3:
+        score += 18  # Muito favorito — alta previsibilidade
+    elif market_odd <= 1.6:
+        score += 20  # Sweet spot (favorito com valor)
+    elif market_odd <= 2.0:
+        score += 17  # Favorito moderado
+    elif market_odd <= 2.5:
+        score += 14  # Neutro
+    elif market_odd <= 3.5:
+        score += 10  # Underdog moderado
+    elif market_odd <= 5.0:
+        score += 6   # Underdog
+    else:
+        score += 3   # Grande underdog — baixa previsibilidade
+
+    # ═══ FATOR 3: PROBABILIDADE DO MODELO (máx 20 pts) ═══
+    # Probabilidades mais altas = mais previsíveis
+    prob_pct = model_prob * 100 if model_prob <= 1 else model_prob
+    if prob_pct >= 75:
+        score += 20
+    elif prob_pct >= 60:
+        score += 17
+    elif prob_pct >= 50:
+        score += 14
+    elif prob_pct >= 40:
+        score += 10
+    elif prob_pct >= 30:
+        score += 6
+    else:
+        score += 3
+
+    # ═══ FATOR 4: QUALIDADE DOS DADOS (máx 15 pts) ═══
+    # Dados reais são fundamentais para previsões confiáveis
+    dq_score = data_quality if data_quality <= 1 else data_quality / 100
+    score += dq_score * 10  # 0-10 pts baseado na qualidade
+
+    if has_real_odds:
+        score += 3  # Bônus por odds reais
+    if has_real_standings:
+        score += 2  # Bônus por standings reais
+
+    # ═══ FATOR 5: CONDIÇÕES CONTEXTUAIS (máx 10 pts) ═══
+    ctx_score = 10
+    if not weather_stable:
+        ctx_score -= 4  # Penalidade por clima instável
+    if not fatigue_free:
+        ctx_score -= 4  # Penalidade por fadiga
+    if games_played_min < 5:
+        ctx_score -= 3  # Poucos jogos = dados limitados
+    elif games_played_min < 10:
+        ctx_score -= 1
+    score += max(0, ctx_score)
+
+    # ═══ FATOR 6: MODELO SUSPEITO (penalidade máx -15 pts) ═══
+    if model_xg_suspicious:
+        if edge_pct > 30:
+            score -= 15  # Forte penalidade
+        else:
+            score -= 8   # Penalidade moderada
+
+    # ═══ FATOR 7: CONCORDÂNCIA MODELO-MERCADO (máx 10 pts) ═══
+    # Se a prob do modelo e a prob implícita da odd apontam na mesma direção
+    # mas com edge positivo, é mais confiável
+    implied_prob = 1.0 / market_odd if market_odd > 0 else 0
+    prob_ratio = model_prob / max(0.01, implied_prob)
+    if 1.03 <= prob_ratio <= 1.25:
+        score += 10  # Concordância forte com edge moderado (sweet spot)
+    elif 1.01 <= prob_ratio <= 1.50:
+        score += 6   # Concordância razoável
+    elif prob_ratio > 1.50:
+        score += 2   # Divergência significativa — menos confiável
+    else:
+        score += 0   # Sem edge real
+
+    # Clamp entre 0 e 100
+    score = max(0, min(100, score))
+
+    # ═══ CLASSIFICAÇÃO FINAL ═══
+    # Recalibrado: thresholds baseados na distribuição real de performance
+    if score >= 65:
+        label = "ALTO"
+    elif score >= 42:
+        label = "MÉDIO"
+    else:
+        label = "BAIXO"
+
+    return label, round(score, 1)
+
+
+def classify_confidence(edge: float, model_prob: float,
+                         weather_stable: bool = True,
+                         fatigue_free: bool = True,
+                         market_odd: float = 2.0,
+                         data_quality: float = 0.5,
+                         has_real_odds: bool = True,
+                         has_real_standings: bool = True,
+                         games_played_min: int = 10,
+                         model_xg_suspicious: bool = False) -> tuple[str, float]:
+    """
+    Classifica a confiança da oportunidade usando o sistema recalibrado.
+    Retorna (confidence_label, confidence_score).
+    """
+    return calculate_confidence_score(
+        edge=edge,
+        model_prob=model_prob,
+        market_odd=market_odd,
+        data_quality=data_quality,
+        weather_stable=weather_stable,
+        fatigue_free=fatigue_free,
+        has_real_odds=has_real_odds,
+        has_real_standings=has_real_standings,
+        games_played_min=games_played_min,
+        model_xg_suspicious=model_xg_suspicious,
+    )
+
+
+def _downgrade_confidence_if_suspicious(conf: str, conf_score: float,
+                                         model_xg_suspicious: bool,
+                                         edge: float) -> tuple[str, float]:
+    """
+    Rebaixa a confiança se o xG do modelo diverge muito do xG naive.
+    NOTA: No novo sistema, model_xg_suspicious já é fatorado no score.
+    Esta função é mantida como camada adicional de segurança.
+    """
+    if not model_xg_suspicious:
+        return conf, conf_score
+    # Penalidade já aplicada no score; aqui só garante o cap para edges extremos
+    if edge > 0.50 and conf != "BAIXO":
+        return "BAIXO", min(conf_score, 30.0)
+    return conf, conf_score
+
+
+# ═══════════════════════════════════════════════════════
+# 4. GERAÇÃO DE REASONING (JUSTIFICATIVA DETALHADA)
+# ═══════════════════════════════════════════════════════
+
+def generate_reasoning(match: MatchAnalysis, market: str,
+                        edge: float, model_prob: float) -> str:
+    """
+    Gera uma justificativa analítica DETALHADA para a oportunidade,
+    mostrando todos os cálculos, estatísticas e fatores envolvidos.
+
+    Seções:
+        1. Modelo usado e parâmetros
+        2. Força de ataque/defesa dos times
+        3. Cálculo de xG
+        4. Probabilidades da matriz Dixon-Coles
+        5. Ajustes contextuais aplicados
+        6. Cálculo de valor (de-vigging + edge)
+    """
+    lines = []
+    home = match.home_team
+    away = match.away_team
+
+    # ── 1. MODELO ESTATÍSTICO ──
+    lines.append("📐 MODELO: Dixon-Coles (Poisson Bivariada Ajustada, 1997)")
+    lines.append(f"Simulação Monte Carlo: {config.MONTE_CARLO_SIMULATIONS} iterações")
+    lines.append(f"Matriz de placar: {config.DIXON_COLES_MAX_GOALS+1}×{config.DIXON_COLES_MAX_GOALS+1} ({config.DIXON_COLES_MAX_GOALS} gols máx.)")
+    lines.append("")
+
+    # ── 2. PARÂMETROS DE FORÇA ──
+    lines.append("⚔️ FORÇA DOS TIMES (Ataque α / Defesa β):")
+    lines.append(f"  {home.team_name} (Casa): Atk={home.attack_strength:.2f} | Def={home.defense_strength:.2f}")
+    lines.append(f"    Média gols marcados (casa): {home.home_goals_scored_avg:.2f}/jogo")
+    lines.append(f"    Média gols sofridos (casa): {home.home_goals_conceded_avg:.2f}/jogo")
+    lines.append(f"    Posição na liga: {home.league_position}° ({home.league_points} pts)")
+    lines.append(f"  {away.team_name} (Fora): Atk={away.attack_strength:.2f} | Def={away.defense_strength:.2f}")
+    lines.append(f"    Média gols marcados (fora): {away.away_goals_scored_avg:.2f}/jogo")
+    lines.append(f"    Média gols sofridos (fora): {away.away_goals_conceded_avg:.2f}/jogo")
+    lines.append(f"    Posição na liga: {away.league_position}° ({away.league_points} pts)")
+    lines.append("")
+
+    # ── 3. FORMA RECENTE ──
+    home_n = len(home.form_last10)
+    away_n = len(away.form_last10)
+    home_wins = sum(1 for f in home.form_last10 if f == 'W')
+    home_draws = sum(1 for f in home.form_last10 if f == 'D')
+    home_losses = sum(1 for f in home.form_last10 if f == 'L')
+    away_wins = sum(1 for f in away.form_last10 if f == 'W')
+    away_draws = sum(1 for f in away.form_last10 if f == 'D')
+    away_losses = sum(1 for f in away.form_last10 if f == 'L')
+    lines.append("FORMA RECENTE:")
+    if home_n:
+        lines.append(f"  {home.team_name} (ult. {home_n}): {''.join(home.form_last10)} -> {home_wins}V {home_draws}E {home_losses}D (pontos: {home.form_points:.2f})")
+    else:
+        lines.append(f"  {home.team_name}: Dados de forma indisponiveis")
+    if away_n:
+        lines.append(f"  {away.team_name} (ult. {away_n}): {''.join(away.form_last10)} -> {away_wins}V {away_draws}E {away_losses}D (pontos: {away.form_points:.2f})")
+    else:
+        lines.append(f"  {away.team_name}: Dados de forma indisponiveis")
+    lines.append("")
+
+    # ── 4. CÁLCULO DE xG ──
+    lines.append("⚽ CÁLCULO DE xG (Gols Esperados):")
+    league_avg = getattr(match, 'league_avg_goals', 2.7) or 2.7
+    suspect = getattr(match, 'odds_home_away_suspect', False)
+    home_adv = 1.0 if suspect else 1.08
+    home_gp = home.games_played or 1
+    away_gp = away.games_played or 1
+
+    # Usar os α/β REAIS salvos pelo modelo (idênticos aos usados no cálculo)
+    _ah = getattr(match, 'model_alpha_h', 1.0)
+    _bh = getattr(match, 'model_beta_h', 1.0)
+    _aa = getattr(match, 'model_alpha_a', 1.0)
+    _ba = getattr(match, 'model_beta_a', 1.0)
+
+    home_form_factor = 0.85 + home.form_points * 0.30
+    away_form_factor = 0.85 + away.form_points * 0.30
+
+    lines.append(f"  Média de gols da liga: {league_avg:.2f} gols/jogo")
+    if home_gp < 15 or away_gp < 15:
+        lines.append(f"  ⚠️ Amostra pequena (Casa:{home_gp} jogos, Fora:{away_gp} jogos) — regressão à média aplicada")
+    lines.append(f"  Fórmula (Dixon-Coles):")
+    lines.append(f"    λ (Casa) = α_casa × β_fora × vantagem_mando({home_adv}) × fator_forma")
+    lines.append(f"    μ (Fora) = α_fora × β_casa × fator_forma")
+    lines.append(f"")
+    lines.append(f"  Cálculo λ ({home.team_name}):")
+    lines.append(f"    = {_ah:.2f} × {_ba:.2f} × {home_adv} × {home_form_factor:.2f}")
+    _raw_lambda = _ah * _ba * home_adv * home_form_factor
+    lines.append(f"    = {_raw_lambda:.2f}{' → clamped 3.5' if _raw_lambda > 3.5 else ''}")
+    lines.append(f"    → xG Casa = {match.model_home_xg:.2f}")
+    lines.append(f"")
+    lines.append(f"  Cálculo μ ({away.team_name}):")
+    lines.append(f"    = {_aa:.2f} × {_bh:.2f} × {away_form_factor:.2f}")
+    _raw_mu = _aa * _bh * away_form_factor
+    lines.append(f"    = {_raw_mu:.2f}{' → clamped 3.0' if _raw_mu > 3.0 else ''}")
+    lines.append(f"    → xG Fora = {match.model_away_xg:.2f}")
+    total_xg = match.model_home_xg + match.model_away_xg
+    lines.append(f"  → xG Total = {total_xg:.2f}")
+    lines.append("")
+
+    # ── 5. PROBABILIDADES DO MODELO ──
+    lines.append("🎯 PROBABILIDADES (Matriz Dixon-Coles + Monte Carlo):")
+    lines.append(f"  Vitória Casa: {match.model_prob_home*100:.1f}%")
+    lines.append(f"  Empate:       {match.model_prob_draw*100:.1f}%")
+    lines.append(f"  Vitória Fora: {match.model_prob_away*100:.1f}%")
+    lines.append(f"  Over 2.5:     {match.model_prob_over25*100:.1f}%")
+    lines.append(f"  BTTS (Ambas): {match.model_prob_btts*100:.1f}%")
+    lines.append(f"  Escanteios:   {match.model_corners_expected:.1f} esperados")
+    lines.append(f"  Cartões:      {match.model_cards_expected:.1f} esperados")
+    # Finalizações
+    h_shots = getattr(match, 'model_home_shots_expected', 0)
+    a_shots = getattr(match, 'model_away_shots_expected', 0)
+    h_sot = getattr(match, 'model_home_sot_expected', 0)
+    a_sot = getattr(match, 'model_away_sot_expected', 0)
+    if h_shots > 0:
+        lines.append(f"  Finaliz.:     {h_shots + a_shots:.1f} esperadas ({home.team_name}: {h_shots:.1f} | {away.team_name}: {a_shots:.1f})")
+        lines.append(f"  Fin. no Gol:  {h_sot + a_sot:.1f} esperadas ({home.team_name}: {h_sot:.1f} | {away.team_name}: {a_sot:.1f})")
+    lines.append("")
+
+    # ── 6. ODDS E CÁLCULO DE VALOR ──
+    odds = match.odds
+    lines.append(f"💰 ODDS DE MERCADO ({odds.bookmaker}):")
+    lines.append(f"  1x2: Casa={odds.home_win:.2f} | Empate={odds.draw:.2f} | Fora={odds.away_win:.2f}")
+    lines.append(f"  O/U 2.5: Over={odds.over_25:.2f} | Under={odds.under_25:.2f}")
+    lines.append(f"  BTTS: Sim={odds.btts_yes:.2f} | Não={odds.btts_no:.2f}")
+    lines.append("")
+
+    lines.append("📈 CÁLCULO DO EDGE (Valor):")
+    lines.append(f"  Método de de-vigging: Power Method (Método da Potência)")
+    lines.append(f"  Fórmula: Edge = (Prob_Modelo × Odd_Mercado) − 1")
+    lines.append(f"  Prob. do modelo neste mercado: {model_prob*100:.1f}%")
+    lines.append(f"  Edge calculado: {edge*100:.1f}%")
+    if edge > 0:
+        lines.append(f"  → Odd justa (modelo): {1.0/max(0.01, model_prob):.2f}")
+    lines.append("")
+
+    # ── 7. AJUSTES CONTEXTUAIS ──
+    context_lines = []
+    weather = match.weather
+
+    # Clima
+    if weather.description != "N/D":
+        clima_detail = f"Clima: {weather.description} | {weather.temperature_c:.0f}°C | Vento: {weather.wind_speed_kmh:.0f} km/h"
+        if weather.rain_mm > 0:
+            clima_detail += f" | Chuva: {weather.rain_mm:.1f}mm"
+        context_lines.append(clima_detail)
+
+        if weather.wind_speed_kmh > config.WIND_SPEED_THRESHOLD_KMH:
+            penalty = config.XG_WIND_PENALTY * (1.0 + min(1.0, (weather.wind_speed_kmh - config.WIND_SPEED_THRESHOLD_KMH) / 30.0))
+            context_lines.append(f"  ⚠️ Penalidade por vento: xG reduzido em {penalty*100:.1f}%")
+        if weather.rain_mm > config.RAIN_VOLUME_THRESHOLD_MM:
+            context_lines.append(f"  🌧️ Ajuste por chuva: +{config.XG_RAIN_PENALTY*100:.0f}% variância de erros")
+        if weather.temperature_c > config.HEAT_THRESHOLD_C:
+            context_lines.append(f"  🌡️ Calor extremo (>{config.HEAT_THRESHOLD_C}°C): pressing reduzido no 2º tempo")
+
+    # Fadiga
+    if match.home_fatigue:
+        context_lines.append(f"⚡ {home.team_name}: jogou nas últimas {config.FATIGUE_WINDOW_HOURS}h → penalidade de {config.FATIGUE_PENALTY*100:.0f}% nos ratings")
+    if match.away_fatigue:
+        context_lines.append(f"⚡ {away.team_name}: jogou nas últimas {config.FATIGUE_WINDOW_HOURS}h → penalidade de {config.FATIGUE_PENALTY*100:.0f}% nos ratings")
+
+    # Lesões
+    if match.injuries_home:
+        context_lines.append(f"🏥 Lesões {home.team_name} ({len(match.injuries_home)}): {', '.join(match.injuries_home[:3])}")
+    if match.injuries_away:
+        context_lines.append(f"🏥 Lesões {away.team_name} ({len(match.injuries_away)}): {', '.join(match.injuries_away[:3])}")
+
+    # Urgência
+    context_lines.append(f"🔥 Urgência (LUS): {home.team_name}={match.league_urgency_home:.1f} | {away.team_name}={match.league_urgency_away:.1f}")
+    if match.league_urgency_home < config.LUS_LOW_THRESHOLD:
+        context_lines.append(f"  → {home.team_name}: baixa motivação (meio de tabela) → +variância")
+    if match.league_urgency_away < config.LUS_LOW_THRESHOLD:
+        context_lines.append(f"  → {away.team_name}: baixa motivação (meio de tabela) → +variância")
+    if match.league_urgency_home > config.LUS_HIGH_THRESHOLD:
+        context_lines.append(f"  → {home.team_name}: altíssima urgência (título/rebaixamento) → jogo focado")
+    if match.league_urgency_away > config.LUS_HIGH_THRESHOLD:
+        context_lines.append(f"  → {away.team_name}: altíssima urgência (título/rebaixamento) → jogo focado")
+
+    # Árbitro
+    if match.referee.name != "Desconhecido":
+        context_lines.append(f"👨‍⚖️ Árbitro: {match.referee.name} ({match.referee.cards_per_game_avg:.1f} cartões/jogo, {match.referee.fouls_per_game_avg:.0f} faltas/jogo)")
+
+    if context_lines:
+        lines.append("🌐 AJUSTES CONTEXTUAIS APLICADOS:")
+        for cl in context_lines:
+            lines.append(f"  {cl}")
+        lines.append("")
+
+    # ── 8. CONCLUSÃO ──
+    lines.append("✅ CONCLUSÃO:")
+    if "Dupla Chance" in market:
+        if "1X" in market or "Casa" in market:
+            lines.append(f"  O modelo atribui {model_prob*100:.1f}% de chance de {home.team_name} vencer ou empatar,")
+        elif "X2" in market or "Fora" in market:
+            lines.append(f"  O modelo atribui {model_prob*100:.1f}% de chance de {away.team_name} vencer ou empatar,")
+    elif "1x2" in market:
+        if "Casa" in market:
+            lines.append(f"  O modelo atribui {model_prob*100:.1f}% de chance de vitória ao {home.team_name},")
+        elif "Fora" in market:
+            lines.append(f"  O modelo atribui {model_prob*100:.1f}% de chance de vitória ao {away.team_name},")
+    elif "Over" in market:
+        lines.append(f"  O modelo projeta xG total de {total_xg:.2f}, atribuindo {model_prob*100:.1f}% de chance,")
+    elif "Under" in market:
+        lines.append(f"  O modelo projeta xG total de {total_xg:.2f}, atribuindo {model_prob*100:.1f}% de chance,")
+    elif "BTTS" in market:
+        lines.append(f"  Baseado nos xGs individuais (Casa:{match.model_home_xg:.2f} Fora:{match.model_away_xg:.2f}), prob={model_prob*100:.1f}%,")
+    elif "Corners" in market or "Escanteios" in market:
+        lines.append(f"  Regressão Binomial Negativa projeta {match.model_corners_expected:.1f} escanteios, prob={model_prob*100:.1f}%,")
+    elif "Cartões" in market:
+        lines.append(f"  Regressão Binomial Negativa projeta {match.model_cards_expected:.1f} cartões, prob={model_prob*100:.1f}%,")
+    else:
+        lines.append(f"  Probabilidade do modelo: {model_prob*100:.1f}%,")
+
+    lines.append(f"  enquanto o mercado ({odds.bookmaker}) implica apenas ~{(1.0/max(0.01, 1.0/model_prob * (1+edge)))*100:.1f}%.")
+    lines.append(f"  Diferença = edge de +{edge*100:.1f}% → oportunidade de valor identificada.")
+
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════
+# 5. SCANNER DE OPORTUNIDADES
+# ═══════════════════════════════════════════════════════
+
+def _is_model_sane(model_prob: float, total_xg: float, market: str) -> bool:
+    """
+    Verifica se a saída do modelo é confiável.
+    Rejeita probabilidades extremas e xG irrealistas que indicam dados insuficientes.
+    """
+    # Probabilidade fora dos limites razoáveis
+    if model_prob > config.MAX_MODEL_PROB:
+        return False
+    if model_prob < config.MIN_MODEL_PROB:
+        return False
+
+    # xG total muito baixo ou muito alto (modelo sem dados)
+    # Aplicar apenas para mercados baseados em gols
+    goal_markets = ("1x2", "Dupla Chance", "O/U 2.5", "BTTS",
+                    "Gols O/U", "Gols Casa O/U", "Gols Fora O/U",
+                    "Clean Sheet", "Vit. s/ Sofrer", "Par/Impar",
+                    "1o Tempo", "Gols 1o Tempo", "Placar Exato")
+    if market in goal_markets:
+        if total_xg < config.MIN_XG_TOTAL:
+            return False
+        if total_xg > config.MAX_XG_TOTAL:
+            return False
+
+    # Mercados de finalizações — sem filtro extra de xG
+    # (usam parâmetros de ataque/defesa, não xG diretamente)
+
+    return True
+
+
+def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
+    """
+    Escaneia TODOS os mercados de uma partida buscando valor (+EV).
+
+    Mercados analisados:
+        - 1x2 (Vitória Casa, Vitória Fora — sem empate isolado)
+        - Dupla Chance (Casa ou Empate 1X, Fora ou Empate X2)
+        - Over/Under 2.5 Gols
+        - BTTS (Ambas Marcam)
+        - Over/Under 9.5 Escanteios
+        - Over/Under 3.5 Cartões
+
+    PORTÃO DE QUALIDADE (rejeição antecipada):
+        - REJEITAR se não tem odds REAIS (circular: modelo vs modelo)
+        - REJEITAR se NENHUM time tem standings reais
+        - REJEITAR se data_quality_score < 0.50
+        - REJEITAR se valores de ataque/defesa são defaults (sem dados reais)
+
+    Filtros de sanidade por oportunidade:
+        - Edge máximo: 30% (acima = erro de dados)
+        - Prob. máxima: 85% (acima = dados insuficientes)
+        - xG mínimo: 0.80 (abaixo = modelo sem dados)
+        - Odds dentro de limites razoáveis por mercado
+    """
+    # ═══ PORTÃO DE QUALIDADE RIGOROSO ═══
+    # Ajustado: aceitar se tem odds REAIS OU standings REAIS (não ambos obrigatórios)
+    # Se não tem nenhum dos dois, rejeitar
+    if not match.has_real_odds and not match.has_real_standings:
+        return []
+
+    # Qualidade geral mínima ajustada: 0.40 (odds reais OU standings reais)
+    # 0.40 = odds reais (0.35) + mínimo adicional OU standings (0.20) + odds estimadas
+    if match.data_quality_score < 0.40:
+        return []
+
+    # Validar que pelo menos um time tem dados reais OU que a qualidade geral é suficiente
+    # Se tem standings reais (has_real_standings=True), significa que pelo menos 1 time tem dados
+    # Então não precisamos verificar has_real_data individualmente aqui
+    # A validação de has_real_standings já garante isso
+    
+    # Validar que os valores numéricos são válidos
+    home = match.home_team
+    away = match.away_team
+    
+    if (home.attack_strength <= 0 or home.defense_strength <= 0 or
+        away.attack_strength <= 0 or away.defense_strength <= 0):
+        return []
+
+    opportunities = []
+    odds = match.odds
+    total_xg = match.model_home_xg + match.model_away_xg
+    all_markets_odds = getattr(odds, 'all_markets', {}) or {}
+
+    # Condições meteorológicas e fadiga (para confiança)
+    weather_stable = (match.weather.wind_speed_kmh <= config.WIND_SPEED_THRESHOLD_KMH
+                      and match.weather.rain_mm <= config.RAIN_VOLUME_THRESHOLD_MM)
+    fatigue_free = not match.home_fatigue and not match.away_fatigue
+
+    # ── Sanity check: xG naive vs xG modelo ──
+    # Calcula xG "naive" a partir das estatísticas GERAIS (attack_strength × defense_strength)
+    # Se o modelo produz xG muito diferente do naive, a confiança deve ser reduzida.
+    # Isso captura situações onde o split casa/fora com amostra pequena distorce o modelo.
+    league_avg = getattr(match, 'league_avg_goals', 2.7) or 2.7
+    league_half = league_avg / 2.0
+    naive_home_xg = home.attack_strength * away.defense_strength * league_half
+    naive_away_xg = away.attack_strength * home.defense_strength * league_half
+    naive_total_xg = naive_home_xg + naive_away_xg
+
+    # Flag: modelo diverge muito do naive (>50% de diferença relativa)
+    small_sample = (home.games_played < 10) or (away.games_played < 10)
+    xg_divergence_ratio = total_xg / max(0.5, naive_total_xg) if naive_total_xg > 0 else 1.0
+    model_xg_suspicious = small_sample and (xg_divergence_ratio < 0.55 or xg_divergence_ratio > 1.8)
+
+    # ── MERCADO 1x2 (sem Empate — foco em resultado) ──
+    market_odds_1x2 = [odds.home_win, odds.draw, odds.away_win]
+    fair_probs_1x2 = devig_odds(market_odds_1x2, method="power")
+
+    model_probs_1x2 = [match.model_prob_home, match.model_prob_draw, match.model_prob_away]
+    labels_1x2 = ["Vitória Casa", "Empate", "Vitória Fora"]
+
+    for i, (label, model_p, market_o, implied_p) in enumerate(
+        zip(labels_1x2, model_probs_1x2, market_odds_1x2, fair_probs_1x2)
+    ):
+        # Pular Empate no 1x2 se configurado (mercado de alto risco)
+        if label == "Empate" and config.EXCLUDE_DRAW_1X2:
+            continue
+
+        # Validar odds — filtrar valores anômalos da API
+        if not _is_odd_valid(market_o, "1x2"):
+            continue
+
+        # Validar sanidade do modelo (prob/xG dentro de limites)
+        if not _is_model_sane(model_p, total_xg, "1x2"):
+            continue
+
+        # Validação cruzada entre bookmakers
+        sel_1x2_keys = ["home", "draw", "away"]
+        if not _is_odd_cross_validated(market_o, all_markets_odds, "1x2", sel_1x2_keys[i]):
+            continue
+
+        edge = calculate_edge(model_p, market_o)
+
+        # Filtrar edges absurdos (provável erro de odds da API)
+        if edge >= config.MAX_EDGE_SANE:
+            continue
+
+        if edge >= config.MIN_EDGE_THRESHOLD:
+            fair_odd = round(1.0 / max(0.01, model_p), 2)
+            kelly = fractional_kelly(model_p, market_o)
+            conf, conf_score = classify_confidence(
+                edge, model_p, weather_stable, fatigue_free,
+                market_odd=market_o, data_quality=match.data_quality_score,
+                has_real_odds=match.has_real_odds, has_real_standings=match.has_real_standings,
+                games_played_min=min(home.games_played, away.games_played),
+                model_xg_suspicious=model_xg_suspicious,
+            )
+            conf, conf_score = _downgrade_confidence_if_suspicious(conf, conf_score, model_xg_suspicious, edge)
+            reasoning = generate_reasoning(match, f"1x2 - {label}", edge, model_p)
+
+            opportunities.append(ValueOpportunity(
+                match_id=match.match_id,
+                league_name=match.league_name,
+                league_country=match.league_country,
+                match_date=match.match_date,
+                match_time=match.match_time,
+                home_team=match.home_team.team_name,
+                away_team=match.away_team.team_name,
+                market="1x2",
+                selection=label,
+                market_odd=market_o,
+                fair_odd=fair_odd,
+                model_prob=round(model_p, 4),
+                implied_prob=round(implied_p, 4),
+                edge=round(edge, 4),
+                edge_pct=f"+{edge*100:.1f}%",
+                kelly_fraction=round(kelly, 4),
+                kelly_bet_pct=f"{kelly*100:.2f}%",
+                confidence=conf,
+                reasoning=reasoning,
+                home_xg=match.model_home_xg,
+                away_xg=match.model_away_xg,
+                weather_note=match.weather.description,
+                fatigue_note=("Casa em fadiga" if match.home_fatigue
+                              else "Fora em fadiga" if match.away_fatigue else "N/A"),
+                urgency_home=match.league_urgency_home,
+                urgency_away=match.league_urgency_away,
+                bookmaker=match.odds.bookmaker,
+                data_quality=match.data_quality_score,
+                odds_suspect=getattr(match, 'odds_home_away_suspect', False),
+                confidence_score=conf_score,
+            ))
+
+    # ── MERCADO DUPLA CHANCE (Casa ou Empate / Fora ou Empate) ──
+    # Probabilidades do modelo: P(1X) = P(Home) + P(Draw), P(X2) = P(Away) + P(Draw)
+    model_prob_1x = match.model_prob_home + match.model_prob_draw
+    model_prob_x2 = match.model_prob_away + match.model_prob_draw
+
+    # Odds da API (se disponíveis) ou calculadas a partir do 1x2
+    dc_1x_odd = odds.double_chance_1x
+    dc_x2_odd = odds.double_chance_x2
+
+    # Se a API não forneceu odds de Dupla Chance, calcular a partir do 1x2
+    if dc_1x_odd <= 0 and odds.home_win > 1.0 and odds.draw > 1.0:
+        # Aproximação: 1 / (1/home + 1/draw) — harmônica
+        dc_1x_odd = round(1.0 / (1.0/odds.home_win + 1.0/odds.draw), 2)
+    if dc_x2_odd <= 0 and odds.away_win > 1.0 and odds.draw > 1.0:
+        dc_x2_odd = round(1.0 / (1.0/odds.away_win + 1.0/odds.draw), 2)
+
+    dc_entries = [
+        ("Casa ou Empate (1X)", model_prob_1x, dc_1x_odd),
+        ("Fora ou Empate (X2)", model_prob_x2, dc_x2_odd),
+    ]
+
+    for label, model_p, market_o in dc_entries:
+        if market_o <= 1.0:
+            continue
+        if not _is_odd_valid(market_o, "Dupla Chance"):
+            continue
+        if not _is_model_sane(model_p, total_xg, "Dupla Chance"):
+            continue
+
+        edge = calculate_edge(model_p, market_o)
+
+        if edge >= config.MAX_EDGE_SANE:
+            continue
+
+        if edge >= config.MIN_EDGE_THRESHOLD:
+            fair_odd = round(1.0 / max(0.01, model_p), 2)
+            implied_p = 1.0 / market_o if market_o > 0 else 0
+            kelly = fractional_kelly(model_p, market_o)
+            conf, conf_score = classify_confidence(
+                edge, model_p, weather_stable, fatigue_free,
+                market_odd=market_o, data_quality=match.data_quality_score,
+                has_real_odds=match.has_real_odds, has_real_standings=match.has_real_standings,
+                games_played_min=min(home.games_played, away.games_played),
+                model_xg_suspicious=model_xg_suspicious,
+            )
+            conf, conf_score = _downgrade_confidence_if_suspicious(conf, conf_score, model_xg_suspicious, edge)
+            reasoning = generate_reasoning(match, f"Dupla Chance - {label}", edge, model_p)
+
+            opportunities.append(ValueOpportunity(
+                match_id=match.match_id,
+                league_name=match.league_name,
+                league_country=match.league_country,
+                match_date=match.match_date,
+                match_time=match.match_time,
+                home_team=match.home_team.team_name,
+                away_team=match.away_team.team_name,
+                market="Dupla Chance",
+                selection=label,
+                market_odd=market_o,
+                fair_odd=fair_odd,
+                model_prob=round(model_p, 4),
+                implied_prob=round(implied_p, 4),
+                edge=round(edge, 4),
+                edge_pct=f"+{edge*100:.1f}%",
+                kelly_fraction=round(kelly, 4),
+                kelly_bet_pct=f"{kelly*100:.2f}%",
+                confidence=conf,
+                reasoning=reasoning,
+                home_xg=match.model_home_xg,
+                away_xg=match.model_away_xg,
+                weather_note=match.weather.description,
+                fatigue_note=("Casa em fadiga" if match.home_fatigue
+                              else "Fora em fadiga" if match.away_fatigue else "N/A"),
+                urgency_home=match.league_urgency_home,
+                urgency_away=match.league_urgency_away,
+                bookmaker=match.odds.bookmaker,
+                data_quality=match.data_quality_score,
+                odds_suspect=getattr(match, 'odds_home_away_suspect', False),
+                confidence_score=conf_score,
+            ))
+
+    # ── MERCADO OVER/UNDER 2.5 ──
+    # REMOVIDO: Scanner dedicado O/U 2.5 (agora tratado pelo scanner genérico "goals_ou"
+    # para manter padrão uniforme "Gols O/U" com suporte a multi-bookmaker)
+
+    # ── MERCADO BTTS ──
+    btts_odds = [odds.btts_yes, odds.btts_no]
+    btts_fair = devig_odds(btts_odds)
+    model_btts = match.model_prob_btts
+
+    btts_sel_keys = ["yes", "no"]
+    for idx_btts, (label, model_p, market_o, implied_p) in enumerate([
+        ("Ambas Marcam — Sim", model_btts, odds.btts_yes, btts_fair[0]),
+        ("Ambas Marcam — Não", 1.0 - model_btts, odds.btts_no, btts_fair[1]),
+    ]):
+        if not _is_odd_valid(market_o, "BTTS"):
+            continue
+        if not _is_model_sane(model_p, total_xg, "BTTS"):
+            continue
+        if not _is_odd_cross_validated(market_o, all_markets_odds, "btts", btts_sel_keys[idx_btts]):
+            continue
+        edge = calculate_edge(model_p, market_o)
+        if edge >= config.MAX_EDGE_SANE:
+            continue
+        if edge >= config.MIN_EDGE_THRESHOLD:
+            fair_odd = round(1.0 / max(0.01, model_p), 2)
+            kelly = fractional_kelly(model_p, market_o)
+            conf, conf_score = classify_confidence(
+                edge, model_p, weather_stable, fatigue_free,
+                market_odd=market_o, data_quality=match.data_quality_score,
+                has_real_odds=match.has_real_odds, has_real_standings=match.has_real_standings,
+                games_played_min=min(home.games_played, away.games_played),
+                model_xg_suspicious=model_xg_suspicious,
+            )
+            conf, conf_score = _downgrade_confidence_if_suspicious(conf, conf_score, model_xg_suspicious, edge)
+            reasoning = generate_reasoning(match, f"BTTS - {label}", edge, model_p)
+
+            opportunities.append(ValueOpportunity(
+                match_id=match.match_id,
+                league_name=match.league_name,
+                league_country=match.league_country,
+                match_date=match.match_date,
+                match_time=match.match_time,
+                home_team=match.home_team.team_name,
+                away_team=match.away_team.team_name,
+                market="BTTS",
+                selection=label,
+                market_odd=market_o,
+                fair_odd=fair_odd,
+                model_prob=round(model_p, 4),
+                implied_prob=round(implied_p, 4),
+                edge=round(edge, 4),
+                edge_pct=f"+{edge*100:.1f}%",
+                kelly_fraction=round(kelly, 4),
+                kelly_bet_pct=f"{kelly*100:.2f}%",
+                confidence=conf,
+                reasoning=reasoning,
+                home_xg=match.model_home_xg,
+                away_xg=match.model_away_xg,
+                weather_note=match.weather.description,
+                fatigue_note="",
+                urgency_home=match.league_urgency_home,
+                urgency_away=match.league_urgency_away,
+                bookmaker=match.odds.bookmaker,
+                data_quality=match.data_quality_score,
+                odds_suspect=getattr(match, 'odds_home_away_suspect', False),
+                confidence_score=conf_score,
+            ))
+
+    # ═══════════════════════════════════════════════════════════
+    # SCANNER GENÉRICO — TODOS OS MERCADOS (model_probs vs all_markets)
+    # ═══════════════════════════════════════════════════════════
+    model_probs = getattr(match, 'model_probs', {}) or {}
+
+    # Mercados de finalizações — gerar oportunidades MESMO sem odds da API
+
+    if model_probs:
+        for market_key, market_cfg in _ALL_MARKETS.items():
+            # Pular mercados já tratados por scanners dedicados acima
+            if market_key in ("1x2", "double_chance", "btts"):
+                continue
+
+            market_label = market_cfg["label"]
+            market_odds_dict = all_markets_odds.get(market_key, {}) if all_markets_odds else {}
+
+            for sel_key, sel_label in market_cfg["selections"].items():
+                # Probabilidade do modelo
+                prob_key = f"{market_key}__{sel_key}"
+                model_p = model_probs.get(prob_key, 0)
+                if model_p <= 0.005 or model_p >= 0.995:
+                    continue
+
+                # Odd do mercado — exigir odd REAL de bookmaker
+                market_o = market_odds_dict.get(sel_key, 0)
+                if market_o <= 1.0:
+                    continue
+                if not _is_odd_valid(market_o, market_label):
+                    continue
+                if not _is_model_sane(model_p, total_xg, market_label):
+                    continue
+
+                # ── VALIDAÇÃO DE PLAUSIBILIDADE ESTATÍSTICA ──
+                # Detecta odds impossíveis (ex: Under 3.5 a 2.00 quando deveria ser ~1.25)
+                if not _is_odd_plausible_for_line(sel_key, market_o, market_key):
+                    continue
+
+                # ── CONSISTÊNCIA DO PAR OVER/UNDER ──
+                # Detecta odds invertidas (Over favorito quando Under deveria ser)
+                if not _is_ou_pair_consistent(sel_key, market_o, market_odds_dict, market_key):
+                    continue
+
+                # ── VALIDAÇÃO CRUZADA entre bookmakers ──
+                if not _is_odd_cross_validated(market_o, all_markets_odds, market_key, sel_key):
+                    continue
+
+                edge = calculate_edge(model_p, market_o)
+                if edge >= config.MAX_EDGE_SANE:
+                    continue
+
+                # Exigir edge mínimo para todos os mercados
+                if edge < config.MIN_EDGE_THRESHOLD:
+                    continue
+
+                fair_odd = round(1.0 / max(0.01, model_p), 2)
+                implied_p = 1.0 / market_o
+                kelly = fractional_kelly(model_p, market_o)
+                conf, conf_score = classify_confidence(
+                    edge, model_p, weather_stable, fatigue_free,
+                    market_odd=market_o, data_quality=match.data_quality_score,
+                    has_real_odds=match.has_real_odds, has_real_standings=match.has_real_standings,
+                    games_played_min=min(home.games_played, away.games_played),
+                    model_xg_suspicious=model_xg_suspicious,
+                )
+                conf, conf_score = _downgrade_confidence_if_suspicious(conf, conf_score, model_xg_suspicious, edge)
+
+                # Identificar bookmaker correto (pode vir de _source para mercados especiais)
+                source_bk = market_odds_dict.get("_source", "")
+                bk_name = source_bk if source_bk else match.odds.bookmaker
+                display_odd = market_o
+
+                reasoning = generate_reasoning(match, f"{market_label} - {sel_label}", edge, model_p)
+
+                opportunities.append(ValueOpportunity(
+                    match_id=match.match_id,
+                    league_name=match.league_name,
+                    league_country=match.league_country,
+                    match_date=match.match_date,
+                    match_time=match.match_time,
+                    home_team=match.home_team.team_name,
+                    away_team=match.away_team.team_name,
+                    market=market_label,
+                    selection=sel_label,
+                    market_odd=display_odd,
+                    fair_odd=fair_odd,
+                    model_prob=round(model_p, 4),
+                    implied_prob=round(implied_p, 4),
+                    edge=round(edge, 4),
+                    edge_pct=f"+{edge*100:.1f}%" if edge > 0 else "Fair",
+                    kelly_fraction=round(kelly, 4),
+                    kelly_bet_pct=f"{kelly*100:.2f}%" if kelly > 0 else "N/A",
+                    confidence=conf,
+                    reasoning=reasoning,
+                    home_xg=match.model_home_xg,
+                    away_xg=match.model_away_xg,
+                    weather_note=match.weather.description,
+                    fatigue_note="",
+                    urgency_home=match.league_urgency_home,
+                    urgency_away=match.league_urgency_away,
+                    bookmaker=bk_name,
+                    data_quality=match.data_quality_score,
+                    odds_suspect=getattr(match, 'odds_home_away_suspect', False),
+                    confidence_score=conf_score,
+                ))
+
+    # ═══ DEDUPLICAÇÃO FINAL ═══
+    # Remover duplicatas: mesma seleção equivalente para o mesmo jogo, manter a de maior edge
+    def _norm_sel(s):
+        """Normaliza seleção removendo acentos, traços, pontuação e case."""
+        # Remover acentos (ã→a, é→e, etc.)
+        nfkd = unicodedata.normalize('NFKD', s)
+        ascii_str = ''.join(c for c in nfkd if not unicodedata.combining(c))
+        # Lowercase + remover traços/pontuação + normalizar espaços
+        return ascii_str.lower().replace('—', ' ').replace('–', ' ').replace('-', ' ').replace('  ', ' ').strip()
+
+    seen = {}
+    deduped = []
+    for opp in opportunities:
+        key = _norm_sel(opp.selection)
+        if key in seen:
+            idx = seen[key]
+            if opp.edge > deduped[idx].edge:
+                deduped[idx] = opp
+        else:
+            seen[key] = len(deduped)
+            deduped.append(opp)
+
+    return deduped
+
+
+def determine_analysis_type(match_date: str, match_time: str) -> str:
+    """
+    Determina se a análise é PRE_JOGO ou RETROATIVA.
+
+    PRE_JOGO:    análise feita ANTES do início do jogo (>30 min antes do kickoff)
+    RETROATIVA:  análise feita DEPOIS do jogo já ter começado ou terminado
+
+    Usa o horário atual em Brasília comparado com o horário de início do jogo.
+    """
+    try:
+        now_br = datetime.now(config.BR_TIMEZONE)
+
+        # Parse da data e hora do jogo
+        # match_time pode estar em formato "HH:MM" (já em Brasília)
+        if match_date and match_time:
+            match_dt_str = f"{match_date} {match_time}"
+            try:
+                match_dt = datetime.strptime(match_dt_str, "%Y-%m-%d %H:%M")
+                match_dt = match_dt.replace(tzinfo=config.BR_TIMEZONE)
+            except ValueError:
+                # Tentar formato alternativo
+                try:
+                    match_dt = datetime.strptime(match_dt_str, "%Y-%m-%d %H:%M:%S")
+                    match_dt = match_dt.replace(tzinfo=config.BR_TIMEZONE)
+                except ValueError:
+                    return "PRE_JOGO"  # Se não conseguir parsear, assumir pré-jogo
+
+            # Se a análise está sendo feita mais de 30 min antes do jogo → PRE_JOGO
+            # Se o jogo já começou ou está muito próximo → RETROATIVA
+            minutes_until_kickoff = (match_dt - now_br).total_seconds() / 60.0
+
+            if minutes_until_kickoff > 30:
+                return "PRE_JOGO"
+            else:
+                return "RETROATIVA"
+        else:
+            return "PRE_JOGO"
+    except Exception:
+        return "PRE_JOGO"
+
+
+def find_all_value(matches: list[MatchAnalysis]) -> list[ValueOpportunity]:
+    """
+    Escaneia todas as partidas buscando oportunidades de valor.
+    Retorna lista ordenada por Edge (maior primeiro).
+    """
+    print(f"[VALUE] Escaneando {len(matches)} partidas para oportunidades +EV...")
+
+    # Contadores do portão de qualidade
+    n_no_odds = sum(1 for m in matches if not m.has_real_odds)
+    n_no_standings = sum(1 for m in matches if not m.has_real_standings)
+    n_low_dq = sum(1 for m in matches if m.data_quality_score < 0.50)
+    n_eligible = sum(1 for m in matches
+                     if (m.has_real_odds or m.has_real_standings) and m.data_quality_score >= 0.20)
+
+    print(f"[VALUE] ═══ PORTÃO DE QUALIDADE ═══")
+    print(f"[VALUE]   Total partidas:           {len(matches)}")
+    print(f"[VALUE]   Sem odds reais:           {n_no_odds}")
+    print(f"[VALUE]   Sem standings reais:       {n_no_standings}")
+    print(f"[VALUE]   DQ < 50%:                 {n_low_dq}")
+    print(f"[VALUE]   ✅ Elegíveis para análise: {n_eligible}")
+    print(f"[VALUE] ═══════════════════════════")
+
+    all_opps = []
+    processed_count = 0
+    rejected_by_scan = 0
+    pre_game_count = 0
+    retro_count = 0
+    
+    for match in matches:
+        if not ((match.has_real_odds or match.has_real_standings) and match.data_quality_score >= 0.20):
+            continue
+            
+        opps = scan_match_for_value(match)
+        if opps:
+            # Determinar tipo de análise para cada oportunidade do match
+            analysis_type = determine_analysis_type(match.match_date, match.match_time)
+            for opp in opps:
+                opp.analysis_type = analysis_type
+                if analysis_type == "PRE_JOGO":
+                    pre_game_count += 1
+                else:
+                    retro_count += 1
+
+            all_opps.extend(opps)
+            processed_count += 1
+        else:
+            rejected_by_scan += 1
+    
+    if processed_count > 0:
+        print(f"[VALUE] ✅ Partidas processadas com sucesso: {processed_count}")
+    if rejected_by_scan > 0:
+        print(f"[VALUE] ⚠️  Partidas elegíveis mas sem oportunidades encontradas: {rejected_by_scan}")
+        print(f"[VALUE]    (Pode ser que não há edge suficiente ou odds/modelo estão alinhados)")
+
+    # Ordenar por edge (maior primeiro)
+    all_opps.sort(key=lambda x: x.edge, reverse=True)
+
+    print(f"[VALUE] {len(all_opps)} oportunidades com Edge >= {config.MIN_EDGE_THRESHOLD*100:.0f}% encontradas")
+    print(f"[VALUE] Tipo: 🟢 {pre_game_count} Pré-Jogo | 🔵 {retro_count} Retroativa")
+
+    # Estatísticas
+    if all_opps:
+        high = sum(1 for o in all_opps if o.confidence == "ALTO")
+        med = sum(1 for o in all_opps if o.confidence == "MÉDIO")
+        low = sum(1 for o in all_opps if o.confidence == "BAIXO")
+        avg_score = sum(o.confidence_score for o in all_opps) / len(all_opps)
+        print(f"[VALUE] Distribuição: ALTO={high} | MÉDIO={med} | BAIXO={low}")
+        print(f"[VALUE] Score médio de confiança: {avg_score:.1f}/100")
+        print(f"[VALUE] Maior Edge: {all_opps[0].edge_pct} em "
+              f"{all_opps[0].home_team} vs {all_opps[0].away_team} ({all_opps[0].selection})")
+
+    return all_opps
