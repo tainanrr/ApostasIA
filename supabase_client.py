@@ -325,12 +325,14 @@ def save_opportunities(run_id: str, opportunities: list[dict]) -> int:
                 "urgency_away": o.get("urgency_away", 0.5),
                 "confidence_score": o.get("confidence_score", 0.0),
                 "analysis_type": o.get("analysis_type", "PRE_JOGO"),
+                "bet365_available": 1 if o.get("bet365_available") else 0,
+                "league_tier": o.get("league_tier", "C"),
             })
 
         # Inserir em lotes de 100 (limite do Supabase)
         saved = 0
         batch_size = 100
-        _new_columns = {"confidence_score", "analysis_type"}
+        _new_columns = {"confidence_score", "analysis_type", "bet365_available", "league_tier"}
         _retry_without_new = False
 
         for i in range(0, len(rows), batch_size):
@@ -514,34 +516,47 @@ def save_matches(run_id: str, matches: list[dict]) -> int:
 
         saved = 0
         batch_size = 100
-        use_full_schema = True  # Tentar com todos os campos primeiro
-        
+        use_full_schema = True
+        use_upsert = True
+
+        def _save_batch(b):
+            if use_upsert:
+                return sb.table("matches").upsert(b, on_conflict="match_id").execute()
+            return sb.table("matches").insert(b).execute()
+
         for i in range(0, len(rows), batch_size):
             batch = rows[i:i + batch_size]
-            
+
             if not use_full_schema:
-                # Fallback: usar apenas campos básicos
                 batch = [{k: v for k, v in row.items() if k in _basic_keys} for row in batch]
-            
+
             try:
-                result = sb.table("matches").insert(batch).execute()
+                result = _save_batch(batch)
                 if result.data:
                     saved += len(result.data)
             except Exception as batch_err:
                 err_msg = str(batch_err).lower()
-                if "column" in err_msg and ("does not exist" in err_msg or "not found" in err_msg):
-                    if use_full_schema:
-                        print(f"[SUPABASE] AVISO: Schema matches incompleto - salvando apenas campos basicos")
-                        print(f"[SUPABASE]    Execute o SQL de migração para habilitar todos os campos detalhados")
-                        use_full_schema = False
-                        # Retry este batch com campos básicos
-                        basic_batch = [{k: v for k, v in row.items() if k in _basic_keys} for row in batch]
+                if "no unique or exclusion constraint" in err_msg or "42p10" in err_msg:
+                    if use_upsert:
+                        print(f"[SUPABASE] AVISO: match_id sem UNIQUE constraint — usando INSERT (execute no SQL Editor: ALTER TABLE matches ADD CONSTRAINT matches_match_id_unique UNIQUE (match_id);)")
+                        use_upsert = False
                         try:
-                            result = sb.table("matches").insert(basic_batch).execute()
+                            result = _save_batch(batch)
                             if result.data:
                                 saved += len(result.data)
                         except Exception as retry_err:
-                            print(f"[SUPABASE] Erro ao salvar batch (retry básico): {retry_err}")
+                            print(f"[SUPABASE] Erro ao salvar batch (fallback insert): {retry_err}")
+                elif "column" in err_msg and ("does not exist" in err_msg or "not found" in err_msg):
+                    if use_full_schema:
+                        print(f"[SUPABASE] AVISO: Schema matches incompleto - salvando apenas campos basicos")
+                        use_full_schema = False
+                        basic_batch = [{k: v for k, v in row.items() if k in _basic_keys} for row in batch]
+                        try:
+                            result = _save_batch(basic_batch)
+                            if result.data:
+                                saved += len(result.data)
+                        except Exception as retry_err:
+                            print(f"[SUPABASE] Erro ao salvar batch (retry basico): {retry_err}")
                 else:
                     print(f"[SUPABASE] Erro ao salvar batch de partidas: {batch_err}")
 
@@ -1058,14 +1073,18 @@ def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
     Retorna TODAS as oportunidades cujo match_date está no intervalo [date_from, date_to].
     Inclui todas as colunas necessárias para a tabela principal.
     Busca tanto pendentes quanto resolvidas.
+    Usa page_size grande para minimizar round-trips ao Supabase.
     """
     sb = get_client()
     if not sb:
         return []
     try:
+        import time as _time
+        _t0 = _time.time()
         all_data = []
-        page_size = 1000
+        page_size = 5000
         offset = 0
+        pages = 0
 
         while True:
             result = (
@@ -1080,11 +1099,12 @@ def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
             )
             batch = result.data or []
             all_data.extend(batch)
+            pages += 1
             if len(batch) < page_size:
                 break
             offset += page_size
 
-        print(f"[SUPABASE] Oportunidades {date_from} -> {date_to}: {len(all_data)} encontradas")
+        print(f"[SUPABASE] Oportunidades {date_from} -> {date_to}: {len(all_data)} encontradas ({pages} páginas, {_time.time()-_t0:.1f}s)")
         return all_data
     except Exception as e:
         print(f"[SUPABASE] Erro ao buscar oportunidades por data: {e}")
@@ -1101,14 +1121,18 @@ def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
 def get_matches_by_dates(date_from: str, date_to: str) -> list[dict]:
     """
     Retorna TODAS as partidas cujo match_date está no intervalo [date_from, date_to].
+    Usa page_size grande para minimizar round-trips ao Supabase.
     """
     sb = get_client()
     if not sb:
         return []
     try:
+        import time as _time
+        _t0 = _time.time()
         all_data = []
-        page_size = 1000
+        page_size = 5000
         offset = 0
+        pages = 0
 
         while True:
             result = (
@@ -1123,11 +1147,12 @@ def get_matches_by_dates(date_from: str, date_to: str) -> list[dict]:
             )
             batch = result.data or []
             all_data.extend(batch)
+            pages += 1
             if len(batch) < page_size:
                 break
             offset += page_size
 
-        print(f"[SUPABASE] Matches {date_from} -> {date_to}: {len(all_data)} encontradas")
+        print(f"[SUPABASE] Matches {date_from} -> {date_to}: {len(all_data)} encontradas ({pages} páginas, {_time.time()-_t0:.1f}s)")
         return all_data
     except Exception as e:
         print(f"[SUPABASE] Erro ao buscar partidas por data: {e}")
@@ -1400,3 +1425,160 @@ def get_execution_history(exec_type: str = None, limit: int = 3):
     except Exception as e:
         print(f"[SUPABASE] Erro ao buscar histórico: {e}")
         return []
+
+
+
+# ═══════════════════════════════════════════════════════════════
+#  LIMPEZA — Remover oportunidades/partidas com odds falsas
+# ═══════════════════════════════════════════════════════════════
+
+def cleanup_fake_odds_data() -> dict:
+    """
+    Remove do Supabase todas as oportunidades e partidas que usaram
+    odds default (não-reais). Critérios:
+      - opportunities: bookmaker IN ('N/D', '', NULL) ou 'Modelo (Estimado)'
+      - matches: has_real_odds = 0 ou NULL
+    Também limpa pipeline_runs órfãs após a remoção.
+    """
+    sb = get_client()
+    if not sb:
+        return {"error": "Supabase não configurado", "deleted_opportunities": 0, "deleted_matches": 0}
+
+    stats = {"deleted_opportunities": 0, "deleted_matches": 0, "deleted_runs": 0, "errors": []}
+
+    print("[CLEANUP] ═══ Removendo dados com odds falsas/default ═══")
+    fake_opp_ids = []
+    page_size = 1000
+
+    for bk_value in ["N/D", "", "Modelo (Estimado)"]:
+        offset = 0
+        while True:
+            try:
+                result = (
+                    sb.table("opportunities")
+                    .select("id")
+                    .eq("bookmaker", bk_value)
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+                batch = result.data or []
+                fake_opp_ids.extend([r["id"] for r in batch])
+                if len(batch) < page_size:
+                    break
+                offset += page_size
+            except Exception as e:
+                stats["errors"].append(f"Erro ao buscar opps com bookmaker=\'{bk_value}\': {e}")
+                break
+
+    try:
+        offset = 0
+        while True:
+            result = (
+                sb.table("opportunities")
+                .select("id")
+                .is_("bookmaker", "null")
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = result.data or []
+            fake_opp_ids.extend([r["id"] for r in batch])
+            if len(batch) < page_size:
+                break
+            offset += page_size
+    except Exception as e:
+        stats["errors"].append(f"Erro ao buscar opps com bookmaker NULL: {e}")
+
+    fake_opp_ids = list(set(fake_opp_ids))
+    print(f"[CLEANUP] Encontradas {len(fake_opp_ids)} oportunidades com odds falsas")
+
+    if fake_opp_ids:
+        batch_size = 100
+        for i in range(0, len(fake_opp_ids), batch_size):
+            batch_ids = fake_opp_ids[i:i + batch_size]
+            try:
+                result = sb.table("opportunities").delete().in_("id", batch_ids).execute()
+                deleted = len(result.data) if result.data else 0
+                stats["deleted_opportunities"] += deleted
+            except Exception as e:
+                stats["errors"].append(f"Erro ao deletar lote de opps: {e}")
+            if (i + batch_size) % 500 == 0:
+                print(f"[CLEANUP]   Progresso opps: {min(i + batch_size, len(fake_opp_ids))}/{len(fake_opp_ids)}")
+
+    print(f"[CLEANUP] {stats['deleted_opportunities']} oportunidades removidas")
+
+    fake_match_ids = []
+    try:
+        offset = 0
+        while True:
+            result = (
+                sb.table("matches")
+                .select("id")
+                .eq("has_real_odds", 0)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = result.data or []
+            fake_match_ids.extend([r["id"] for r in batch])
+            if len(batch) < page_size:
+                break
+            offset += page_size
+    except Exception as e:
+        stats["errors"].append(f"Erro ao buscar matches fake: {e}")
+
+    try:
+        offset = 0
+        while True:
+            result = (
+                sb.table("matches")
+                .select("id")
+                .is_("has_real_odds", "null")
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = result.data or []
+            fake_match_ids.extend([r["id"] for r in batch])
+            if len(batch) < page_size:
+                break
+            offset += page_size
+    except Exception as e:
+        stats["errors"].append(f"Erro ao buscar matches com has_real_odds NULL: {e}")
+
+    fake_match_ids = list(set(fake_match_ids))
+    print(f"[CLEANUP] Encontradas {len(fake_match_ids)} partidas com odds falsas")
+
+    if fake_match_ids:
+        batch_size = 100
+        for i in range(0, len(fake_match_ids), batch_size):
+            batch_ids = fake_match_ids[i:i + batch_size]
+            try:
+                result = sb.table("matches").delete().in_("id", batch_ids).execute()
+                deleted = len(result.data) if result.data else 0
+                stats["deleted_matches"] += deleted
+            except Exception as e:
+                stats["errors"].append(f"Erro ao deletar lote de matches: {e}")
+
+    print(f"[CLEANUP] {stats['deleted_matches']} partidas removidas")
+
+    try:
+        all_runs = sb.table("pipeline_runs").select("id").execute()
+        for run in (all_runs.data or []):
+            r = sb.table("opportunities").select("id", count="exact").eq("run_id", run["id"]).execute()
+            if (r.count or 0) == 0:
+                sb.table("matches").delete().eq("run_id", run["id"]).execute()
+                sb.table("pipeline_runs").delete().eq("id", run["id"]).execute()
+                stats["deleted_runs"] += 1
+        if stats["deleted_runs"] > 0:
+            print(f"[CLEANUP] {stats['deleted_runs']} pipeline_runs órfãs removidas")
+    except Exception as e:
+        stats["errors"].append(f"Erro na limpeza de runs órfãs: {e}")
+
+    print(f"[CLEANUP] ═══ CONCLUÍDO ═══")
+    print(f"[CLEANUP]   Oportunidades removidas: {stats['deleted_opportunities']}")
+    print(f"[CLEANUP]   Partidas removidas:      {stats['deleted_matches']}")
+    print(f"[CLEANUP]   Runs órfãs removidas:    {stats['deleted_runs']}")
+    if stats["errors"]:
+        print(f"[CLEANUP]   Erros: {len(stats['errors'])}")
+        for err in stats["errors"][:5]:
+            print(f"[CLEANUP]     - {err}")
+
+    return stats

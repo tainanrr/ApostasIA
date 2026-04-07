@@ -1244,7 +1244,7 @@ def _check_api_plan() -> dict:
     return {"plan": plan, "limit": limit, "used": current, "available": limit - current}
 
 
-def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
+def _ingest_real_data(analysis_dates: list[str] = None, progress_cb=None) -> list[MatchAnalysis]:
     """
     Pipeline COMPLETO de ingestão — Plano PRO.
     7.500 req/dia | 300 req/min | ALL endpoints | ALL seasons.
@@ -1258,6 +1258,7 @@ def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
     """
     global _api_call_count
     _api_call_count = 0
+    _report = progress_cb or (lambda **kw: None)
 
     if analysis_dates is None:
         analysis_dates = config.ANALYSIS_DATES
@@ -1294,7 +1295,9 @@ def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
     today_str = _dt.now(config.BR_TIMEZONE).strftime("%Y-%m-%d")
     
     print(f"[ETL] ═══ PASSO 1: Buscando fixtures globais ({len(analysis_dates)} datas) ═══")
-    for date in analysis_dates:
+    _report(phase="Buscando fixtures", detail=f"{len(analysis_dates)} datas...", total_days=len(analysis_dates))
+    for _di, date in enumerate(analysis_dates):
+        _report(current_day=_di+1, current_date=date, detail=f"Fixtures {date} ({_di+1}/{len(analysis_dates)})")
         # Incluir jogos FT para datas passadas E para hoje (jogos que já terminaram mais cedo)
         include_ft = date <= today_str
         if include_ft:
@@ -1310,6 +1313,7 @@ def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
     print(f"[ETL] Total: {len(all_fixtures_raw)} fixtures | API calls: {_api_call_count}")
 
     # ── PASSO 2: Standings para TODAS as ligas (season atual) ──
+    _report(phase="Buscando standings", detail=f"{len(all_fixtures_raw)} fixtures encontrados, buscando classificações...")
     print("[ETL] ═══ PASSO 2: Buscando classificações (ALL ligas) ═══")
 
     league_fixture_count = {}
@@ -1361,6 +1365,7 @@ def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
     print(f"  Standings: {len(standings_cache)} ligas | API calls: {_api_call_count}")
 
     # ── PASSO 3: Odds REAIS para todos os fixtures ──
+    _report(phase="Buscando odds", detail="Iniciando busca de odds reais...", api_calls=_api_call_count)
     print("[ETL] ═══ PASSO 3: Buscando ODDS REAIS de mercado ═══")
     odds_cache = {}
     fixture_ids = [f.get("fixture", {}).get("id", 0) for f in all_fixtures_raw if f.get("fixture", {}).get("id")]
@@ -1387,11 +1392,13 @@ def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
             odds_cache[fid] = oraw
             odds_found += 1
         if (i + 1) % 50 == 0:
+            _report(detail=f"Odds: {i+1}/{max_odds} ({odds_found} encontradas)", api_calls=_api_call_count)
             print(f"    Progresso: {i+1}/{max_odds} | Odds encontradas: {odds_found}")
 
     print(f"  Odds obtidas: {odds_found} fixtures | API calls: {_api_call_count}")
 
     # ── PASSO 4: Lesões REAIS ──
+    _report(phase="Buscando lesões", detail=f"Odds concluídas ({odds_found}). Buscando lesões...", api_calls=_api_call_count)
     print("[ETL] ═══ PASSO 4: Buscando LESÕES REAIS ═══")
     injuries_cache = {}
     if is_free:
@@ -1412,6 +1419,7 @@ def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
     print(f"  Lesões: {injuries_found} fixtures com dados | API calls: {_api_call_count}")
 
     # ── PASSO 5: Converter em MatchAnalysis ──
+    _report(phase="Processando dados", detail=f"Convertendo {len(all_fixtures_raw)} fixtures em análises...", api_calls=_api_call_count)
     print("[ETL] ═══ PASSO 5: Convertendo dados em MatchAnalysis ═══")
     all_matches = []
     for fix_raw in all_fixtures_raw:
@@ -1423,6 +1431,7 @@ def _ingest_real_data(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
 
     # ── PASSO 6: Clima real (OpenWeatherMap — API separada) ──
     if config.OPENWEATHER_KEY:
+        _report(phase="Buscando clima", detail=f"OpenWeatherMap para {len(all_matches)} partidas...")
         print("[ETL] ═══ PASSO 6: Buscando clima real (OpenWeatherMap) ═══")
         weather_cache = {}
         calls = 0
@@ -2482,7 +2491,7 @@ def generate_synthetic_fixtures(date: str) -> list[MatchAnalysis]:
 # INTERFACE PÚBLICA
 # ═══════════════════════════════════════════════════════
 
-def ingest_all_fixtures(analysis_dates: list[str] = None) -> list[MatchAnalysis]:
+def ingest_all_fixtures(analysis_dates: list[str] = None, progress_cb=None) -> list[MatchAnalysis]:
     """
     Pipeline principal de ingestão de dados.
     Escolhe automaticamente entre API real e dados sintéticos.
@@ -2506,7 +2515,7 @@ def ingest_all_fixtures(analysis_dates: list[str] = None) -> list[MatchAnalysis]
         print(f"[ETL] Datas solicitadas: {analysis_dates}")
         print(f"[ETL] API Key: {config.API_FOOTBALL_KEY[:8]}...{config.API_FOOTBALL_KEY[-4:]}")
         print(f"[ETL] Weather: {'Configurado' if config.OPENWEATHER_KEY else 'Não configurado'}")
-        return _ingest_real_data(analysis_dates=analysis_dates)
+        return _ingest_real_data(analysis_dates=analysis_dates, progress_cb=progress_cb)
 
 
 if __name__ == "__main__":

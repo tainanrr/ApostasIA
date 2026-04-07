@@ -10,6 +10,7 @@ import os
 import time
 import sys
 import io
+import threading
 
 # ═══ SAFE PRINT + UTF-8 (Windows / Python 3.14) ═══
 # Captura OSError [Errno 22] que ocorre quando o handle do console é inválido.
@@ -103,6 +104,42 @@ _cache = {
     "last_run_at": None,
     "api_calls_used": 0,
 }
+
+# ═══════════════════════════════════════════════
+# PROGRESSO DO ENGINE (Background Thread)
+# ═══════════════════════════════════════════════
+_engine_progress = {
+    "running": False,
+    "phase": "",
+    "detail": "",
+    "current_day": 0,
+    "total_days": 0,
+    "current_date": "",
+    "matches_found": 0,
+    "opportunities_found": 0,
+    "api_calls": 0,
+    "started_at": None,
+    "elapsed": 0,
+    "error": None,
+    "completed": False,
+}
+_engine_lock = threading.Lock()
+
+
+def _update_progress(**kwargs):
+    with _engine_lock:
+        _engine_progress.update(kwargs)
+
+
+@app.route("/api/progress")
+def api_progress():
+    """Retorna progresso atual do engine (para polling do frontend)."""
+    with _engine_lock:
+        data = dict(_engine_progress)
+    if data.get("started_at"):
+        data["elapsed"] = round(time.time() - data["started_at"], 1)
+    return jsonify(data)
+
 
 @app.route("/api/info")
 def api_info():
@@ -669,20 +706,29 @@ def _build_leagues_list() -> list:
 # ENGINE
 # ═══════════════════════════════════════════════
 
-def run_engine(analysis_dates: list[str] = None):
+def run_engine(analysis_dates: list[str] = None, progress_cb=None):
     """Executa o pipeline completo, cacheia e persiste em disco.
-    Aceita lista customizada de datas; default = config.ANALYSIS_DATES."""
+    Aceita lista customizada de datas; default = config.ANALYSIS_DATES.
+    progress_cb: callback opcional para reportar progresso (kwargs: phase, detail, etc.)"""
     start = time.time()
+    _report = progress_cb or (lambda **kw: None)
 
     if analysis_dates is None:
         analysis_dates = config.get_default_dates()
 
-    matches = ingest_all_fixtures(analysis_dates=analysis_dates)
+    _report(phase="Ingestão de dados", detail=f"Processando {len(analysis_dates)} datas...", total_days=len(analysis_dates))
+    matches = ingest_all_fixtures(analysis_dates=analysis_dates, progress_cb=progress_cb)
+
+    _report(phase="Modelagem estatística", detail=f"Rodando modelos para {len(matches)} partidas...", matches_found=len(matches))
     matches = run_models_batch(matches)
+
+    _report(phase="Ajustes contextuais", detail=f"Aplicando contexto a {len(matches)} partidas...")
     matches = apply_context_batch(matches)
+
+    _report(phase="Scanner de valor", detail=f"Escaneando {len(matches)} partidas...")
     opportunities = find_all_value(matches)
 
-    # Preservar resultados já resolvidos no Supabase
+    _report(phase="Preservando resultados", detail="Verificando resultados anteriores...", opportunities_found=len(opportunities))
     _preserve_existing_results(opportunities)
 
     elapsed = round(time.time() - start, 2)
@@ -716,10 +762,10 @@ def run_engine(analysis_dates: list[str] = None):
         "api_calls_this_run": _api_call_count,
     }
 
-    # Persistir em disco (local)
+    _report(phase="Salvando", detail="Persistindo cache local...")
     _save_cache_to_disk()
 
-    # Persistir no Supabase (nuvem) — OBRIGATÓRIO
+    _report(phase="Salvando no Supabase", detail=f"Enviando {len(opportunities)} oportunidades para a nuvem...")
     print("[APP] Salvando dados no Supabase...")
     try:
         serialized_opps = [serialize_opportunity(o) for o in opportunities]
@@ -1061,6 +1107,8 @@ def serialize_opportunity(o: ValueOpportunity) -> dict:
         "bookmaker": o.bookmaker,
         "data_quality": o.data_quality,
         "odds_suspect": getattr(o, 'odds_suspect', False),
+        "bet365_available": getattr(o, 'bet365_available', False),
+        "league_tier": config.get_league_tier(o.league_name, o.league_country),
         "result_status": getattr(o, 'result_status', 'PENDENTE'),
         "result_score": getattr(o, 'result_score', ''),
         "result_ht_score": getattr(o, 'result_ht_score', ''),
@@ -1078,6 +1126,7 @@ def serialize_match(m: MatchAnalysis) -> dict:
         "league_id": m.league_id,
         "league_name": m.league_name,
         "league_country": m.league_country,
+        "league_tier": config.get_league_tier(m.league_name, m.league_country),
         "match_date": m.match_date,
         "match_time": m.match_time,
         "home_team": h.team_name,
@@ -1206,51 +1255,78 @@ def index():
 
 @app.route("/api/run", methods=["POST"])
 def api_run():
-    """Executa o engine e retorna os resultados.
-    Aceita JSON com date_from e date_to para datas customizadas."""
+    """Inicia o engine em background thread e retorna imediatamente.
+    Progresso disponível via GET /api/progress.
+    Aceita JSON com start_date/end_date para datas customizadas."""
     if IS_VERCEL:
         return jsonify({
             "ok": False,
             "error": "No Vercel, use o botão de agendamento (GitHub Actions). O pipeline excede o timeout."
         }), 503
+
+    with _engine_lock:
+        if _engine_progress["running"]:
+            return jsonify({
+                "ok": False,
+                "error": "Pipeline já está em execução. Acompanhe o progresso na tela."
+            }), 409
+
     from flask import request
+    data = request.get_json(silent=True) or {}
+    date_from = data.get("start_date") or data.get("date_from")
+    date_to = data.get("end_date") or data.get("date_to")
+
+    if date_from and date_to:
+        analysis_dates = config.build_date_range(date_from, date_to)
+        print(f"[API/RUN] Datas customizadas: {date_from} -> {date_to} ({len(analysis_dates)} dias)")
+    elif date_from:
+        analysis_dates = [date_from]
+        print(f"[API/RUN] Data única: {date_from}")
+    else:
+        analysis_dates = config.get_default_dates()
+        print(f"[API/RUN] Usando datas padrão (hoje + amanhã)")
+
     exec_id = supabase_client.log_execution_start("pipeline", "manual")
-    try:
-        data = request.get_json(silent=True) or {}
-        date_from = data.get("start_date") or data.get("date_from")
-        date_to = data.get("end_date") or data.get("date_to")
 
-        if date_from and date_to:
-            analysis_dates = config.build_date_range(date_from, date_to)
-            print(f"[API/RUN] Datas customizadas: {date_from} -> {date_to} ({len(analysis_dates)} dias)")
-        elif date_from:
-            analysis_dates = [date_from]
-            print(f"[API/RUN] Data única: {date_from}")
-        else:
-            analysis_dates = None
-            print(f"[API/RUN] Usando datas padrão (hoje + amanhã)")
-
-        run_engine(analysis_dates=analysis_dates)
-        supabase_client.log_execution_end(exec_id, "success", {
-            "matches": _cache["stats"].get("total_matches", 0),
-            "opportunities": _cache["stats"].get("total_opportunities", 0),
-            "dates": _cache["stats"].get("analysis_dates", []),
-            "api_calls": _cache.get("api_calls_used", 0),
-        })
-    except Exception as e:
-        supabase_client.log_execution_end(exec_id, "error", error_message=str(e))
-        import traceback
+    def _background_run():
         try:
-            traceback.print_exc()
-        except OSError:
-            pass
-        return jsonify({"ok": False, "error": str(e)}), 500
+            _update_progress(
+                running=True, completed=False, error=None,
+                started_at=time.time(), phase="Iniciando pipeline...",
+                detail="", total_days=len(analysis_dates), current_day=0,
+                current_date="", matches_found=0, opportunities_found=0,
+                api_calls=0,
+            )
+            run_engine(analysis_dates=analysis_dates, progress_cb=_update_progress)
+            supabase_client.log_execution_end(exec_id, "success", {
+                "matches": _cache["stats"].get("total_matches", 0),
+                "opportunities": _cache["stats"].get("total_opportunities", 0),
+                "dates": _cache["stats"].get("analysis_dates", []),
+                "api_calls": _cache.get("api_calls_used", 0),
+            })
+            _update_progress(
+                running=False, completed=True,
+                phase="Concluído!", detail="Pipeline finalizado com sucesso.",
+                opportunities_found=_cache["stats"].get("total_opportunities", 0),
+                matches_found=_cache["stats"].get("total_matches", 0),
+            )
+        except Exception as e:
+            import traceback
+            try:
+                traceback.print_exc()
+            except OSError:
+                pass
+            supabase_client.log_execution_end(exec_id, "error", error_message=str(e))
+            _update_progress(running=False, completed=False, error=str(e), phase="Erro no pipeline")
+
+    thread = threading.Thread(target=_background_run, daemon=True)
+    thread.start()
 
     return jsonify({
         "ok": True,
-        "last_run_at": _cache["last_run_at"],
-        "api_calls_this_run": _cache["api_calls_used"],
-        "analysis_dates": _cache["stats"].get("analysis_dates", []),
+        "started": True,
+        "total_days": len(analysis_dates),
+        "analysis_dates": analysis_dates,
     })
 
 
@@ -1386,6 +1462,7 @@ def api_load_by_dates():
     Atualiza o cache em memória para consistência com dashboard.
     """
     from flask import request as flask_request
+    from concurrent.futures import ThreadPoolExecutor
     date_from = flask_request.args.get("date_from", "")
     date_to = flask_request.args.get("date_to", "")
 
@@ -1393,10 +1470,30 @@ def api_load_by_dates():
         return jsonify({"ok": False, "error": "date_from e date_to são obrigatórios"}), 400
 
     print(f"[API/LOAD-BY-DATES] Buscando dados Supabase: {date_from} -> {date_to}")
+    _t0 = time.time()
+    _MAX_OPPS = 5000
+    _QUERY_TIMEOUT = 45
 
     try:
-        raw_opps = supabase_client.get_opportunities_by_dates(date_from, date_to)
-        raw_matches = supabase_client.get_matches_by_dates(date_from, date_to)
+        from concurrent.futures import TimeoutError as FuturesTimeout
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            opps_future = executor.submit(supabase_client.get_opportunities_by_dates, date_from, date_to)
+            matches_future = executor.submit(supabase_client.get_matches_by_dates, date_from, date_to)
+            try:
+                raw_opps = opps_future.result(timeout=_QUERY_TIMEOUT)
+                raw_matches = matches_future.result(timeout=_QUERY_TIMEOUT)
+            except FuturesTimeout:
+                opps_future.cancel()
+                matches_future.cancel()
+                elapsed = round(time.time() - _t0, 1)
+                print(f"[API/LOAD-BY-DATES] TIMEOUT apos {elapsed}s para {date_from} -> {date_to}")
+                return jsonify({
+                    "ok": False,
+                    "error": f"Busca excedeu {_QUERY_TIMEOUT}s para o periodo {date_from} a {date_to}. Tente um intervalo menor.",
+                    "timeout": True,
+                }), 504
+
+        print(f"[API/LOAD-BY-DATES] Supabase retornou {len(raw_opps)} opps + {len(raw_matches)} matches em {time.time()-_t0:.1f}s")
 
         # Deduplicar oportunidades: manter apenas a mais recente por (match_id, market, selection)
         seen = {}
@@ -1406,11 +1503,9 @@ def api_load_by_dates():
             if existing is None:
                 seen[key] = opp
             else:
-                # Manter a que tem resultado resolvido, ou a mais recente (by created_at)
                 if opp.get("result_status", "PENDENTE") != "PENDENTE" and existing.get("result_status", "PENDENTE") == "PENDENTE":
                     seen[key] = opp
                 elif opp.get("created_at", "") > existing.get("created_at", ""):
-                    # Se ambas pendentes ou ambas resolvidas, manter a mais recente
                     if opp.get("result_status", "PENDENTE") == existing.get("result_status", "PENDENTE"):
                         seen[key] = opp
 
@@ -1419,7 +1514,14 @@ def api_load_by_dates():
         if removed > 0:
             print(f"[API/LOAD-BY-DATES] Deduplicadas: {removed} oportunidades removidas ({len(raw_opps)} -> {len(deduped_opps)})")
 
-        # Converter do formato Supabase → formato frontend
+        truncated = False
+        if len(deduped_opps) > _MAX_OPPS:
+            deduped_opps.sort(key=lambda o: float(o.get("edge", 0) or 0), reverse=True)
+            deduped_opps = deduped_opps[:_MAX_OPPS]
+            truncated = True
+            print(f"[API/LOAD-BY-DATES] Truncado para {_MAX_OPPS} opps (por edge)")
+
+        # Converter do formato Supabase -> formato frontend
         frontend_opps = [_supabase_opp_to_frontend(o) for o in deduped_opps]
         frontend_matches = [_supabase_match_to_frontend(m) for m in raw_matches]
 
@@ -1431,18 +1533,15 @@ def api_load_by_dates():
                 match_seen[mid] = m
         frontend_matches = list(match_seen.values())
 
-        # Construir lista de ligas
-        leagues_set = set()
-        leagues_list = []
+        # Construir lista de ligas — O(n) em vez de O(n²)
+        league_counts = {}
         for m in frontend_matches:
-            key = (m.get("league_name"), m.get("league_country"))
-            if key not in leagues_set:
-                leagues_set.add(key)
-                leagues_list.append({
-                    "league_name": m.get("league_name"),
-                    "league_country": m.get("league_country"),
-                    "match_count": sum(1 for m2 in frontend_matches if m2.get("league_name") == m.get("league_name")),
-                })
+            key = (m.get("league_name", ""), m.get("league_country", ""))
+            league_counts[key] = league_counts.get(key, 0) + 1
+        leagues_list = [
+            {"league_name": ln, "league_country": lc, "match_count": cnt}
+            for (ln, lc), cnt in league_counts.items()
+        ]
 
         # Construir stats resumidas
         n_matches = len(frontend_matches)
@@ -1482,18 +1581,26 @@ def api_load_by_dates():
         n_red = sum(1 for o in frontend_opps if o.get("result_status") == "RED")
         n_pend = sum(1 for o in frontend_opps if o.get("result_status") == "PENDENTE")
 
-        print(f"[API/LOAD-BY-DATES] Retornando: {n_opps} opps ({n_green}G/{n_red}R/{n_pend}P), {n_matches} matches, {len(leagues_list)} ligas")
+        _elapsed = round(time.time() - _t0, 2)
+        print(f"[API/LOAD-BY-DATES] Retornando: {n_opps} opps ({n_green}G/{n_red}R/{n_pend}P), {n_matches} matches, {len(leagues_list)} ligas | {_elapsed}s total")
 
-        return jsonify({
+        resp = {
             "ok": True,
             "stats": stats_summary,
             "opportunities": frontend_opps,
             "matches": frontend_matches,
             "leagues": leagues_list,
-        })
+        }
+        if truncated:
+            resp["truncated"] = True
+            resp["truncated_total"] = len(raw_opps) - removed
+        return jsonify(resp)
 
     except Exception as e:
         import traceback
+        err_msg = str(e)
+        if "timeout" in err_msg.lower() or "timed out" in err_msg.lower():
+            err_msg = f"Busca no Supabase excedeu o tempo limite para o período {date_from} → {date_to}. Tente um período menor."
         try:
             with open("_error_log.txt", "a", encoding="utf-8") as f:
                 f.write(f"\n{'='*60}\n[LOAD-BY-DATES ERROR] {e}\n")
@@ -1504,7 +1611,7 @@ def api_load_by_dates():
             traceback.print_exc()
         except OSError:
             pass
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": err_msg}), 500
 
 
 def _supabase_opp_to_frontend(o: dict) -> dict:
@@ -1548,6 +1655,8 @@ def _supabase_opp_to_frontend(o: dict) -> dict:
         "bookmaker": o.get("bookmaker", "N/D"),
         "data_quality": float(o.get("data_quality") or 0),
         "odds_suspect": False,
+        "bet365_available": bool(o.get("bet365_available", False)),
+        "league_tier": o.get("league_tier") or config.get_league_tier(o.get("league_name", ""), o.get("league_country", "")),
         "result_status": o.get("result_status", "PENDENTE"),
         "result_score": o.get("result_score", "") or "",
         "result_ht_score": o.get("result_ht_score", "") or "",
@@ -1572,6 +1681,7 @@ def _supabase_match_to_frontend(m: dict) -> dict:
         "league_id": m.get("league_id", 0),
         "league_name": m.get("league_name", ""),
         "league_country": m.get("league_country", ""),
+        "league_tier": config.get_league_tier(m.get("league_name", ""), m.get("league_country", "")),
         "match_date": str(m.get("match_date", "")),
         "match_time": m.get("match_time", ""),
         "home_team": m.get("home_team", ""),
@@ -2138,20 +2248,145 @@ def _resolve_opportunity(opp: dict, home_goals: int, away_goals: int, result: di
                 elif "under" in selection or "abaixo" in selection:
                     return "GREEN" if away_goals < line else "RED"
 
-        # ── Genérico: Over/Under com linha numérica ──
-        import re
-        line_m = re.search(r'(?:over|under|acima|abaixo)\s*(\d+\.?\d*)', selection)
-        if line_m:
-            line = float(line_m.group(1))
-            if "over" in selection or "acima" in selection:
-                return "GREEN" if total_goals > line else "RED"
-            elif "under" in selection or "abaixo" in selection:
-                return "GREEN" if total_goals < line else "RED"
+        # ── Finalizações ao Gol (Shots on Target) O/U ──
+        if "finaliz" in market and "gol" in market:
+            sot_h = result.get("shots_on_home")
+            sot_a = result.get("shots_on_away")
+            if sot_h is not None and sot_a is not None:
+                total_sot = sot_h + sot_a
+                import re
+                line_m = re.search(r'(\d+\.?\d*)', selection)
+                if line_m:
+                    line = float(line_m.group(1))
+                    if "over" in selection:
+                        return "GREEN" if total_sot > line else "RED"
+                    elif "under" in selection:
+                        return "GREEN" if total_sot < line else "RED"
+            return None  # Sem dados de SoT — não resolver
+
+        # ── Finalizações Totais (Total Shots) O/U ──
+        if "finaliz" in market and "gol" not in market and "o/u" in market:
+            sh_h = result.get("shots_home")
+            sh_a = result.get("shots_away")
+            if sh_h is not None and sh_a is not None:
+                total_shots = sh_h + sh_a
+                import re
+                line_m = re.search(r'(\d+\.?\d*)', selection)
+                if line_m:
+                    line = float(line_m.group(1))
+                    if "over" in selection:
+                        return "GREEN" if total_shots > line else "RED"
+                    elif "under" in selection:
+                        return "GREEN" if total_shots < line else "RED"
+            return None  # Sem dados de chutes — não resolver
+
+        # ── Finalizações Casa / Fora O/U ──
+        if "finaliz" in market and ("casa" in market or "home" in market):
+            val = result.get("shots_home") if "gol" not in market else result.get("shots_on_home")
+            if val is not None:
+                import re
+                line_m = re.search(r'(\d+\.?\d*)', selection)
+                if line_m:
+                    line = float(line_m.group(1))
+                    if "over" in selection:
+                        return "GREEN" if val > line else "RED"
+                    elif "under" in selection:
+                        return "GREEN" if val < line else "RED"
+            return None
+
+        if "finaliz" in market and ("fora" in market or "away" in market):
+            val = result.get("shots_away") if "gol" not in market else result.get("shots_on_away")
+            if val is not None:
+                import re
+                line_m = re.search(r'(\d+\.?\d*)', selection)
+                if line_m:
+                    line = float(line_m.group(1))
+                    if "over" in selection:
+                        return "GREEN" if val > line else "RED"
+                    elif "under" in selection:
+                        return "GREEN" if val < line else "RED"
+            return None
+
+        # ── SoT Casa / Fora O/U ──
+        if "sot" in market and ("casa" in market or "home" in market):
+            val = result.get("shots_on_home")
+            if val is not None:
+                import re
+                line_m = re.search(r'(\d+\.?\d*)', selection)
+                if line_m:
+                    line = float(line_m.group(1))
+                    if "over" in selection:
+                        return "GREEN" if val > line else "RED"
+                    elif "under" in selection:
+                        return "GREEN" if val < line else "RED"
+            return None
+
+        if "sot" in market and ("fora" in market or "away" in market):
+            val = result.get("shots_on_away")
+            if val is not None:
+                import re
+                line_m = re.search(r'(\d+\.?\d*)', selection)
+                if line_m:
+                    line = float(line_m.group(1))
+                    if "over" in selection:
+                        return "GREEN" if val > line else "RED"
+                    elif "under" in selection:
+                        return "GREEN" if val < line else "RED"
+            return None
+
+        # ── Escanteios O/U ──
+        if "escanteio" in market or "corner" in market:
+            c_h = result.get("corners_home")
+            c_a = result.get("corners_away")
+            if c_h is not None and c_a is not None:
+                total_corners = c_h + c_a
+                import re
+                line_m = re.search(r'(\d+\.?\d*)', selection)
+                if line_m:
+                    line = float(line_m.group(1))
+                    if "over" in selection:
+                        return "GREEN" if total_corners > line else "RED"
+                    elif "under" in selection:
+                        return "GREEN" if total_corners < line else "RED"
+            return None  # Sem dados de escanteios — não resolver
+
+        # ── Cartões O/U ──
+        if "cart" in market or "card" in market:
+            cd_h = result.get("cards_home")
+            cd_a = result.get("cards_away")
+            if cd_h is not None and cd_a is not None:
+                total_cards = cd_h + cd_a
+                import re
+                line_m = re.search(r'(\d+\.?\d*)', selection)
+                if line_m:
+                    line = float(line_m.group(1))
+                    if "over" in selection:
+                        return "GREEN" if total_cards > line else "RED"
+                    elif "under" in selection:
+                        return "GREEN" if total_cards < line else "RED"
+            return None  # Sem dados de cartões — não resolver
+
+        # ── Finalizações ao Gol 1x2 / Finalizações Totais 1x2 ──
+        if ("finaliz" in market or "sot" in market) and "1x2" in market:
+            if "gol" in market or "sot" in market:
+                h_val = result.get("shots_on_home")
+                a_val = result.get("shots_on_away")
+            else:
+                h_val = result.get("shots_home")
+                a_val = result.get("shots_away")
+            if h_val is not None and a_val is not None:
+                if "casa" in selection or "home" in selection:
+                    return "GREEN" if h_val > a_val else "RED"
+                elif "empate" in selection or "draw" in selection:
+                    return "GREEN" if h_val == a_val else "RED"
+                elif "fora" in selection or "away" in selection:
+                    return "GREEN" if a_val > h_val else "RED"
+            return None
 
     except Exception as e:
         print(f"[RESOLVE] Erro ao resolver opp {opp.get('id', '?')}: {e}")
 
-    return None  # Não foi possível determinar (ex: escanteios, cartões — precisam de dados extras)
+    return None
 
 
 # ═══════════════════════════════════════════════

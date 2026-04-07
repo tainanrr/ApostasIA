@@ -495,6 +495,7 @@ class ValueOpportunity:
     data_quality: float = 0.0
     odds_suspect: bool = False  # True = possível inversão casa/fora
     confidence_score: float = 0.0  # Score numérico de confiança (0-100)
+    bet365_available: bool = False  # True = Bet365 oferece este mercado para este jogo
     analysis_type: str = "PRE_JOGO"  # "PRE_JOGO" ou "RETROATIVA"
     result_status: str = "PENDENTE"  # GREEN, RED, VOID, PENDENTE
     result_score: str = ""           # ex: "2-1"
@@ -1137,6 +1138,17 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     total_xg = match.model_home_xg + match.model_away_xg
     all_markets_odds = getattr(odds, 'all_markets', {}) or {}
 
+    def _bet365_has_market(market_key: str) -> bool:
+        """Verifica se Bet365 oferece este mercado para o jogo."""
+        mkt = all_markets_odds.get(market_key, {})
+        bk_data = mkt.get("_bookmakers", {})
+        for bk_name in bk_data:
+            if "bet365" in bk_name.lower():
+                return True
+        if "bet365" in odds.bookmaker.lower():
+            return True
+        return False
+
     # Condições meteorológicas e fadiga (para confiança)
     weather_stable = (match.weather.wind_speed_kmh <= config.WIND_SPEED_THRESHOLD_KMH
                       and match.weather.rain_mm <= config.RAIN_VOLUME_THRESHOLD_MM)
@@ -1158,7 +1170,12 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     model_xg_suspicious = small_sample and (xg_divergence_ratio < 0.55 or xg_divergence_ratio > 1.8)
 
     # ── MERCADO 1x2 (sem Empate — foco em resultado) ──
-    market_odds_1x2 = [odds.home_win, odds.draw, odds.away_win]
+    # GUARD: pular 1X2 quando odds são defaults (sem dados reais da API)
+    # Os defaults (home=2.0, draw=3.3, away=3.5) geram edges falsos.
+    if not match.has_real_odds:
+        market_odds_1x2 = []
+    else:
+        market_odds_1x2 = [odds.home_win, odds.draw, odds.away_win]
     fair_probs_1x2 = devig_odds(market_odds_1x2, method="power")
 
     model_probs_1x2 = [match.model_prob_home, match.model_prob_draw, match.model_prob_away]
@@ -1234,28 +1251,29 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 data_quality=match.data_quality_score,
                 odds_suspect=getattr(match, 'odds_home_away_suspect', False),
                 confidence_score=conf_score,
+                bet365_available=_bet365_has_market("1x2"),
             ))
 
     # ── MERCADO DUPLA CHANCE (Casa ou Empate / Fora ou Empate) ──
-    # Probabilidades do modelo: P(1X) = P(Home) + P(Draw), P(X2) = P(Away) + P(Draw)
-    model_prob_1x = match.model_prob_home + match.model_prob_draw
-    model_prob_x2 = match.model_prob_away + match.model_prob_draw
+    # GUARD: pular Dupla Chance quando odds são defaults (sem dados reais da API)
+    if not match.has_real_odds:
+        dc_entries = []
+    else:
+        model_prob_1x = match.model_prob_home + match.model_prob_draw
+        model_prob_x2 = match.model_prob_away + match.model_prob_draw
 
-    # Odds da API (se disponíveis) ou calculadas a partir do 1x2
-    dc_1x_odd = odds.double_chance_1x
-    dc_x2_odd = odds.double_chance_x2
+        dc_1x_odd = odds.double_chance_1x
+        dc_x2_odd = odds.double_chance_x2
 
-    # Se a API não forneceu odds de Dupla Chance, calcular a partir do 1x2
-    if dc_1x_odd <= 0 and odds.home_win > 1.0 and odds.draw > 1.0:
-        # Aproximação: 1 / (1/home + 1/draw) — harmônica
-        dc_1x_odd = round(1.0 / (1.0/odds.home_win + 1.0/odds.draw), 2)
-    if dc_x2_odd <= 0 and odds.away_win > 1.0 and odds.draw > 1.0:
-        dc_x2_odd = round(1.0 / (1.0/odds.away_win + 1.0/odds.draw), 2)
+        if dc_1x_odd <= 0 and odds.home_win > 1.0 and odds.draw > 1.0:
+            dc_1x_odd = round(1.0 / (1.0/odds.home_win + 1.0/odds.draw), 2)
+        if dc_x2_odd <= 0 and odds.away_win > 1.0 and odds.draw > 1.0:
+            dc_x2_odd = round(1.0 / (1.0/odds.away_win + 1.0/odds.draw), 2)
 
-    dc_entries = [
-        ("Casa ou Empate (1X)", model_prob_1x, dc_1x_odd),
-        ("Fora ou Empate (X2)", model_prob_x2, dc_x2_odd),
-    ]
+        dc_entries = [
+            ("Casa ou Empate (1X)", model_prob_1x, dc_1x_odd),
+            ("Fora ou Empate (X2)", model_prob_x2, dc_x2_odd),
+        ]
 
     for label, model_p, market_o in dc_entries:
         if market_o <= 1.0:
@@ -1315,6 +1333,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 data_quality=match.data_quality_score,
                 odds_suspect=getattr(match, 'odds_home_away_suspect', False),
                 confidence_score=conf_score,
+                bet365_available=_bet365_has_market("double_chance"),
             ))
 
     # ── MERCADO OVER/UNDER 2.5 ──
@@ -1322,20 +1341,26 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     # para manter padrão uniforme "Gols O/U" com suporte a multi-bookmaker)
 
     # ── MERCADO BTTS ──
-    btts_odds = [odds.btts_yes, odds.btts_no]
-    btts_fair = devig_odds(btts_odds)
-    model_btts = match.model_prob_btts
+    # GUARD: pular BTTS quando odds são defaults (sem dados reais da API)
+    # Defaults (btts_yes=1.80, btts_no=2.00) geram edges falsos.
+    _btts_entries = []
+    if match.has_real_odds:
+        btts_odds = [odds.btts_yes, odds.btts_no]
+        btts_fair = devig_odds(btts_odds)
+        model_btts = match.model_prob_btts
 
-    btts_sel_keys = ["yes", "no"]
-    for idx_btts, (label, model_p, market_o, implied_p) in enumerate([
-        ("Ambas Marcam — Sim", model_btts, odds.btts_yes, btts_fair[0]),
-        ("Ambas Marcam — Não", 1.0 - model_btts, odds.btts_no, btts_fair[1]),
-    ]):
+        btts_sel_keys = ["yes", "no"]
+        _btts_entries = [
+            (0, "Ambas Marcam — Sim", model_btts, odds.btts_yes, btts_fair[0], "yes"),
+            (1, "Ambas Marcam — Não", 1.0 - model_btts, odds.btts_no, btts_fair[1], "no"),
+        ]
+
+    for idx_btts, label, model_p, market_o, implied_p, sel_key in _btts_entries:
         if not _is_odd_valid(market_o, "BTTS"):
             continue
         if not _is_model_sane(model_p, total_xg, "BTTS"):
             continue
-        if not _is_odd_cross_validated(market_o, all_markets_odds, "btts", btts_sel_keys[idx_btts]):
+        if not _is_odd_cross_validated(market_o, all_markets_odds, "btts", sel_key):
             continue
         edge = calculate_edge(model_p, market_o)
         if edge >= config.MAX_EDGE_SANE:
@@ -1383,6 +1408,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 data_quality=match.data_quality_score,
                 odds_suspect=getattr(match, 'odds_home_away_suspect', False),
                 confidence_score=conf_score,
+                bet365_available=_bet365_has_market("btts"),
             ))
 
     # ═══════════════════════════════════════════════════════════
@@ -1488,6 +1514,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                     data_quality=match.data_quality_score,
                     odds_suspect=getattr(match, 'odds_home_away_suspect', False),
                     confidence_score=conf_score,
+                    bet365_available=_bet365_has_market(market_key),
                 ))
 
     # ═══ DEDUPLICAÇÃO FINAL ═══

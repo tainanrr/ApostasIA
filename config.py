@@ -130,6 +130,92 @@ PREFERRED_BOOKMAKERS = [           # Bookmakers preferidos (ordem de prioridade)
 ]
 
 # ═══════════════════════════════════════════════════════
+# CLASSIFICAÇÃO DE RELEVÂNCIA DAS LIGAS
+# S = Elite (Top 5 EU + UCL/UEL)
+# A = Top (fortes EU/SA, Copas continentais)
+# B = Boa (2a divisão top, ligas médias EU)
+# C = Secundária (tudo o resto)
+# ═══════════════════════════════════════════════════════
+LEAGUE_TIERS = {
+    # ── S — Elite ──
+    "Premier League": "S", "La Liga": "S", "Serie A": "S",
+    "Bundesliga": "S", "Ligue 1": "S",
+    "UEFA Champions League": "S", "Champions League": "S",
+    "UEFA Europa League": "S", "Europa League": "S",
+    "UEFA Conference League": "S",
+    # ── A — Top ──
+    "Eredivisie": "A", "Primeira Liga": "A", "Liga Portugal": "A",
+    "Pro League": "A", "Jupiler Pro League": "A",
+    "Super Lig": "A", "Süper Lig": "A",
+    "Scottish Premiership": "A", "Premiership": "A",
+    "Premier League (Russia)": "A",
+    "Serie A (Brazil)": "A", "Brasileirão": "A",
+    "Serie A": "S",  # Italy (already set)
+    "Primera División": "A", "Liga Profesional": "A",
+    "MLS": "A", "Major League Soccer": "A",
+    "Copa Libertadores": "A", "Copa Sudamericana": "A",
+    "J1 League": "A", "K League 1": "A",
+    "Saudi Pro League": "A", "Saudi Professional League": "A",
+    "World Cup": "S", "Euro Championship": "S",
+    "Copa America": "A", "AFCON": "A",
+    "Nations League": "A", "UEFA Nations League": "A",
+    # ── B — Boa ──
+    "Championship": "B", "EFL Championship": "B",
+    "Serie B": "B", "La Liga 2": "B", "Segunda División": "B",
+    "2. Bundesliga": "B", "Bundesliga 2": "B",
+    "Ligue 2": "B",
+    "Super League": "B", "Swiss Super League": "B",
+    "Bundesliga (Austria)": "B", "Austrian Bundesliga": "B",
+    "Superliga": "B", "Danish Superliga": "B",
+    "Eliteserien": "B", "Allsvenskan": "B",
+    "Ekstraklasa": "B", "Czech Liga": "B",
+    "Liga MX": "B", "Liga 1": "B",
+    "Championship (Scotland)": "B",
+    "Primeira Liga (Portugal)": "A",
+    "A-League": "B", "Serie B (Brazil)": "B",
+    "League One": "B", "League Two": "B",
+    "Copa do Brasil": "B", "FA Cup": "B", "EFL Cup": "B",
+    "Copa del Rey": "B", "DFB Pokal": "B", "Coupe de France": "B",
+    "Coppa Italia": "B", "KNVB Beker": "B",
+}
+
+LEAGUE_TIER_BY_COUNTRY = {
+    # Fallback por pais quando a liga exata nao esta no mapa
+    "England": "A", "Spain": "A", "Italy": "A", "Germany": "A", "France": "A",
+    "Netherlands": "A", "Portugal": "A", "Belgium": "A", "Turkey": "A",
+    "Scotland": "B", "Brazil": "B", "Argentina": "B", "USA": "B",
+    "Mexico": "B", "Japan": "B", "South-Korea": "B", "Saudi-Arabia": "B",
+    "Austria": "B", "Switzerland": "B", "Denmark": "B", "Norway": "B",
+    "Sweden": "B", "Poland": "B", "Czech-Republic": "B", "Australia": "B",
+    "Russia": "B", "Ukraine": "B", "Greece": "B", "Croatia": "B",
+    "Serbia": "B",
+}
+
+LEAGUE_TIER_LABELS = {
+    "S": "Elite",
+    "A": "Top",
+    "B": "Boa",
+    "C": "Secundaria",
+}
+
+
+def get_league_tier(league_name: str, league_country: str = "") -> str:
+    """Retorna o tier (S/A/B/C) de uma liga."""
+    if league_name in LEAGUE_TIERS:
+        return LEAGUE_TIERS[league_name]
+    ln = league_name.lower()
+    for k, v in LEAGUE_TIERS.items():
+        if k.lower() in ln or ln in k.lower():
+            return v
+    if league_country in LEAGUE_TIER_BY_COUNTRY:
+        return LEAGUE_TIER_BY_COUNTRY[league_country]
+    lc = league_country.lower().replace(" ", "-")
+    for k, v in LEAGUE_TIER_BY_COUNTRY.items():
+        if k.lower() == lc:
+            return v
+    return "C"
+
+# ═══════════════════════════════════════════════════════
 # SUPABASE (Banco de Dados na Nuvem)
 # ═══════════════════════════════════════════════════════
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")

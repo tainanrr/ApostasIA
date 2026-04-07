@@ -1352,6 +1352,7 @@
     <div class="progress-sub">Buscando dados, modelando probabilidades, identificando valor...</div>
     <div class="progress-bar-bg"><div class="progress-bar"></div></div>
     <div class="progress-phase" id="progress-phase">Conectando à API-Football...</div>
+    <div class="progress-stats" id="progress-stats" style="font-size:0.82rem;color:var(--text-secondary);margin-top:6px;"></div>
     <div class="progress-timer" id="progress-timer">00:00</div>
 </div>
 
@@ -1552,6 +1553,8 @@
                             <th class="sortable" data-sort="index" data-type="num" onclick="sortTable(this)">#</th>
                             <th class="sortable" data-sort="team" data-type="str" onclick="sortTable(this)">Jogo</th>
                             <th class="sortable" data-sort="league" data-type="str" onclick="sortTable(this)">Liga</th>
+                            <th class="sortable" data-sort="league_tier" data-type="str" onclick="sortTable(this)">Tier</th>
+                            <th class="sortable" data-sort="bet365" data-type="str" onclick="sortTable(this)" title="Disponivel na Bet365">365</th>
                             <th class="sortable sort-asc" data-sort="date" data-type="str" onclick="sortTable(this)">Data</th>
                             <th class="sortable" data-sort="game_status" data-type="num" onclick="sortTable(this)">Status</th>
                             <th class="sortable" data-sort="result" data-type="str" onclick="sortTable(this)">Resultado</th>
@@ -1570,6 +1573,8 @@
                             <th></th>
                             <th><input class="col-filter" type="text" id="cf-team" placeholder="Time..." oninput="applyColumnFilters()"></th>
                             <th><div id="cf-league"></div></th>
+                            <th><div id="cf-league-tier"></div></th>
+                            <th><div id="cf-bet365"></div></th>
                             <th><div class="col-filter-datetime">
                                 <input type="datetime-local" id="cf-dt-start" title="De (data/hora)" oninput="applyColumnFilters()">
                                 <input type="datetime-local" id="cf-dt-end" title="Até (data/hora)" oninput="applyColumnFilters()">
@@ -1839,7 +1844,7 @@ function _captureMainFilters() {
     ['cf-odd-min','cf-odd-max','cf-fair-odd-min','cf-fair-odd-max','cf-edge-min','cf-edge-max','cf-prob-min','cf-prob-max','cf-score-min','cf-score-max'].forEach(id => {
         const el = document.getElementById(id); if (el && el.value !== '') state[id] = el.value;
     });
-    ['cf-league','cf-game-status','cf-result','cf-market','cf-selection','cf-confidence','cf-analysis-type'].forEach(id => {
+    ['cf-league','cf-league-tier','cf-bet365','cf-game-status','cf-result','cf-market','cf-selection','cf-confidence','cf-analysis-type'].forEach(id => {
         if (msRegistry[id] && msRegistry[id].hasActiveFilter()) state['ms:'+id] = msRegistry[id].getRawSelected();
     });
     state._sort = { ...currentSort };
@@ -1864,7 +1869,7 @@ function _applyMainFilters(state) {
     ['cf-team','cf-dt-start','cf-dt-end','cf-odd-min','cf-odd-max','cf-fair-odd-min','cf-fair-odd-max','cf-edge-min','cf-edge-max','cf-prob-min','cf-prob-max','cf-score-min','cf-score-max'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = state[id] || '';
     });
-    ['cf-league','cf-game-status','cf-result','cf-market','cf-selection','cf-confidence','cf-analysis-type'].forEach(id => {
+    ['cf-league','cf-league-tier','cf-bet365','cf-game-status','cf-result','cf-market','cf-selection','cf-confidence','cf-analysis-type'].forEach(id => {
         if (msRegistry[id]) {
             const key = 'ms:'+id;
             if (state[key] && state[key].length) { msRegistry[id].setSelected(state[key]); } else { msRegistry[id].reset(); }
@@ -2391,7 +2396,66 @@ async function init() {
         document.getElementById("w-date-end").value = initDateTo;
     }
 
-    // 4. SEMPRE buscar dados do Supabase com as datas definidas
+    // 4. Detectar se há pipeline em execução (caso a página tenha sido recarregada)
+    try {
+        const progRes = await fetch("/api/progress");
+        const prog = await progRes.json();
+        if (prog.running) {
+            console.log("[INIT] Pipeline em execução detectado! Reconectando ao progresso...");
+            engineRunning = true;
+            document.getElementById("progress-overlay").classList.add("show");
+            document.getElementById("btn-run").disabled = true;
+            document.getElementById("btn-run").classList.add("running");
+            document.getElementById("btn-run").textContent = "⟳ Executando...";
+            document.getElementById("badge-status").textContent = "● PROCESSANDO";
+            document.getElementById("badge-status").style.color = "var(--accent-yellow)";
+            document.getElementById("badge-status").style.borderColor = "var(--accent-yellow)";
+            document.getElementById("progress-phase").textContent = prog.phase + (prog.detail ? ` — ${prog.detail}` : "");
+            
+            let seconds = prog.elapsed ? Math.round(prog.elapsed) : 0;
+            timerInterval = setInterval(() => {
+                seconds++;
+                const tm = String(Math.floor(seconds / 60)).padStart(2, '0');
+                const ts = String(seconds % 60).padStart(2, '0');
+                document.getElementById("progress-timer").textContent = `${tm}:${ts}`;
+            }, 1000);
+
+            const _waitForCompletion = () => new Promise((resolve) => {
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const pRes = await fetch("/api/progress");
+                        const p = await pRes.json();
+                        let phaseText = p.phase || "Processando...";
+                        if (p.detail) phaseText += ` — ${p.detail}`;
+                        if (p.current_day > 0 && p.total_days > 0) phaseText += ` (dia ${p.current_day}/${p.total_days})`;
+                        document.getElementById("progress-phase").textContent = phaseText;
+                        if (p.matches_found > 0 || p.opportunities_found > 0) {
+                            const statsEl = document.getElementById("progress-stats");
+                            if (statsEl) statsEl.textContent = `${p.matches_found} partidas | ${p.opportunities_found} oportunidades | ${p.api_calls || 0} API calls`;
+                        }
+                        if (!p.running) {
+                            clearInterval(pollInterval);
+                            clearInterval(timerInterval);
+                            engineRunning = false;
+                            document.getElementById("progress-overlay").classList.remove("show");
+                            document.getElementById("btn-run").disabled = false;
+                            document.getElementById("btn-run").classList.remove("running");
+                            document.getElementById("btn-run").textContent = "⟳ Re-Executar";
+                            document.getElementById("badge-status").textContent = "● PRONTO";
+                            document.getElementById("badge-status").style.color = "var(--accent-green)";
+                            document.getElementById("badge-status").style.borderColor = "var(--accent-green)";
+                            if (p.error) alert("Pipeline terminou com erro: " + p.error);
+                            resolve();
+                        }
+                    } catch(e) {}
+                }, 2000);
+            });
+            _waitForCompletion().then(() => loadDataByDates(initDateFrom, initDateTo));
+            return;
+        }
+    } catch(e) {}
+
+    // 5. SEMPRE buscar dados do Supabase com as datas definidas
     console.log(`[INIT] Carregando dados do Supabase: ${initDateFrom} → ${initDateTo}`);
     await loadDataByDates(initDateFrom, initDateTo);
     
@@ -2477,6 +2541,7 @@ async function loadCachedData() {
 // ═══════════════════════════════════════════
 let _loadingByDates = false;
 let _lastLoadedDates = '';  // Para evitar recarregar quando nada mudou
+let _loadAbortController = null;  // Para cancelar requisição anterior
 
 // Disparar busca de dados — chamada pelo botão 🔍 e pelo Enter nos date pickers
 function _triggerDateLoad(force) {
@@ -2504,20 +2569,45 @@ function _triggerDateLoad(force) {
     }
 }
 async function loadDataByDates(dateFrom, dateTo) {
-    if (_loadingByDates) return;
+    // Cancelar requisição anterior se ainda estiver pendente
+    if (_loadAbortController) {
+        _loadAbortController.abort();
+        _loadAbortController = null;
+    }
+    
     _loadingByDates = true;
-    _lastLoadedDates = `${dateFrom}|${dateTo}`;  // Marcar como carregado
+    _lastLoadedDates = `${dateFrom}|${dateTo}`;
     
     const badge = document.getElementById("badge-status");
-    badge.textContent = "● CARREGANDO...";
+    const nDays = Math.max(1, Math.round((new Date(dateTo) - new Date(dateFrom)) / 86400000) + 1);
+    badge.textContent = `● CARREGANDO (${nDays} dias)...`;
     badge.style.color = "var(--accent-yellow)";
     badge.style.borderColor = "var(--accent-yellow)";
     
     // Visual feedback nos date pickers
     document.querySelectorAll('.date-picker-group').forEach(el => el.classList.add('loading'));
     
+    // Feedback para períodos grandes: mostrar aviso se > 14 dias
+    let slowTimer = null;
+    if (nDays > 14) {
+        slowTimer = setTimeout(() => {
+            badge.textContent = `● CARREGANDO (${nDays} dias — buscando do Supabase...)`;
+        }, 3000);
+    }
+    
+    // AbortController com timeout de 120s
+    _loadAbortController = new AbortController();
+    const timeoutId = setTimeout(() => {
+        if (_loadAbortController) _loadAbortController.abort();
+    }, 120000);
+    
     try {
-        const res = await fetch(`/api/load-by-dates?date_from=${dateFrom}&date_to=${dateTo}`);
+        const res = await fetch(`/api/load-by-dates?date_from=${dateFrom}&date_to=${dateTo}`, {
+            signal: _loadAbortController.signal,
+        });
+        clearTimeout(timeoutId);
+        if (slowTimer) clearTimeout(slowTimer);
+        
         const data = await res.json();
         
         if (!data.ok) {
@@ -2525,6 +2615,7 @@ async function loadDataByDates(dateFrom, dateTo) {
             badge.textContent = "● ERRO";
             badge.style.color = "var(--accent-red)";
             badge.style.borderColor = "var(--accent-red)";
+            if (data.error) alert("Erro ao buscar dados: " + data.error);
             return;
         }
         
@@ -2535,7 +2626,6 @@ async function loadDataByDates(dateFrom, dateTo) {
         allLeagues = data.leagues;
         
         if (allOpps.length === 0 && allMatches.length === 0) {
-            // Sem dados para essas datas — mostrar mensagem
             showDashboard();
             const tableBody = document.querySelector("#opp-table tbody");
             if (tableBody) tableBody.innerHTML = `<tr><td colspan="20" style="text-align:center;padding:40px;color:var(--text-muted)">
@@ -2544,11 +2634,9 @@ async function loadDataByDates(dateFrom, dateTo) {
                 <div style="font-size:12px;margin-top:8px">Clique em <strong>▶ Executar</strong> ou <strong>📊 Análise Retroativa</strong> para buscar dados dessas datas.</div>
             </td></tr>`;
             
-            // Atualizar stats
             const riDates = document.getElementById("ri-dates");
             if (riDates) riDates.textContent = `${dateFrom} → ${dateTo} (sem dados)`;
             
-            // Limpar dashboard também
             dashboardLoaded = false;
             loadDashboard(true);
             
@@ -2556,12 +2644,10 @@ async function loadDataByDates(dateFrom, dateTo) {
             badge.style.color = "var(--accent-yellow)";
             badge.style.borderColor = "var(--accent-yellow)";
         } else {
-            // Renderizar normalmente
             renderAll();
             showDashboard();
             
-            // Atualizar dashboard com os novos dados
-            dashboardLoaded = false;  // Forçar repopulação dos filtros
+            dashboardLoaded = false;
             loadDashboard(true);
             
             badge.textContent = `● ${allOpps.length} opps (${dateFrom} → ${dateTo})`;
@@ -2571,12 +2657,23 @@ async function loadDataByDates(dateFrom, dateTo) {
         
         console.log(`[LOAD-BY-DATES] ${allOpps.length} oportunidades, ${allMatches.length} jogos (${dateFrom} → ${dateTo})`);
     } catch(e) {
-        console.error("Erro loadDataByDates:", e);
-        badge.textContent = "● ERRO";
-        badge.style.color = "var(--accent-red)";
-        badge.style.borderColor = "var(--accent-red)";
+        clearTimeout(timeoutId);
+        if (slowTimer) clearTimeout(slowTimer);
+        
+        if (e.name === 'AbortError') {
+            console.warn("Busca cancelada (timeout ou nova busca)");
+            badge.textContent = `● Busca cancelada`;
+            badge.style.color = "var(--accent-yellow)";
+            badge.style.borderColor = "var(--accent-yellow)";
+        } else {
+            console.error("Erro loadDataByDates:", e);
+            badge.textContent = "● ERRO";
+            badge.style.color = "var(--accent-red)";
+            badge.style.borderColor = "var(--accent-red)";
+        }
     } finally {
         _loadingByDates = false;
+        _loadAbortController = null;
         document.querySelectorAll('.date-picker-group').forEach(el => el.classList.remove('loading'));
     }
 }
@@ -2608,6 +2705,9 @@ async function executeEngine(autoCheckResults) {
     
     // Mostrar progresso
     document.getElementById("progress-overlay").classList.add("show");
+    document.getElementById("progress-phase").textContent = "Iniciando pipeline...";
+    document.getElementById("progress-stats").textContent = "";
+    document.getElementById("progress-timer").textContent = "00:00";
     document.getElementById("btn-run").disabled = true;
     document.getElementById("btn-run").classList.add("running");
     document.getElementById("btn-run").textContent = "⟳ Executando...";
@@ -2615,36 +2715,26 @@ async function executeEngine(autoCheckResults) {
     document.getElementById("badge-status").style.color = "var(--accent-yellow)";
     document.getElementById("badge-status").style.borderColor = "var(--accent-yellow)";
     
-    // Timer
+    // Timer local (apenas para mostrar tempo decorrido)
     let seconds = 0;
     timerInterval = setInterval(() => {
         seconds++;
         const m = String(Math.floor(seconds / 60)).padStart(2, '0');
         const s = String(seconds % 60).padStart(2, '0');
         document.getElementById("progress-timer").textContent = `${m}:${s}`;
-        
-        // Update phase messages based on time
-        const dateLabel = isPastAnalysis ? `[Retroativa ${startDate}→${endDate}] ` : '';
-        if (seconds < 5) document.getElementById("progress-phase").textContent = dateLabel + "Verificando status da conta...";
-        else if (seconds < 15) document.getElementById("progress-phase").textContent = dateLabel + `Buscando fixtures (${nDays} dia${nDays>1?'s':''})...`;
-        else if (seconds < 60) document.getElementById("progress-phase").textContent = dateLabel + "Buscando standings de ligas...";
-        else if (seconds < 180) document.getElementById("progress-phase").textContent = dateLabel + "Buscando odds reais de mercado...";
-        else if (seconds < 300) document.getElementById("progress-phase").textContent = dateLabel + "Buscando dados de lesões...";
-        else if (seconds < 360) document.getElementById("progress-phase").textContent = dateLabel + "Buscando clima (OpenWeatherMap)...";
-        else if (seconds < 420) document.getElementById("progress-phase").textContent = dateLabel + "Executando modelos (Dixon-Coles + Monte Carlo)...";
-        else document.getElementById("progress-phase").textContent = dateLabel + "Finalizando análise de valor...";
     }, 1000);
 
     try {
         const startDate = document.getElementById("date-start").value;
         const endDate = document.getElementById("date-end").value;
+        
+        // 1. Iniciar pipeline em background (retorna imediatamente)
         const runRes = await fetch("/api/run", { 
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ start_date: startDate, end_date: endDate })
         });
         
-        // Tratar resposta não-JSON (timeout Vercel, etc.)
         let runData;
         const contentType = runRes.headers.get("content-type") || "";
         if (contentType.includes("application/json")) {
@@ -2654,14 +2744,55 @@ async function executeEngine(autoCheckResults) {
             runData = { ok: false, error: text || `Erro HTTP ${runRes.status}` };
         }
         
-        clearInterval(timerInterval);
-        
         if (!runData.ok) {
+            clearInterval(timerInterval);
             alert("Erro: " + (runData.error || "desconhecido"));
             return;
         }
+        
+        // 2. Polling de progresso real do backend (a cada 2s)
+        const dateLabel = isPastAnalysis ? `[Retroativa] ` : '';
+        await new Promise((resolve, reject) => {
+            const progressInterval = setInterval(async () => {
+                try {
+                    const pRes = await fetch("/api/progress");
+                    const p = await pRes.json();
+                    
+                    // Montar mensagem de progresso real
+                    let phaseText = dateLabel + (p.phase || "Processando...");
+                    if (p.detail) phaseText += ` — ${p.detail}`;
+                    if (p.current_day > 0 && p.total_days > 0) {
+                        phaseText += ` (dia ${p.current_day}/${p.total_days})`;
+                    }
+                    document.getElementById("progress-phase").textContent = phaseText;
+                    
+                    // Mostrar stats intermediárias se disponíveis
+                    if (p.matches_found > 0 || p.opportunities_found > 0) {
+                        const statsEl = document.getElementById("progress-stats");
+                        if (statsEl) {
+                            statsEl.textContent = `${p.matches_found} partidas | ${p.opportunities_found} oportunidades | ${p.api_calls || 0} API calls`;
+                        }
+                    }
+                    
+                    // Checar se terminou
+                    if (!p.running) {
+                        clearInterval(progressInterval);
+                        if (p.error) {
+                            reject(new Error(p.error));
+                        } else {
+                            resolve();
+                        }
+                    }
+                } catch (pollErr) {
+                    console.warn("Erro no polling de progresso:", pollErr);
+                }
+            }, 2000);
+        });
+        
+        clearInterval(timerInterval);
 
-        // Carregar dados do Supabase com as mesmas datas
+        // 3. Pipeline concluído — carregar dados
+        document.getElementById("progress-phase").textContent = dateLabel + "Carregando resultados...";
         await loadDataByDates(startDate, endDate);
         
         // Atualizar status da API
@@ -2676,7 +2807,7 @@ async function executeEngine(autoCheckResults) {
             document.getElementById("progress-phase").textContent = "⏳ Verificando resultados dos jogos finalizados...";
             document.getElementById("progress-overlay").classList.add("show");
             try {
-                await checkResults(true);  // silencioso (não mostra alert)
+                await checkResults(true);
             } catch(e2) {
                 console.error("Erro ao verificar resultados:", e2);
             }
@@ -2790,6 +2921,8 @@ function exportToExcel() {
         // Filtrar as mesmas oportunidades que estão visíveis
         const team = (document.getElementById('cf-team')?.value || '').toLowerCase();
         const leagueFilter = msRegistry['cf-league'] ? msRegistry['cf-league'].getSelected() : [];
+        const tierFilter = msRegistry['cf-league-tier'] ? msRegistry['cf-league-tier'].getSelected() : [];
+        const bet365Filter = msRegistry['cf-bet365'] ? msRegistry['cf-bet365'].getSelected() : [];
         const dtStartRaw = document.getElementById('cf-dt-start')?.value || '';
         const dtEndRaw = document.getElementById('cf-dt-end')?.value || '';
         const dtStart = dtStartRaw ? new Date(dtStartRaw) : null;
@@ -2814,6 +2947,11 @@ function exportToExcel() {
         let filtered = allOpps.filter(o => {
             if (team && !(o.home_team.toLowerCase().includes(team) || o.away_team.toLowerCase().includes(team))) return false;
             if (leagueFilter.length && !leagueFilter.includes(o.league_name)) return false;
+            if (tierFilter.length && !tierFilter.includes(o.league_tier || 'C')) return false;
+            if (bet365Filter.length) {
+                const b365 = o.bet365_available ? 'yes' : 'no';
+                if (!bet365Filter.includes(b365)) return false;
+            }
             if (dtStart || dtEnd) {
                 const timeParts = (o.match_time || '00:00').split(':');
                 const dateParts = (o.match_date || '').split('-');
@@ -2877,7 +3015,9 @@ function exportToExcel() {
                 "Time Casa": o.home_team,
                 "Time Fora": o.away_team,
                 "Liga": o.league_name,
+                "Tier": o.league_tier || 'C',
                 "País": o.league_country,
+                "Bet365": o.bet365_available ? 'Sim' : 'Nao',
                 "Mercado": o.market,
                 "Seleção": o.selection,
                 "Odd Casa": o.market_odd,
@@ -4261,7 +4401,7 @@ function clearAllFiltersGlobal() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
-    ['cf-league', 'cf-game-status', 'cf-result', 'cf-market', 'cf-selection', 'cf-confidence', 'cf-analysis-type'].forEach(id => {
+    ['cf-league', 'cf-league-tier', 'cf-bet365', 'cf-game-status', 'cf-result', 'cf-market', 'cf-selection', 'cf-confidence', 'cf-analysis-type'].forEach(id => {
         if (msRegistry[id]) msRegistry[id].reset();
     });
     currentSort = { key: 'date', dir: 'asc' };
@@ -4393,6 +4533,12 @@ function renderOpportunities(data) {
                 ? `${o.home_team} <span class="score-inline">${o.result_score.split('-')[0]}</span> <span class="vs">vs</span> <span class="score-inline">${o.result_score.split('-')[1]}</span> ${o.away_team}` 
                 : `${o.home_team} <span class="vs">vs</span> ${o.away_team}`}${suspectBadge}</td>
             <td style="font-size:11px">${o.league_name}</td>
+            <td style="text-align:center">${(() => {
+                const t = o.league_tier || 'C';
+                const tc = {S:'#ffd700',A:'#00d4aa',B:'#5b9bd5',C:'#888'}[t] || '#888';
+                return '<span style="font-size:10px;font-weight:800;padding:1px 5px;border-radius:3px;background:'+tc+'22;color:'+tc+';border:1px solid '+tc+'44" title="'+({S:'Elite',A:'Top',B:'Boa',C:'Secundaria'}[t] || 'Secundaria')+'">'+t+'</span>';
+            })()}</td>
+            <td style="text-align:center">${o.bet365_available ? '<span style="font-size:10px;font-weight:700;color:#007b5e" title="Mercado disponivel na Bet365">365</span>' : '<span style="font-size:10px;color:var(--text-muted)" title="Mercado NAO encontrado na Bet365">--</span>'}</td>
             <td style="font-size:11px;color:var(--text-secondary)">${o.match_date}<br>${o.match_time}</td>
             <td>${gameStatusBadge}</td>
             <td>${resultBadge}${resultScore}${gameDetailHtml}</td>
@@ -4500,7 +4646,7 @@ function renderMatches(data) {
 
         return `<tr class="${rowClass}" onclick="showMatchDetail(${m.match_id})" style="cursor:pointer">
             <td class="team-cell">${m.home_team} <span class="vs">vs</span> ${m.away_team}${fatigueIcons ? '<br><span style="font-size:10px;color:var(--accent-yellow)">' + fatigueIcons + '</span>' : ''}</td>
-            <td style="font-size:11px">${m.league_name}<br><span style="font-size:10px;color:var(--text-muted)">${m.league_country}</span></td>
+            <td style="font-size:11px">${m.league_name}<br><span style="font-size:10px;color:var(--text-muted)">${m.league_country}</span> ${(() => { const t=m.league_tier||'C'; const tc={S:'#ffd700',A:'#00d4aa',B:'#5b9bd5',C:'#888'}[t]||'#888'; return '<span style="font-size:9px;font-weight:800;padding:0 3px;border-radius:2px;background:'+tc+'22;color:'+tc+'">'+t+'</span>'; })()}</td>
             <td style="font-size:12px;color:var(--text-secondary);white-space:nowrap">${m.match_date}<br>${m.match_time}</td>
             <td>${statusBadge}</td>
             <td style="text-align:center">${resultHtml}</td>
@@ -4574,6 +4720,8 @@ function getSortValue(o, key) {
         case 'index': return 0;
         case 'team': return (o.home_team + ' ' + o.away_team).toLowerCase();
         case 'league': return (o.league_name || '').toLowerCase();
+        case 'league_tier': return {S:0,A:1,B:2,C:3}[o.league_tier || 'C'] ?? 3;
+        case 'bet365': return o.bet365_available ? 0 : 1;
         case 'date': return o.match_date + ' ' + o.match_time;
         case 'market': return o.market || '';
         case 'selection': return o.selection || '';
@@ -4814,6 +4962,8 @@ const msRegistry = {};
 function applyColumnFilters() {
     const team = (document.getElementById('cf-team')?.value || '').toLowerCase();
     const leagueFilter = msRegistry['cf-league'] ? msRegistry['cf-league'].getSelected() : [];
+    const tierFilter = msRegistry['cf-league-tier'] ? msRegistry['cf-league-tier'].getSelected() : [];
+    const bet365Filter = msRegistry['cf-bet365'] ? msRegistry['cf-bet365'].getSelected() : [];
     const dtStartRaw = document.getElementById('cf-dt-start')?.value || '';
     const dtEndRaw = document.getElementById('cf-dt-end')?.value || '';
     const dtStart = dtStartRaw ? new Date(dtStartRaw) : null;
@@ -4838,6 +4988,11 @@ function applyColumnFilters() {
     let filtered = allOpps.filter(o => {
         if (team && !(o.home_team.toLowerCase().includes(team) || o.away_team.toLowerCase().includes(team))) return false;
         if (leagueFilter.length && !leagueFilter.includes(o.league_name)) return false;
+        if (tierFilter.length && !tierFilter.includes(o.league_tier || 'C')) return false;
+        if (bet365Filter.length) {
+            const b365 = o.bet365_available ? 'yes' : 'no';
+            if (!bet365Filter.includes(b365)) return false;
+        }
         // Datetime range filter
         if (dtStart || dtEnd) {
             const timeParts = (o.match_time || '00:00').split(':');
@@ -4912,6 +5067,26 @@ function populateFilters() {
         msRegistry['cf-league'] = new MultiSelect('cf-league', { placeholder: 'Todas', onChange: () => applyColumnFilters() });
     }
     msRegistry['cf-league'].setItems(leagues);
+
+    // League Tier
+    if (!msRegistry['cf-league-tier']) {
+        msRegistry['cf-league-tier'] = new MultiSelect('cf-league-tier', { placeholder: 'Todos', onChange: () => applyColumnFilters() });
+    }
+    msRegistry['cf-league-tier'].setItems([
+        { value: 'S', label: 'S - Elite' },
+        { value: 'A', label: 'A - Top' },
+        { value: 'B', label: 'B - Boa' },
+        { value: 'C', label: 'C - Secundaria' },
+    ]);
+
+    // Bet365
+    if (!msRegistry['cf-bet365']) {
+        msRegistry['cf-bet365'] = new MultiSelect('cf-bet365', { placeholder: 'Todos', onChange: () => applyColumnFilters() });
+    }
+    msRegistry['cf-bet365'].setItems([
+        { value: 'yes', label: '365 Sim' },
+        { value: 'no', label: '365 Nao' },
+    ]);
 
     // Game Status
     if (!msRegistry['cf-game-status']) {
@@ -5011,7 +5186,10 @@ function showOppDetail(idx) {
     const m = allMatches.find(x => x.match_id === o.match_id);
     
     document.getElementById("modal-title").textContent = `${o.home_team} vs ${o.away_team}`;
-    document.getElementById("modal-subtitle").textContent = `${o.league_name} — ${o.league_country} | ${o.match_date} ${o.match_time}`;
+    const _tier = o.league_tier || 'C';
+    const _tierLabel = {S:'Elite',A:'Top',B:'Boa',C:'Secundaria'}[_tier] || 'Secundaria';
+    const _b365Tag = o.bet365_available ? ' | 365' : '';
+    document.getElementById("modal-subtitle").textContent = `${o.league_name} [${_tier}/${_tierLabel}] — ${o.league_country} | ${o.match_date} ${o.match_time}${_b365Tag}`;
     
     const confClass = o.confidence === "ALTO" ? "badge-high" : o.confidence === "MÉDIO" ? "badge-med" : "badge-low";
     const marketClass = getMarketClass(o.market);
