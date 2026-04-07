@@ -1656,7 +1656,7 @@ def _supabase_opp_to_frontend(o: dict) -> dict:
         "data_quality": float(o.get("data_quality") or 0),
         "odds_suspect": False,
         "bet365_available": bool(o.get("bet365_available", False)),
-        "league_tier": o.get("league_tier") or config.get_league_tier(o.get("league_name", ""), o.get("league_country", "")),
+        "league_tier": config.get_league_tier(o.get("league_name", ""), o.get("league_country", "")),
         "result_status": o.get("result_status", "PENDENTE"),
         "result_score": o.get("result_score", "") or "",
         "result_ht_score": o.get("result_ht_score", "") or "",
