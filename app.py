@@ -49,6 +49,9 @@ import supabase_client
 import numpy as np
 
 
+APP_VERSION = "v1.9.0 • 08-abr-2026"
+APP_COMMIT = os.environ.get("VERCEL_GIT_COMMIT_SHA", "local")[:7]
+
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
@@ -1250,7 +1253,8 @@ def serialize_match(m: MatchAnalysis) -> dict:
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    ver = f"{APP_VERSION} ({APP_COMMIT})"
+    return render_template("index.html", app_version=ver)
 
 
 @app.route("/api/run", methods=["POST"])
