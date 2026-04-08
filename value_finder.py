@@ -1178,7 +1178,8 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     # ── MERCADO 1x2 (sem Empate — foco em resultado) ──
     # GUARD: pular 1X2 quando odds são defaults (sem dados reais da API)
     # Os defaults (home=2.0, draw=3.3, away=3.5) geram edges falsos.
-    if not match.has_real_odds:
+    # Exige has_real_odds E que pelo menos 1 bookmaker ofereça 1x2
+    if not match.has_real_odds or not _market_has_real_odds("1x2"):
         market_odds_1x2 = []
     else:
         market_odds_1x2 = [odds.home_win, odds.draw, odds.away_win]
@@ -1261,8 +1262,9 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
             ))
 
     # ── MERCADO DUPLA CHANCE (Casa ou Empate / Fora ou Empate) ──
-    # GUARD: pular Dupla Chance quando odds são defaults (sem dados reais da API)
-    if not match.has_real_odds:
+    # GUARD: pular quando sem odds reais. Dupla Chance deriva de 1x2,
+    # entao exige que pelo menos 1x2 OU double_chance tenha odds reais
+    if not match.has_real_odds or not (_market_has_real_odds("double_chance") or _market_has_real_odds("1x2")):
         dc_entries = []
     else:
         model_prob_1x = match.model_prob_home + match.model_prob_draw
@@ -1420,12 +1422,11 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
 
     # ═══════════════════════════════════════════════════════════
     # SCANNER GENÉRICO — TODOS OS MERCADOS (model_probs vs all_markets)
+    # Usa APENAS odds reais vindas de bookmakers (all_markets)
     # ═══════════════════════════════════════════════════════════
     model_probs = getattr(match, 'model_probs', {}) or {}
 
-    # Mercados de finalizações — gerar oportunidades MESMO sem odds da API
-
-    if model_probs:
+    if model_probs and match.has_real_odds:
         for market_key, market_cfg in _ALL_MARKETS.items():
             # Pular mercados já tratados por scanners dedicados acima
             if market_key in ("1x2", "double_chance", "btts"):
@@ -1433,6 +1434,9 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
 
             market_label = market_cfg["label"]
             market_odds_dict = all_markets_odds.get(market_key, {}) if all_markets_odds else {}
+
+            if not market_odds_dict or not market_odds_dict.get("_bookmakers"):
+                continue
 
             for sel_key, sel_label in market_cfg["selections"].items():
                 # Probabilidade do modelo
