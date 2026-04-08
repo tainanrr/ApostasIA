@@ -1139,15 +1139,21 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     all_markets_odds = getattr(odds, 'all_markets', {}) or {}
 
     def _bet365_has_market(market_key: str) -> bool:
-        """Verifica se Bet365 oferece este mercado para o jogo."""
+        """Verifica se Bet365 oferece este mercado especifico para o jogo.
+        Usa apenas o dict _bookmakers do mercado — nao assume que Bet365
+        tem todos os mercados so porque eh o bookmaker principal."""
         mkt = all_markets_odds.get(market_key, {})
         bk_data = mkt.get("_bookmakers", {})
         for bk_name in bk_data:
             if "bet365" in bk_name.lower():
                 return True
-        if "bet365" in odds.bookmaker.lower():
-            return True
         return False
+
+    def _market_has_real_odds(market_key: str) -> bool:
+        """Verifica se pelo menos 1 bookmaker oferece este mercado."""
+        mkt = all_markets_odds.get(market_key, {})
+        bk_data = mkt.get("_bookmakers", {})
+        return len(bk_data) >= 1
 
     # Condições meteorológicas e fadiga (para confiança)
     weather_stable = (match.weather.wind_speed_kmh <= config.WIND_SPEED_THRESHOLD_KMH
@@ -1343,8 +1349,9 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
     # ── MERCADO BTTS ──
     # GUARD: pular BTTS quando odds são defaults (sem dados reais da API)
     # Defaults (btts_yes=1.80, btts_no=2.00) geram edges falsos.
+    # Tambem exigir que pelo menos 1 bookmaker ofereca BTTS neste jogo
     _btts_entries = []
-    if match.has_real_odds:
+    if match.has_real_odds and _market_has_real_odds("btts"):
         btts_odds = [odds.btts_yes, odds.btts_no]
         btts_fair = devig_odds(btts_odds)
         model_btts = match.model_prob_btts
