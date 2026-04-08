@@ -1071,9 +1071,7 @@ def get_all_opportunities_for_dashboard() -> dict:
 def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
     """
     Retorna TODAS as oportunidades cujo match_date está no intervalo [date_from, date_to].
-    Inclui todas as colunas necessárias para a tabela principal.
-    Busca tanto pendentes quanto resolvidas.
-    Usa page_size grande para minimizar round-trips ao Supabase.
+    Supabase PostgREST limita 1000 rows por request, então pagina de 1000 em 1000.
     """
     sb = get_client()
     if not sb:
@@ -1082,7 +1080,7 @@ def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
         import time as _time
         _t0 = _time.time()
         all_data = []
-        page_size = 5000
+        page_size = 1000
         offset = 0
         pages = 0
 
@@ -1121,7 +1119,7 @@ def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
 def get_matches_by_dates(date_from: str, date_to: str) -> list[dict]:
     """
     Retorna TODAS as partidas cujo match_date está no intervalo [date_from, date_to].
-    Usa page_size grande para minimizar round-trips ao Supabase.
+    Supabase PostgREST limita 1000 rows por request, então pagina de 1000 em 1000.
     """
     sb = get_client()
     if not sb:
@@ -1130,7 +1128,7 @@ def get_matches_by_dates(date_from: str, date_to: str) -> list[dict]:
         import time as _time
         _t0 = _time.time()
         all_data = []
-        page_size = 5000
+        page_size = 1000
         offset = 0
         pages = 0
 

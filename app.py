@@ -49,7 +49,7 @@ import supabase_client
 import numpy as np
 
 
-APP_VERSION = "v1.9.0 • 08-abr-2026"
+APP_VERSION = "v1.9.1 • 08-abr-2026"
 APP_COMMIT = os.environ.get("VERCEL_GIT_COMMIT_SHA", "local")[:7]
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
