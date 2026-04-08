@@ -49,7 +49,7 @@ import supabase_client
 import numpy as np
 
 
-APP_VERSION = "v1.9.1 • 08-abr-2026"
+APP_VERSION = "v1.9.2 • 08-abr-2026"
 APP_COMMIT = os.environ.get("VERCEL_GIT_COMMIT_SHA", "local")[:7]
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -1475,7 +1475,7 @@ def api_load_by_dates():
 
     print(f"[API/LOAD-BY-DATES] Buscando dados Supabase: {date_from} -> {date_to}")
     _t0 = time.time()
-    _MAX_OPPS = 5000
+    _MAX_OPPS = 20000
     _QUERY_TIMEOUT = 45
 
     try:
