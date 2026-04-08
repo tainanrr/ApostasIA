@@ -49,7 +49,7 @@ import supabase_client
 import numpy as np
 
 
-APP_VERSION = "v1.9.2 • 08-abr-2026"
+APP_VERSION = "v1.9.3 • 08-abr-2026"
 APP_COMMIT = os.environ.get("VERCEL_GIT_COMMIT_SHA", "local")[:7]
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -2220,7 +2220,8 @@ def _resolve_opportunity(opp: dict, home_goals: int, away_goals: int, result: di
                         return "GREEN" if ht_hg == ht_ag else "RED"
                     elif "fora" in selection or "away" in selection:
                         return "GREEN" if ht_ag > ht_hg else "RED"
-                elif "o/u" in market or "over" in market or "under" in market:
+                elif ("gols" in market or "o/u" in market
+                      or "over" in selection or "under" in selection):
                     import re
                     line_m = re.search(r'(\d+\.?\d*)', selection)
                     if line_m:
@@ -2229,6 +2230,8 @@ def _resolve_opportunity(opp: dict, home_goals: int, away_goals: int, result: di
                             return "GREEN" if ht_total > line else "RED"
                         elif "under" in selection or "abaixo" in selection:
                             return "GREEN" if ht_total < line else "RED"
+            else:
+                return None
 
         # ── Gols Casa O/U ──
         if "gols casa" in market or "home goals" in market:
