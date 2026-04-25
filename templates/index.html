@@ -1356,6 +1356,41 @@
     <div class="progress-timer" id="progress-timer">00:00</div>
 </div>
 
+<!-- EMBED MODE: oculta cromo da página quando carregada em iframe via ?embed=1 -->
+<style id="embed-mode-css">
+body.embed-mode header,
+body.embed-mode #scheduler-panel,
+body.embed-mode #welcome-state,
+body.embed-mode .run-info-bar,
+body.embed-mode .stats-row,
+body.embed-mode .tabs,
+body.embed-mode .pipeline-progress,
+body.embed-mode #toast-container { display: none !important; }
+body.embed-mode main { padding-top: 0 !important; }
+body.embed-mode #dashboard { display: block !important; }
+body.embed-mode .section { display: none !important; }
+body.embed-mode .section.embed-active { display: block !important; }
+</style>
+<script>
+(function() {
+  try {
+    var qs = new URLSearchParams(window.location.search);
+    if (qs.get('embed') === '1') {
+      document.documentElement.classList.add('embed-mode');
+      document.addEventListener('DOMContentLoaded', function() {
+        document.body.classList.add('embed-mode');
+        var tab = qs.get('tab') || 'opportunities';
+        var sec = document.getElementById('sec-' + tab);
+        if (sec) sec.classList.add('embed-active');
+        try {
+          window.parent && window.parent.postMessage({ type: 'apostasia-v1-embed-ready', tab: tab }, '*');
+        } catch(e){}
+      });
+    }
+  } catch(e){}
+})();
+</script>
+
 <!-- HEADER -->
 <header>
     <div class="logo">

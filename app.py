@@ -2895,6 +2895,18 @@ def _v2_load_dataset(date_from: str | None, date_to: str | None) -> dict:
     if not opps_raw:
         cache_opps = _cache.get("opportunities") or []
         cache_matches = _cache.get("matches") or []
+        if isinstance(cache_opps, str) and cache_opps in ("FROM_DISK", "FROM_SUPABASE"):
+            try:
+                if os.path.exists(CACHE_FILE):
+                    with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                    cache_opps = d.get("opportunities", []) or []
+                    cache_matches = d.get("matches", []) or []
+                else:
+                    cache_opps, cache_matches = [], []
+            except Exception as e:
+                print(f"[V2] erro lendo CACHE_FILE: {e}")
+                cache_opps, cache_matches = [], []
         if cache_opps and isinstance(cache_opps[0], dict):
             opps_raw = cache_opps
             matches_raw = cache_matches if isinstance(cache_matches, list) else []
@@ -2904,6 +2916,18 @@ def _v2_load_dataset(date_from: str | None, date_to: str | None) -> dict:
                 matches_raw = [serialize_match(m) for m in cache_matches]
             except Exception:
                 pass
+
+        # Filtra por intervalo de datas se fornecido
+        if opps_raw and (date_from or date_to):
+            def _in_range(o):
+                d = (o.get("match_date") or "")[:10]
+                if not d: return True
+                if date_from and d < date_from: return False
+                if date_to and d > date_to: return False
+                return True
+            opps_raw = [o for o in opps_raw if _in_range(o)]
+            matches_raw = [m for m in matches_raw if _in_range(m)]
+
         if source != "supabase":
             source = "memory"
 
@@ -2983,7 +3007,14 @@ def api_v2_data():
                 "msg": "Nenhuma oportunidade disponivel. Execute o pipeline (v1) primeiro ou selecione datas validas.",
                 "data": {
                     "opportunities": [], "insights": {}, "calibration": {},
-                    "bankroll_sim": {}, "meta": {"risk_profile": risk, "source": ds["source"]},
+                    "bankroll_sim": {},
+                    "performance": {
+                        "n_total": 0, "n_green": 0, "n_red": 0, "n_void": 0, "n_pending": 0,
+                        "n_settled": 0, "hit_rate": 0, "profit_unit": 0,
+                        "roi_unit_pct": 0, "roi_kelly_pct": 0,
+                        "by_market": [], "by_cci_label": [], "by_tier": [], "by_opus_bucket": [],
+                    },
+                    "meta": {"risk_profile": risk, "source": ds["source"]},
                 },
             })
 

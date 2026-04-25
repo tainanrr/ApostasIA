@@ -457,8 +457,10 @@ body{
 <!-- ═══ TABS ═══ -->
 <div class="tabs">
   <button class="tab active" data-tab="board"><span class="tab-icon">⚡</span> Painel de Valor <span class="tab-count" id="tab-count-board">0</span></button>
+  <button class="tab" data-tab="opps-v1"><span class="tab-icon">🎯</span> Oportunidades +EV (v1)</button>
+  <button class="tab" data-tab="dash-v1"><span class="tab-icon">📊</span> Dashboard (v1)</button>
   <button class="tab" data-tab="performance"><span class="tab-icon">🏆</span> Performance Real</button>
-  <button class="tab" data-tab="insights"><span class="tab-icon">📊</span> Insights</button>
+  <button class="tab" data-tab="insights"><span class="tab-icon">📈</span> Insights</button>
   <button class="tab" data-tab="heatmap"><span class="tab-icon">🔥</span> Mapa de Calor</button>
   <button class="tab" data-tab="calib"><span class="tab-icon">🎯</span> Calibração</button>
   <button class="tab" data-tab="bankroll"><span class="tab-icon">💰</span> Simulador de Banca</button>
@@ -553,6 +555,38 @@ body{
       <div></div>
     </div>
     <div id="eb-rows"></div>
+  </div>
+</div>
+
+<!-- ═══ PANE: OPORTUNIDADES +EV (v1 embebido) ═══ -->
+<div class="pane" id="pane-opps-v1">
+  <div class="panel" style="padding:0;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border-soft);background:var(--bg-panel-2)">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--text)">🎯 Oportunidades +EV — visão clássica da v1</div>
+        <div style="font-size:11px;color:var(--text-mute);margin-top:2px">Mesma tabela que você já conhece, com os mesmos filtros, ordenação e modal de detalhes da v1.</div>
+      </div>
+      <a href="/" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none">↗ Abrir v1 em nova aba</a>
+    </div>
+    <iframe id="iframe-opps-v1" src="about:blank" loading="lazy"
+            style="width:100%;height:calc(100vh - 280px);min-height:600px;border:0;background:var(--bg-deep);display:block"
+            title="Oportunidades +EV (v1)"></iframe>
+  </div>
+</div>
+
+<!-- ═══ PANE: DASHBOARD v1 (embebido) ═══ -->
+<div class="pane" id="pane-dash-v1">
+  <div class="panel" style="padding:0;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border-soft);background:var(--bg-panel-2)">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--text)">📊 Dashboard — visão clássica da v1</div>
+        <div style="font-size:11px;color:var(--text-mute);margin-top:2px">Os mesmos filtros, gráficos e métricas históricas da v1, agora dentro do PRO para você comparar metodologias.</div>
+      </div>
+      <a href="/" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none">↗ Abrir v1 em nova aba</a>
+    </div>
+    <iframe id="iframe-dash-v1" src="about:blank" loading="lazy"
+            style="width:100%;height:calc(100vh - 280px);min-height:600px;border:0;background:var(--bg-deep);display:block"
+            title="Dashboard (v1)"></iframe>
   </div>
 </div>
 
@@ -793,6 +827,8 @@ document.querySelectorAll('.tab').forEach(t => {
 });
 
 function onTabSwitch(tab){
+  if (tab === 'opps-v1') return ensureV1Iframe('opps-v1', 'opportunities');
+  if (tab === 'dash-v1') return ensureV1Iframe('dash-v1', 'performance');
   if (!STATE.data) return;
   if (tab === 'performance') renderPerformance();
   if (tab === 'insights') renderInsights();
@@ -800,6 +836,16 @@ function onTabSwitch(tab){
   if (tab === 'calib') renderCalibration();
   if (tab === 'bankroll') renderBankroll();
   if (tab === 'sharp') renderSharp();
+}
+
+function ensureV1Iframe(tabKey, v1tab){
+  const iframe = document.getElementById('iframe-' + tabKey);
+  if (!iframe) return;
+  const want = `/?embed=1&tab=${v1tab}`;
+  const cur = iframe.getAttribute('src') || '';
+  if (cur === 'about:blank' || !cur.includes('embed=1')){
+    iframe.setAttribute('src', want);
+  }
 }
 
 // ─── Filters ───
