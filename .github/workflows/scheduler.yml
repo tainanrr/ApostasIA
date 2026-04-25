@@ -1,9 +1,11 @@
 name: ApostasIA Scheduler
 
 on:
-  schedule:
-    # Roda a cada 30 minutos para verificar se há execução agendada
-    - cron: '*/30 * * * *'
+  # schedule:
+  #   # DESABILITADO durante triagem do Supabase (Cloudflare 522 / banco hung).
+  #   # Reabilitar quando o backend estiver saudável.
+  #   # Roda a cada 30 minutos para verificar se há execução agendada
+  #   - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
       action:
