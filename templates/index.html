@@ -1382,6 +1382,7 @@
         <button class="btn-run" id="btn-run" onclick="executeEngine()">▶ Executar</button>
         <button class="btn-recalc" id="btn-recalc" onclick="recalculateEngine()" title="Recalcular modelos usando dados já em cache (0 API calls)">🔄 Recalc</button>
         <button class="btn-check-results" id="btn-check-results" onclick="checkResults()" title="Verificar resultados de jogos finalizados">✅ Resultados</button>
+        <a href="/v2" id="btn-v2-pro" title="Ir para o ApostasIA PRO — Edge Engine v2 (UI nova com analítica de classe mundial)" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;background:linear-gradient(135deg,#a78bfa,#06b6d4 50%,#00e68a);color:#0a0e17;font-weight:800;font-size:13px;letter-spacing:0.4px;box-shadow:0 0 18px rgba(167,139,250,0.45);transition:transform 0.15s ease,box-shadow 0.15s ease" onmouseover="this.style.transform='translateY(-1px) scale(1.02)';this.style.boxShadow='0 0 26px rgba(6,182,212,0.55)'" onmouseout="this.style.transform='';this.style.boxShadow='0 0 18px rgba(167,139,250,0.45)'">⚡ v2 PRO</a>
     </div>
 </header>
 
@@ -2141,7 +2142,8 @@ function buildAllMarketsOdds(m) {
         const entries = Object.entries(mkt).filter(([k,v]) => typeof v === 'number' && v > 1.0);
         if (!entries.length) continue;
         const label = _MARKET_LABELS[mk] || mk.replace(/_/g,' ').toUpperCase();
-        const sourceNote = mkt._source ? ` <span style="font-size:10px;color:var(--text-muted)">(${mkt._source})</span>` : '';
+        const _srcBk = mkt._source_bookmaker || mkt._source;
+        const sourceNote = _srcBk ? ` <span style="font-size:10px;color:var(--text-muted)">(${_srcBk})</span>` : '';
         const multiBkBadge = hasMultiBk ? ` <span style="font-size:9px;padding:2px 6px;background:rgba(59,130,246,0.15);color:var(--accent-cyan);border-radius:4px;font-weight:700">${bkNames.length} casas</span>` : '';
 
         html += `<div style="margin-top:14px">
@@ -4539,12 +4541,15 @@ function renderOpportunities(data) {
                 const tc = {S:'#ffd700',A:'#00d4aa',B:'#5b9bd5',C:'#888'}[t] || '#888';
                 return '<span style="font-size:10px;font-weight:800;padding:1px 5px;border-radius:3px;background:'+tc+'22;color:'+tc+';border:1px solid '+tc+'44" title="'+({S:'Elite',A:'Top',B:'Boa',C:'Secundaria'}[t] || 'Secundaria')+'">'+t+'</span>';
             })()}</td>
-            <td style="text-align:center">${o.bet365_available ? '<span style="font-size:10px;font-weight:700;color:#007b5e" title="Mercado disponivel na Bet365">365</span>' : '<span style="font-size:10px;color:var(--text-muted)" title="Mercado NAO encontrado na Bet365">--</span>'}</td>
+            <td style="text-align:center">${o.bet365_available
+                ? '<span style="font-size:10px;font-weight:800;padding:2px 6px;border-radius:4px;background:rgba(0,123,94,0.15);color:#00a87a;border:1px solid rgba(0,123,94,0.45)" title="Mercado disponivel na Bet365">365</span>'
+                : '<span style="font-size:10px;font-weight:800;padding:2px 6px;border-radius:4px;background:rgba(255,152,0,0.12);color:#ff9800;border:1px solid rgba(255,152,0,0.45)" title="Mercado NAO encontrado na Bet365 &mdash; odd fornecida por ' + (o.bookmaker || 'outro bookmaker') + '">⚠ fora</span>'
+            }</td>
             <td style="font-size:11px;color:var(--text-secondary)">${o.match_date}<br>${o.match_time}</td>
             <td>${gameStatusBadge}</td>
             <td>${resultBadge}${resultScore}${gameDetailHtml}</td>
-            <td><span class="market-tag ${marketClass}">${o.market}</span></td>
-            <td style="font-weight:600;font-size:11px;color:var(--accent-green);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.selection}">▶ ${o.selection}</td>
+            <td><span class="market-tag ${marketClass}">${o.market}</span>${!o.bet365_available && o.bookmaker && o.bookmaker.toLowerCase() !== 'bet365' ? `<div style="font-size:9px;color:#ff9800;margin-top:2px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px" title="Odd fornecida por ${o.bookmaker} &mdash; Bet365 nao oferece este mercado para este jogo">via ${o.bookmaker}</div>` : ''}</td>
+            <td style="font-weight:600;font-size:11px;color:var(--accent-green);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.selection}${!o.bet365_available ? ' — Mercado NAO disponivel na Bet365' : ''}">${!o.bet365_available ? '⚠ ' : ''}▶ ${o.selection}</td>
             <td class="odd-cell">${o.market_odd.toFixed(2)}</td>
             <td class="odd-cell" style="color:var(--accent-green)">${o.fair_odd ? o.fair_odd.toFixed(2) : '--'}</td>
             <td class="edge-cell ${edgeClass}">${o.edge_pct}</td>
@@ -5276,7 +5281,7 @@ function showOppDetail(idx) {
             <div>
                 <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted);margin-bottom:4px">SUGESTÃO DE APOSTA${o.odds_suspect ? ' (⚠️ VERIFICAR CASA/FORA)' : ''}</div>
                 <div style="font-size:20px;font-weight:800;color:${o.odds_suspect ? 'var(--accent-yellow)' : 'var(--accent-green)'}">${o.selection}</div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${o.market} — Odd <strong style="color:var(--accent-yellow)">${o.market_odd.toFixed(2)}</strong> (${o.bookmaker})</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${o.market} — Odd <strong style="color:var(--accent-yellow)">${o.market_odd.toFixed(2)}</strong> (${o.bookmaker})${!o.bet365_available ? '<span style="margin-left:8px;background:rgba(255,152,0,0.15);color:#ff9800;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:800;border:1px solid rgba(255,152,0,0.45);letter-spacing:0.5px" title="A Bet365 nao oferece este mercado para este jogo — a odd exibida vem de outro bookmaker">⚠ FORA DA BET365</span>' : ''}</div>
             </div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                 ${o.odds_suspect ? '<span style="background:rgba(255,165,0,0.15);color:var(--accent-yellow);padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;border:1px solid rgba(255,165,0,0.3)">⚠️ VERIFICAR</span>' : ''}
@@ -5317,6 +5322,15 @@ function showOppDetail(idx) {
         <!-- ══ ONDE APOSTAR (topo) ══ -->
         <div style="margin-bottom:16px;padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm)">
             <div class="detail-label" style="margin-bottom:8px">🏦 ONDE APOSTAR</div>
+            ${!o.bet365_available ? `
+            <div style="margin-bottom:12px;padding:10px 14px;background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.40);border-radius:8px;display:flex;align-items:flex-start;gap:10px">
+                <span style="font-size:18px;line-height:1">⚠️</span>
+                <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">
+                    <strong style="color:#ff9800">Este mercado NAO esta disponivel na Bet365</strong> para este jogo.<br>
+                    A odd de <strong style="color:var(--accent-yellow)">${o.market_odd.toFixed(2)}</strong> foi fornecida por <strong style="color:var(--text-primary)">${o.bookmaker}</strong>. Para apostar, use a casa indicada abaixo — a Bet365 pode oferecer mercados parecidos (ex.: por jogador ou ao vivo), mas nao este.
+                </div>
+            </div>
+            ` : ''}
             <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
                 ${bookmakerBadgeHtml(o.bookmaker, o.home_team, o.away_team, o.market, o.selection, false, o.league_country, o.league_name)}
                 ${(() => {

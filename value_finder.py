@@ -1155,6 +1155,16 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
         bk_data = mkt.get("_bookmakers", {})
         return len(bk_data) >= 1
 
+    def _source_bk_for_market(market_key: str) -> str:
+        """Retorna o bookmaker que REALMENTE forneceu a odd deste mercado.
+        Fallback para match.odds.bookmaker (principal) quando nao definido."""
+        mkt = all_markets_odds.get(market_key, {})
+        return (
+            mkt.get("_source_bookmaker")
+            or mkt.get("_source")
+            or match.odds.bookmaker
+        )
+
     # Condições meteorológicas e fadiga (para confiança)
     weather_stable = (match.weather.wind_speed_kmh <= config.WIND_SPEED_THRESHOLD_KMH
                       and match.weather.rain_mm <= config.RAIN_VOLUME_THRESHOLD_MM)
@@ -1254,7 +1264,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                               else "Fora em fadiga" if match.away_fatigue else "N/A"),
                 urgency_home=match.league_urgency_home,
                 urgency_away=match.league_urgency_away,
-                bookmaker=match.odds.bookmaker,
+                bookmaker=_source_bk_for_market("1x2"),
                 data_quality=match.data_quality_score,
                 odds_suspect=getattr(match, 'odds_home_away_suspect', False),
                 confidence_score=conf_score,
@@ -1337,7 +1347,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                               else "Fora em fadiga" if match.away_fatigue else "N/A"),
                 urgency_home=match.league_urgency_home,
                 urgency_away=match.league_urgency_away,
-                bookmaker=match.odds.bookmaker,
+                bookmaker=_source_bk_for_market("double_chance"),
                 data_quality=match.data_quality_score,
                 odds_suspect=getattr(match, 'odds_home_away_suspect', False),
                 confidence_score=conf_score,
@@ -1413,7 +1423,7 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 fatigue_note="",
                 urgency_home=match.league_urgency_home,
                 urgency_away=match.league_urgency_away,
-                bookmaker=match.odds.bookmaker,
+                bookmaker=_source_bk_for_market("btts"),
                 data_quality=match.data_quality_score,
                 odds_suspect=getattr(match, 'odds_home_away_suspect', False),
                 confidence_score=conf_score,
@@ -1488,8 +1498,14 @@ def scan_match_for_value(match: MatchAnalysis) -> list[ValueOpportunity]:
                 )
                 conf, conf_score = _downgrade_confidence_if_suspicious(conf, conf_score, model_xg_suspicious, edge)
 
-                # Identificar bookmaker correto (pode vir de _source para mercados especiais)
-                source_bk = market_odds_dict.get("_source", "")
+                # Identificar bookmaker correto: cada mercado guarda o bookmaker
+                # que REALMENTE forneceu a odd (_source_bookmaker). Se a Bet365 nao
+                # tem este mercado, por exemplo, a odd pode vir da Pinnacle/1xBet.
+                source_bk = (
+                    market_odds_dict.get("_source_bookmaker")
+                    or market_odds_dict.get("_source")
+                    or ""
+                )
                 bk_name = source_bk if source_bk else match.odds.bookmaker
                 display_odd = market_o
 

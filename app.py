@@ -2824,6 +2824,225 @@ def _setup_scheduler():
     return scheduler
 
 
+# ════════════════════════════════════════════════════════════
+# ApostasIA PRO (V2) — Edge Engine de classe mundial
+# Camada de inteligência sobre dados da v1, sem custar API calls.
+# ════════════════════════════════════════════════════════════
+import engine_v2 as _engine_v2
+
+
+def _v2_normalize_opp_pct(o: dict) -> dict:
+    """Garante que campos prob/edge venham em %, padrão da v1 frontend.
+    Supabase guarda em fração (0–1); cache em memória já está em %."""
+    out = dict(o)
+    for k in ("edge", "model_prob", "implied_prob"):
+        v = out.get(k)
+        if v is None:
+            continue
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        if abs(v) <= 1.5:
+            out[k] = round(v * 100, 2)
+    if "league_tier" not in out:
+        out["league_tier"] = config.get_league_tier(
+            out.get("league_name", ""), out.get("league_country", "")
+        )
+    return out
+
+
+def _v2_normalize_match(m: dict) -> dict:
+    """Match já vem do Supabase com all_markets/model_probs JSON."""
+    out = dict(m)
+    if "league_tier" not in out:
+        out["league_tier"] = config.get_league_tier(
+            out.get("league_name", ""), out.get("league_country", "")
+        )
+    return out
+
+
+def _v2_load_dataset(date_from: str | None, date_to: str | None) -> dict:
+    """Carrega opps + matches para enriquecimento.
+    Estratégia:
+      1. Se date_from/date_to vierem e Supabase configurado, busca do Supabase.
+      2. Caso contrário, usa _cache em memória.
+    """
+    opps_raw, matches_raw = [], []
+    source = "memory"
+
+    if date_from and date_to and supabase_client.is_configured():
+        try:
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                of = executor.submit(supabase_client.get_opportunities_by_dates, date_from, date_to)
+                mf = executor.submit(supabase_client.get_matches_by_dates, date_from, date_to)
+                try:
+                    opps_raw = of.result(timeout=40) or []
+                except FuturesTimeout:
+                    of.cancel()
+                    print("[V2] timeout Supabase opps, fallback")
+                try:
+                    matches_raw = mf.result(timeout=35) or []
+                except FuturesTimeout:
+                    mf.cancel()
+                    print("[V2] timeout Supabase matches; opps continuam")
+                if opps_raw:
+                    source = "supabase"
+        except Exception as e:
+            print(f"[V2] Falha Supabase: {e}, usando cache em memoria")
+
+    if not opps_raw:
+        cache_opps = _cache.get("opportunities") or []
+        cache_matches = _cache.get("matches") or []
+        if cache_opps and isinstance(cache_opps[0], dict):
+            opps_raw = cache_opps
+            matches_raw = cache_matches if isinstance(cache_matches, list) else []
+        else:
+            try:
+                opps_raw = [serialize_opportunity(o) for o in cache_opps]
+                matches_raw = [serialize_match(m) for m in cache_matches]
+            except Exception:
+                pass
+        if source != "supabase":
+            source = "memory"
+
+    opps_raw = [_v2_normalize_opp_pct(o) for o in opps_raw]
+    matches_raw = [_v2_normalize_match(m) for m in matches_raw]
+    return {"opportunities": opps_raw, "matches": matches_raw, "source": source}
+
+
+def _v2_load_settled_history(limit: int = 5000) -> list[dict]:
+    """Histórico de oportunidades já liquidadas (GREEN/RED) para calibração."""
+    if not supabase_client.is_configured():
+        return []
+    try:
+        dash = supabase_client.get_all_opportunities_for_dashboard()
+        resolved = dash.get("resolved") or []
+        out = []
+        for o in resolved:
+            if o.get("result_status") not in ("GREEN", "RED", "VOID"):
+                continue
+            out.append({
+                "match_id": o.get("match_id"),
+                "league_name": o.get("league_name", ""),
+                "league_country": o.get("league_country", ""),
+                "league_tier": config.get_league_tier(
+                    o.get("league_name", ""), o.get("league_country", "")
+                ),
+                "market": o.get("market", ""),
+                "selection": o.get("selection", ""),
+                "market_odd": float(o.get("market_odd") or 0),
+                "edge": (o.get("edge") or 0) * 100 if (o.get("edge") or 0) <= 1 else (o.get("edge") or 0),
+                "implied_prob": (o.get("implied_prob") or 0) * 100 if (o.get("implied_prob") or 0) <= 1 else (o.get("implied_prob") or 0),
+                "model_prob": (o.get("model_prob") or 0) * 100 if (o.get("model_prob") or 0) <= 1 else (o.get("model_prob") or 0),
+                "result_status": o.get("result_status"),
+            })
+            if len(out) >= limit:
+                break
+        return out
+    except Exception as e:
+        print(f"[V2] Erro carregando settled: {e}")
+        return []
+
+
+@app.route("/v2")
+def v2_index():
+    """ApostasIA PRO — Edge Engine v2."""
+    ver = f"{APP_VERSION} ({APP_COMMIT})"
+    return render_template("v2.html", app_version=ver)
+
+
+@app.route("/api/v2/data")
+def api_v2_data():
+    """Pipeline v2 completo: enrich + insights + bankroll + calibração.
+
+    Query params:
+      date_from, date_to (YYYY-MM-DD)  - se ausente, usa cache em memória
+      risk_profile      = conservative | balanced | aggressive  (default balanced)
+      include_history   = 0|1                                  (default 1)
+      include_bankroll  = 0|1                                  (default 1)
+    """
+    from flask import request as _rq
+    date_from = _rq.args.get("date_from") or _rq.args.get("start_date")
+    date_to = _rq.args.get("date_to") or _rq.args.get("end_date")
+    risk = (_rq.args.get("risk_profile") or "balanced").lower()
+    if risk not in ("conservative", "balanced", "aggressive"):
+        risk = "balanced"
+    include_history = _rq.args.get("include_history", "1") != "0"
+    include_bankroll = _rq.args.get("include_bankroll", "1") != "0"
+
+    try:
+        ds = _v2_load_dataset(date_from, date_to)
+        opps = ds["opportunities"]
+        matches = ds["matches"]
+        if not opps:
+            return jsonify({
+                "ok": True,
+                "empty": True,
+                "msg": "Nenhuma oportunidade disponivel. Execute o pipeline (v1) primeiro ou selecione datas validas.",
+                "data": {
+                    "opportunities": [], "insights": {}, "calibration": {},
+                    "bankroll_sim": {}, "meta": {"risk_profile": risk, "source": ds["source"]},
+                },
+            })
+
+        settled = _v2_load_settled_history() if include_history else []
+
+        result = _engine_v2.run_v2_enrichment(
+            opportunities=opps,
+            matches=matches,
+            settled_history=settled,
+            risk_profile=risk,
+        )
+
+        if not include_bankroll:
+            result["bankroll_sim"] = {}
+
+        result["meta"]["source"] = ds["source"]
+        result["meta"]["date_from"] = date_from
+        result["meta"]["date_to"] = date_to
+
+        return jsonify({"ok": True, "data": result})
+    except Exception as e:
+        import traceback as _tb
+        try:
+            _tb.print_exc()
+        except OSError:
+            pass
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/simulate", methods=["POST"])
+def api_v2_simulate():
+    """Re-simula bankroll com parâmetros customizados.
+    JSON body: {opportunities: [...v2 enriched], starting_bank, n_simulations, max_picks, min_opus}
+    """
+    from flask import request as _rq
+    body = _rq.get_json(silent=True) or {}
+    opps = body.get("opportunities") or []
+    if not opps:
+        return jsonify({"ok": False, "error": "no opportunities"}), 400
+    min_opus = float(body.get("min_opus", 50))
+    filtered = [o for o in opps if (o.get("v2") or {}).get("opus_score", 0) >= min_opus]
+    sim = _engine_v2.simulate_bankroll(
+        filtered,
+        starting_bank=float(body.get("starting_bank", 1000)),
+        n_simulations=int(body.get("n_simulations", 500)),
+        max_picks=int(body.get("max_picks", 100)),
+        seed=int(body.get("seed", 42)),
+    )
+    return jsonify({"ok": True, "sim": sim})
+
+
+@app.route("/api/v2/calibration")
+def api_v2_calibration():
+    """Apenas o índice de calibração histórico (mais rápido)."""
+    settled = _v2_load_settled_history()
+    return jsonify({"ok": True, "calibration": _engine_v2.build_calibration_index(settled),
+                    "n_settled": len(settled)})
+
+
 if __name__ == "__main__":
     print("\n" + "=" * 55)
     print("  ApostasIA Engine — Servidor Web")

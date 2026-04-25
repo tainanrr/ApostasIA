@@ -1,0 +1,1575 @@
+{% raw %}<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ApostasIA PRO — Edge Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.49.1/dist/apexcharts.min.js"></script>
+<style>
+:root{
+  --bg-deep:#070912;
+  --bg-base:#0b0f1a;
+  --bg-panel:#10162a;
+  --bg-panel-2:#161e36;
+  --bg-card:#1a2240;
+  --bg-card-hover:#22305a;
+  --border:#2a3360;
+  --border-soft:#202746;
+  --border-strong:#3a4980;
+  --text:#eef2ff;
+  --text-dim:#9aa3c4;
+  --text-mute:#5e6688;
+
+  --c-violet:#a78bfa;
+  --c-violet-dim:rgba(167,139,250,0.18);
+  --c-cyan:#22d3ee;
+  --c-cyan-dim:rgba(34,211,238,0.18);
+  --c-green:#34d399;
+  --c-green-dim:rgba(52,211,153,0.18);
+  --c-yellow:#fbbf24;
+  --c-yellow-dim:rgba(251,191,36,0.18);
+  --c-red:#f87171;
+  --c-red-dim:rgba(248,113,113,0.18);
+  --c-pink:#f472b6;
+  --c-orange:#fb923c;
+
+  --grad-edge: linear-gradient(135deg, #a78bfa 0%, #22d3ee 50%, #34d399 100%);
+  --grad-violet: linear-gradient(135deg,#7c3aed,#a78bfa);
+  --grad-cyan: linear-gradient(135deg,#0891b2,#22d3ee);
+  --grad-green: linear-gradient(135deg,#059669,#34d399);
+  --grad-red: linear-gradient(135deg,#dc2626,#f87171);
+  --grad-bg: radial-gradient(1200px 600px at 0% 0%, rgba(124,58,237,0.18), transparent 60%),
+             radial-gradient(900px 500px at 100% 0%, rgba(34,211,238,0.13), transparent 60%),
+             radial-gradient(800px 600px at 50% 100%, rgba(52,211,153,0.10), transparent 60%),
+             linear-gradient(180deg, #070912 0%, #0b0f1a 100%);
+  --shadow-card:0 8px 30px rgba(0,0,0,0.45);
+  --shadow-glow:0 0 28px rgba(167,139,250,0.30);
+  --rad:14px;
+  --rad-sm:9px;
+  --rad-lg:20px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:'Inter',-apple-system,system-ui,sans-serif;
+  background:var(--bg-deep);
+  background-image:var(--grad-bg);
+  background-attachment:fixed;
+  color:var(--text);
+  min-height:100vh;
+  letter-spacing:-0.005em;
+  -webkit-font-smoothing:antialiased;
+}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:var(--bg-base)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-strong)}
+
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* ─── HEADER ─── */
+.appbar{
+  position:sticky;top:0;z-index:50;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 28px;
+  background:rgba(11,15,26,0.80);
+  backdrop-filter:saturate(140%) blur(14px);
+  border-bottom:1px solid var(--border-soft);
+}
+.brand{display:flex;align-items:center;gap:14px}
+.brand-logo{
+  width:42px;height:42px;border-radius:11px;
+  display:flex;align-items:center;justify-content:center;font-size:22px;
+  background:var(--grad-edge);
+  box-shadow:0 0 22px rgba(167,139,250,0.5);
+}
+.brand-text h1{font-size:18px;font-weight:800;letter-spacing:-0.5px;display:flex;align-items:center;gap:8px}
+.brand-text .pro-tag{
+  font-size:9px;font-weight:800;padding:2px 7px;border-radius:4px;
+  background:var(--grad-edge);color:#080a1a;letter-spacing:0.6px;
+}
+.brand-text .ver{font-size:10px;color:var(--text-mute);font-family:'JetBrains Mono',monospace;margin-top:2px}
+.appbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+.ctrl{
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg-panel);border:1px solid var(--border);
+  border-radius:10px;padding:6px 12px;
+  font-size:12px;color:var(--text-dim);
+}
+.ctrl input[type="date"], .ctrl select{
+  background:transparent;color:var(--text);border:none;
+  font-family:'JetBrains Mono',monospace;font-size:12px;
+  padding:2px 4px;outline:none;cursor:pointer;
+  color-scheme:dark;
+}
+.ctrl select{cursor:pointer}
+.ctrl select option{background:var(--bg-panel)}
+.ctrl-label{color:var(--text-mute);font-size:10px;text-transform:uppercase;letter-spacing:1px}
+
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  border:none;cursor:pointer;
+  padding:8px 14px;border-radius:9px;
+  font-size:12px;font-weight:700;letter-spacing:0.4px;
+  transition:transform 0.15s ease, box-shadow 0.15s ease, background 0.15s;
+}
+.btn-primary{background:var(--grad-edge);color:#080a1a;box-shadow:var(--shadow-glow)}
+.btn-primary:hover{transform:translateY(-1px) scale(1.02)}
+.btn-ghost{background:var(--bg-panel);color:var(--text-dim);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--bg-card);color:var(--text)}
+.btn-sm{padding:5px 10px;font-size:11px}
+
+.back-link{color:var(--text-dim);font-size:12px;text-decoration:none;
+  display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:8px;
+  border:1px solid var(--border);background:var(--bg-panel)}
+.back-link:hover{color:var(--text);border-color:var(--border-strong)}
+
+/* ─── KPI STRIP ─── */
+.kpi-strip{
+  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:14px;padding:18px 28px 8px 28px;
+}
+@media(max-width:1280px){.kpi-strip{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:760px){.kpi-strip{grid-template-columns:repeat(2,1fr)}}
+.kpi{
+  background:linear-gradient(160deg, var(--bg-panel) 0%, var(--bg-panel-2) 100%);
+  border:1px solid var(--border-soft);
+  border-radius:var(--rad);
+  padding:14px 16px;position:relative;overflow:hidden;
+}
+.kpi::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--grad-edge);opacity:0.7;
+}
+.kpi-label{font-size:10px;color:var(--text-mute);text-transform:uppercase;letter-spacing:1.4px;font-weight:600}
+.kpi-value{font-size:24px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:6px}
+.kpi-sub{font-size:11px;color:var(--text-dim);margin-top:4px}
+.kpi.violet::before{background:var(--c-violet)}
+.kpi.cyan::before{background:var(--c-cyan)}
+.kpi.green::before{background:var(--c-green)}
+.kpi.yellow::before{background:var(--c-yellow)}
+.kpi.pink::before{background:var(--c-pink)}
+
+/* ─── TABS ─── */
+.tabs{
+  display:flex;gap:4px;padding:6px 28px 0 28px;
+  border-bottom:1px solid var(--border-soft);overflow-x:auto;
+}
+.tab{
+  background:transparent;border:none;color:var(--text-dim);
+  padding:11px 18px;cursor:pointer;
+  font-size:13px;font-weight:600;
+  border-bottom:2px solid transparent;
+  display:flex;align-items:center;gap:7px;
+  white-space:nowrap;
+  transition:color 0.15s;
+}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--text);border-bottom-color:var(--c-violet);
+  background:linear-gradient(180deg, transparent 0%, var(--c-violet-dim) 100%)}
+.tab-icon{font-size:16px}
+.tab-count{
+  background:var(--bg-card);color:var(--text-mute);
+  font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;
+  font-family:'JetBrains Mono',monospace;
+}
+.tab.active .tab-count{background:var(--c-violet-dim);color:var(--c-violet)}
+
+/* ─── PANE ─── */
+.pane{display:none;padding:18px 28px 32px 28px}
+.pane.active{display:block;animation:fadeIn 0.25s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+.section-title{
+  font-size:13px;font-weight:700;color:var(--text);
+  display:flex;align-items:center;gap:8px;
+  margin-bottom:10px;
+  text-transform:uppercase;letter-spacing:1.5px;
+}
+.section-title .accent{height:14px;width:3px;background:var(--grad-edge);border-radius:2px}
+.section-sub{font-size:11px;color:var(--text-mute);margin-bottom:14px;font-weight:400}
+
+.panel{
+  background:var(--bg-panel);border:1px solid var(--border-soft);
+  border-radius:var(--rad);padding:18px;
+}
+
+/* ─── EDGE BOARD FILTERS ─── */
+.eb-toolbar{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+  margin-bottom:12px;padding:12px 14px;
+  background:var(--bg-panel);border:1px solid var(--border-soft);border-radius:var(--rad);
+}
+.search-box{
+  flex:1;min-width:240px;display:flex;align-items:center;gap:8px;
+  background:var(--bg-base);border:1px solid var(--border);border-radius:9px;
+  padding:7px 12px;
+}
+.search-box input{
+  flex:1;background:transparent;border:none;color:var(--text);outline:none;
+  font-size:13px;font-family:'Inter',sans-serif;
+}
+.filter-pill{
+  background:var(--bg-base);border:1px solid var(--border);
+  border-radius:9px;padding:6px 10px;font-size:11px;
+  display:flex;align-items:center;gap:6px;color:var(--text-dim);
+  cursor:pointer;font-weight:600;
+}
+.filter-pill input,.filter-pill select{
+  background:transparent;border:none;color:var(--text);outline:none;
+  font-family:'JetBrains Mono',monospace;font-size:11px;width:auto;
+}
+.filter-pill select option{background:var(--bg-panel)}
+.filter-pill.active{background:var(--c-violet-dim);border-color:var(--c-violet);color:var(--text)}
+
+/* ─── EDGE BOARD TABLE ─── */
+.eb-table{
+  background:var(--bg-panel);border:1px solid var(--border-soft);
+  border-radius:var(--rad);overflow:hidden;
+}
+.eb-row{
+  display:grid;
+  grid-template-columns: 60px 2.4fr 120px 80px 90px 110px 90px 80px 100px 110px 1fr 50px;
+  gap:12px;align-items:center;
+  padding:14px 18px;border-bottom:1px solid var(--border-soft);
+  transition:background 0.12s;cursor:pointer;
+}
+.eb-row.head{
+  background:var(--bg-panel-2);font-size:10px;color:var(--text-mute);
+  font-weight:700;text-transform:uppercase;letter-spacing:1.3px;cursor:default;
+  position:sticky;top:0;z-index:5;
+}
+.eb-row.head:hover{background:var(--bg-panel-2)}
+.eb-row:not(.head):hover{background:var(--bg-card)}
+.eb-row .opus-badge{
+  width:54px;height:54px;border-radius:14px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace;font-weight:800;
+  font-size:18px;color:#0b1020;
+  position:relative;
+}
+.eb-row .opus-badge .opus-label{font-size:7px;font-weight:700;letter-spacing:0.5px;opacity:0.85}
+.opus-95{background:linear-gradient(135deg,#fbbf24,#f97316);box-shadow:0 0 20px rgba(251,191,36,0.4)}
+.opus-80{background:linear-gradient(135deg,#a78bfa,#22d3ee);box-shadow:0 0 18px rgba(167,139,250,0.35)}
+.opus-65{background:linear-gradient(135deg,#22d3ee,#34d399)}
+.opus-50{background:linear-gradient(135deg,#3b82f6,#22d3ee)}
+.opus-low{background:linear-gradient(135deg,#475569,#64748b);color:#cbd5e1}
+
+.eb-match-col{display:flex;flex-direction:column;gap:3px;min-width:0}
+.eb-match-row{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;min-width:0}
+.eb-vs{color:var(--text-mute);font-size:10px;font-weight:500}
+.eb-team{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eb-meta{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-mute);flex-wrap:wrap}
+.eb-meta .league{color:var(--c-cyan);font-weight:600}
+.eb-meta .time{color:var(--text-dim);font-family:'JetBrains Mono',monospace}
+
+.eb-market-col{font-size:11px}
+.eb-market-col .market-name{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eb-market-col .selection{color:var(--c-cyan);font-size:11px;margin-top:2px;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.eb-num{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:13px;text-align:right}
+.eb-odd{font-weight:700;color:var(--text)}
+.eb-pos{color:var(--c-green)}
+.eb-neg{color:var(--c-red)}
+
+.cci-pill{
+  display:inline-block;padding:3px 9px;border-radius:99px;
+  font-size:10px;font-weight:800;letter-spacing:0.4px;
+  font-family:'JetBrains Mono',monospace;
+}
+.cci-elite{background:linear-gradient(135deg,#fbbf24,#f97316);color:#1a0d00}
+.cci-alto{background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff}
+.cci-medio{background:var(--c-cyan-dim);color:var(--c-cyan);border:1px solid var(--c-cyan)}
+.cci-baixo{background:var(--bg-card);color:var(--text-mute);border:1px solid var(--border)}
+
+.tags-cell{display:flex;flex-wrap:wrap;gap:4px;align-content:center}
+.tag{
+  font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;
+  font-family:'JetBrains Mono',monospace;letter-spacing:0.3px;
+  white-space:nowrap;
+}
+.tag.t-elite{background:linear-gradient(135deg,#fbbf24,#f97316);color:#1a0d00}
+.tag.t-sharp{background:var(--c-violet-dim);color:var(--c-violet);border:1px solid var(--c-violet)}
+.tag.t-deep{background:var(--c-cyan-dim);color:var(--c-cyan);border:1px solid var(--c-cyan)}
+.tag.t-contra{background:var(--c-pink);color:#1a0212}
+.tag.t-bet365{background:var(--c-green-dim);color:var(--c-green);border:1px solid var(--c-green)}
+.tag.t-top{background:var(--c-yellow-dim);color:var(--c-yellow);border:1px solid var(--c-yellow)}
+.tag.t-golden{background:linear-gradient(135deg,#fbbf24,#fde68a);color:#1a0d00}
+.tag.t-premium{background:rgba(167,139,250,0.25);color:var(--c-violet)}
+.tag.t-history{background:var(--c-green);color:#02160c}
+.tag.t-risky{background:var(--c-red-dim);color:var(--c-red);border:1px solid var(--c-red)}
+.tag.t-hev{background:var(--c-orange);color:#1a0a00}
+
+.eb-action{
+  width:34px;height:34px;border-radius:8px;
+  background:var(--bg-card);border:1px solid var(--border);
+  color:var(--text-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:14px;
+}
+.eb-action:hover{background:var(--c-violet);color:#fff;border-color:var(--c-violet)}
+
+.empty{
+  text-align:center;padding:60px 20px;color:var(--text-mute);
+  font-size:13px;
+}
+.empty .big{font-size:42px;margin-bottom:14px;opacity:0.5}
+
+/* Sparkline mini */
+.spark{display:inline-flex;align-items:flex-end;gap:1px;height:18px}
+.spark span{width:3px;background:var(--c-cyan);border-radius:1px;opacity:0.7}
+
+/* ─── CARDS GRID ─── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:980px){.grid-2,.grid-3{grid-template-columns:1fr}}
+
+/* Heatmap grid */
+.heatmap-wrap{overflow-x:auto;padding-bottom:10px}
+.heatmap{display:grid;gap:3px;font-family:'JetBrains Mono',monospace;font-size:10px}
+.hm-cell{
+  padding:8px 6px;border-radius:6px;text-align:center;
+  cursor:pointer;color:#fff;font-weight:700;
+  transition:transform 0.1s;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  min-width:60px;
+}
+.hm-cell:hover{transform:scale(1.06);outline:2px solid var(--c-violet)}
+.hm-cell .hm-n{font-size:9px;opacity:0.7;font-weight:500}
+.hm-axis{font-size:10px;color:var(--text-mute);padding:6px;text-align:center;font-weight:600}
+
+/* Reliability diagram */
+.calib-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:980px){.calib-grid{grid-template-columns:1fr}}
+
+/* ─── DETAIL DRAWER ─── */
+.drawer-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.65);
+  backdrop-filter:blur(6px);
+  z-index:200;display:none;align-items:flex-start;justify-content:flex-end;
+}
+.drawer-overlay.active{display:flex;animation:fadeIn 0.25s ease}
+.drawer{
+  width:min(720px,96vw);height:100vh;overflow-y:auto;
+  background:var(--bg-panel);border-left:1px solid var(--border-strong);
+  padding:24px 28px;animation:slideIn 0.3s ease;
+}
+@keyframes slideIn{from{transform:translateX(60px);opacity:0}to{transform:none;opacity:1}}
+.drawer-close{
+  position:sticky;top:0;right:0;float:right;
+  background:var(--bg-card);border:1px solid var(--border);color:var(--text);
+  width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:18px;
+}
+.drawer-close:hover{background:var(--c-red);border-color:var(--c-red)}
+
+.drawer-section{margin-top:20px}
+.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:640px){.metric-grid{grid-template-columns:repeat(2,1fr)}}
+.metric-cell{
+  background:var(--bg-base);border:1px solid var(--border-soft);
+  border-radius:10px;padding:12px;text-align:center;
+}
+.metric-cell .lbl{font-size:9px;color:var(--text-mute);text-transform:uppercase;letter-spacing:1px}
+.metric-cell .val{font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:6px}
+.metric-cell.pos .val{color:var(--c-green)}
+.metric-cell.neg .val{color:var(--c-red)}
+.metric-cell.hi .val{color:var(--c-violet)}
+
+/* CCI radar */
+.radar-wrap{height:240px;position:relative}
+
+/* Bookmaker chip list */
+.book-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.book-chip{
+  background:var(--bg-base);border:1px solid var(--border);
+  border-radius:7px;padding:5px 9px;font-size:10px;
+  font-family:'JetBrains Mono',monospace;color:var(--text-dim);
+  display:flex;align-items:center;gap:5px;
+}
+.book-chip.best{border-color:var(--c-green);color:var(--c-green);background:var(--c-green-dim)}
+
+.reasoning-box{
+  background:var(--bg-base);border:1px solid var(--border-soft);
+  border-radius:10px;padding:12px 14px;
+  font-size:12px;color:var(--text-dim);line-height:1.65;
+  white-space:pre-wrap;font-family:'JetBrains Mono',monospace;
+  max-height:300px;overflow-y:auto;
+}
+
+/* ─── BANKROLL SIM CONTROLS ─── */
+.sim-controls{
+  display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px;
+  padding:14px;background:var(--bg-panel);border:1px solid var(--border-soft);border-radius:var(--rad);
+}
+.sim-controls label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-mute)}
+.sim-controls input,.sim-controls select{
+  background:var(--bg-base);border:1px solid var(--border);color:var(--text);
+  padding:7px 10px;border-radius:8px;outline:none;font-size:13px;
+  font-family:'JetBrains Mono',monospace;width:130px;
+}
+.sim-stat{flex:1;min-width:140px;background:var(--bg-base);border:1px solid var(--border-soft);
+  border-radius:10px;padding:10px 12px}
+.sim-stat .lbl{font-size:9px;color:var(--text-mute);text-transform:uppercase;letter-spacing:1px}
+.sim-stat .val{font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:4px}
+
+/* ─── LOADING ─── */
+.loading{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:80px 20px;gap:18px;color:var(--text-dim);
+}
+.spinner{
+  width:50px;height:50px;border-radius:50%;
+  border:3px solid var(--border);border-top-color:var(--c-violet);
+  animation:spin 0.8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;text-align:center}
+.loading-progress{font-size:11px;color:var(--text-mute);font-family:'JetBrains Mono',monospace}
+
+/* ─── INSIGHTS GRID ─── */
+.insights-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.insight-card{
+  background:var(--bg-panel);border:1px solid var(--border-soft);
+  border-radius:var(--rad);padding:16px;
+}
+.insight-list{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.insight-item{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:8px 10px;background:var(--bg-base);border:1px solid var(--border-soft);
+  border-radius:8px;font-size:12px;
+}
+.insight-item .lbl{flex:1;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.insight-item .n{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--text)}
+.insight-item .bar{
+  height:4px;background:var(--bg-card);border-radius:2px;overflow:hidden;flex:1;
+  margin:0 8px;min-width:60px;
+}
+.insight-item .bar > div{height:100%;background:var(--grad-edge);border-radius:2px}
+
+/* Tier badges */
+.tier-S{background:linear-gradient(135deg,#fbbf24,#f97316);color:#1a0d00}
+.tier-A{background:var(--c-violet);color:#fff}
+.tier-B{background:var(--c-cyan-dim);color:var(--c-cyan);border:1px solid var(--c-cyan)}
+.tier-C{background:var(--bg-card);color:var(--text-mute);border:1px solid var(--border)}
+
+/* Toast */
+.toast{
+  position:fixed;bottom:24px;right:24px;
+  background:var(--bg-panel);border:1px solid var(--border-strong);
+  border-radius:10px;padding:12px 16px;font-size:13px;color:var(--text);
+  box-shadow:var(--shadow-card);z-index:300;
+  display:flex;align-items:center;gap:10px;
+  animation:slideUp 0.3s ease;
+}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:none;opacity:1}}
+.toast.success{border-color:var(--c-green)}
+.toast.error{border-color:var(--c-red)}
+
+/* Risk profile selector */
+.risk-selector{display:flex;gap:0;background:var(--bg-base);border:1px solid var(--border);border-radius:9px;overflow:hidden}
+.risk-opt{padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;color:var(--text-dim)}
+.risk-opt.active{background:var(--c-violet);color:#fff}
+.risk-opt:hover:not(.active){background:var(--bg-card);color:var(--text)}
+
+/* Mobile responsiveness for table */
+@media(max-width:1100px){
+  .eb-row{grid-template-columns:50px 1.8fr 100px 70px 70px 80px 80px 1fr 40px;font-size:11px}
+  .eb-row .col-implied,.eb-row .col-mes,.eb-row .col-ras{display:none}
+}
+@media(max-width:720px){
+  .eb-row{grid-template-columns:50px 1.6fr 70px 60px 60px 1fr 40px}
+  .eb-row .col-cci,.eb-row .col-eva,.eb-row .col-stake{display:none}
+}
+
+.fade-in{animation:fadeIn 0.3s ease}
+</style>
+</head>
+<body>
+
+<!-- ═══ APPBAR ═══ -->
+<div class="appbar">
+  <div class="brand">
+    <div class="brand-logo">⚡</div>
+    <div class="brand-text">
+      <h1>Apostas<span style="color:var(--c-cyan)">IA</span> <span class="pro-tag">PRO</span></h1>
+      <div class="ver">EDGE ENGINE v2.0 · {{ app_version }}</div>
+    </div>
+  </div>
+  <div class="appbar-right">
+    <a href="/" class="back-link">← Voltar à v1</a>
+    <div class="ctrl">
+      <span class="ctrl-label">De</span>
+      <input type="date" id="dt-from">
+      <span class="ctrl-label">Até</span>
+      <input type="date" id="dt-to">
+    </div>
+    <div class="ctrl" title="Perfil de risco — afeta cálculo de Kelly">
+      <span class="ctrl-label">Risco</span>
+      <div class="risk-selector">
+        <div class="risk-opt" data-risk="conservative">CONSERV</div>
+        <div class="risk-opt active" data-risk="balanced">BALANC</div>
+        <div class="risk-opt" data-risk="aggressive">AGRESS</div>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="loadData()">↻ Atualizar</button>
+  </div>
+</div>
+
+<!-- ═══ KPI STRIP ═══ -->
+<div class="kpi-strip" id="kpi-strip">
+  <div class="kpi violet"><div class="kpi-label">Oportunidades</div><div class="kpi-value" id="kpi-total">—</div><div class="kpi-sub">analisadas</div></div>
+  <div class="kpi cyan"><div class="kpi-label">Opus Score Médio</div><div class="kpi-value" id="kpi-opus">—</div><div class="kpi-sub">ranking unificado</div></div>
+  <div class="kpi green"><div class="kpi-label">EVA Top 10</div><div class="kpi-value" id="kpi-eva">—</div><div class="kpi-sub">EV ajustado</div></div>
+  <div class="kpi yellow"><div class="kpi-label">CCI Médio</div><div class="kpi-value" id="kpi-cci">—</div><div class="kpi-sub">confiança composta</div></div>
+  <div class="kpi pink"><div class="kpi-label">ELITE</div><div class="kpi-value" id="kpi-elite">—</div><div class="kpi-sub">picks de classe S</div></div>
+  <div class="kpi"><div class="kpi-label">Calibrado em</div><div class="kpi-value" id="kpi-settled">—</div><div class="kpi-sub">jogos liquidados</div></div>
+</div>
+
+<!-- ═══ TABS ═══ -->
+<div class="tabs">
+  <button class="tab active" data-tab="board"><span class="tab-icon">⚡</span> Edge Board <span class="tab-count" id="tab-count-board">0</span></button>
+  <button class="tab" data-tab="insights"><span class="tab-icon">📊</span> Insights</button>
+  <button class="tab" data-tab="heatmap"><span class="tab-icon">🔥</span> Heatmap</button>
+  <button class="tab" data-tab="calib"><span class="tab-icon">🎯</span> Calibration Lab</button>
+  <button class="tab" data-tab="bankroll"><span class="tab-icon">💰</span> Bankroll Sim</button>
+  <button class="tab" data-tab="sharp"><span class="tab-icon">📡</span> Sharp Pulse</button>
+</div>
+
+<!-- ═══ PANE: EDGE BOARD ═══ -->
+<div class="pane active" id="pane-board">
+  <div class="eb-toolbar">
+    <div class="search-box">
+      <span style="color:var(--text-mute)">🔍</span>
+      <input type="text" id="search" placeholder="Buscar time, liga, mercado...">
+    </div>
+    <div class="filter-pill">
+      <span>Mín. Opus</span>
+      <input type="number" id="f-min-opus" value="0" min="0" max="100" step="5" style="width:50px">
+    </div>
+    <div class="filter-pill">
+      <span>Mín. CCI</span>
+      <input type="number" id="f-min-cci" value="0" min="0" max="100" step="5" style="width:50px">
+    </div>
+    <div class="filter-pill">
+      <span>Mín. EVA</span>
+      <input type="number" id="f-min-eva" value="0" min="-50" max="50" step="0.5" style="width:60px">
+    </div>
+    <div class="filter-pill">
+      <span>Tier</span>
+      <select id="f-tier">
+        <option value="">Todos</option><option value="S">S Elite</option>
+        <option value="A">A Top</option><option value="B">B Boa</option><option value="C">C Outras</option>
+      </select>
+    </div>
+    <div class="filter-pill">
+      <span>Mercado</span>
+      <select id="f-market"><option value="">Todos</option></select>
+    </div>
+    <div class="filter-pill">
+      <span>Tag</span>
+      <select id="f-tag">
+        <option value="">Todas</option>
+        <option value="ELITE">ELITE</option><option value="HIGH_EV">HIGH_EV</option>
+        <option value="SHARP_OVERLAY">SHARP_OVERLAY</option><option value="DEEP_MARKET">DEEP_MARKET</option>
+        <option value="CONTRARIAN">CONTRARIAN</option><option value="BET365">BET365</option>
+        <option value="TOP_LEAGUE">TOP_LEAGUE</option><option value="GOLDEN_ODDS">GOLDEN_ODDS</option>
+        <option value="HISTORY_BACKED">HISTORY_BACKED</option><option value="PREMIUM_DATA">PREMIUM_DATA</option>
+      </select>
+    </div>
+    <div class="filter-pill">
+      <span>Ordenar</span>
+      <select id="f-sort">
+        <option value="opus_score">Opus Score</option>
+        <option value="eva">EVA</option>
+        <option value="cci">CCI</option>
+        <option value="edge">Edge bruto</option>
+        <option value="ras">Risk-Adj</option>
+        <option value="market_odd">Odd</option>
+      </select>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="exportCSV()">📥 CSV</button>
+    <button class="btn btn-ghost btn-sm" onclick="resetFilters()">↺ Reset</button>
+  </div>
+
+  <div class="eb-table" id="eb-table">
+    <div class="eb-row head">
+      <div>Opus</div>
+      <div>Jogo</div>
+      <div>Mercado / Seleção</div>
+      <div style="text-align:right">Odd</div>
+      <div style="text-align:right" class="col-implied">Implícita</div>
+      <div style="text-align:right">Modelo</div>
+      <div style="text-align:right">Edge</div>
+      <div style="text-align:right" class="col-eva">EVA</div>
+      <div class="col-cci">CCI</div>
+      <div style="text-align:right" class="col-stake">Stake (Kelly)</div>
+      <div>Tags</div>
+      <div></div>
+    </div>
+    <div id="eb-rows"></div>
+  </div>
+</div>
+
+<!-- ═══ PANE: INSIGHTS ═══ -->
+<div class="pane" id="pane-insights">
+  <div class="insights-row" id="insights-grid">
+    <div class="insight-card">
+      <div class="section-title"><span class="accent"></span>Top Mercados</div>
+      <div class="insight-list" id="ins-markets"></div>
+    </div>
+    <div class="insight-card">
+      <div class="section-title"><span class="accent"></span>Top Ligas</div>
+      <div class="insight-list" id="ins-leagues"></div>
+    </div>
+    <div class="insight-card">
+      <div class="section-title"><span class="accent"></span>Distribuição por Tier</div>
+      <div style="height:220px;margin-top:8px"><canvas id="chart-tier"></canvas></div>
+    </div>
+    <div class="insight-card">
+      <div class="section-title"><span class="accent"></span>Distribuição Opus Score</div>
+      <div style="height:220px;margin-top:8px"><canvas id="chart-opus-dist"></canvas></div>
+    </div>
+    <div class="insight-card">
+      <div class="section-title"><span class="accent"></span>Tags mais Frequentes</div>
+      <div class="insight-list" id="ins-tags"></div>
+    </div>
+    <div class="insight-card">
+      <div class="section-title"><span class="accent"></span>EVA × Edge bruto (Top 50)</div>
+      <div style="height:240px"><canvas id="chart-scatter"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PANE: HEATMAP ═══ -->
+<div class="pane" id="pane-heatmap">
+  <div class="panel">
+    <div class="section-title"><span class="accent"></span>Heatmap Mercado × Tier (Opus Score Médio)</div>
+    <div class="section-sub">Quanto mais brilhante, melhor a oportunidade média naquela combinação. Use para identificar nichos onde o sistema está achando edge consistente.</div>
+    <div class="heatmap-wrap"><div id="heatmap"></div></div>
+  </div>
+  <div class="panel" style="margin-top:18px">
+    <div class="section-title"><span class="accent"></span>EVA por Liga (top 30)</div>
+    <div style="height:380px"><canvas id="chart-league-eva"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══ PANE: CALIBRATION LAB ═══ -->
+<div class="pane" id="pane-calib">
+  <div class="calib-grid">
+    <div class="panel">
+      <div class="section-title"><span class="accent"></span>Reliability Diagram</div>
+      <div class="section-sub">Probabilidade implícita prevista vs taxa real de acerto (histórico Supabase). Linha diagonal = mercado perfeitamente calibrado. Pontos acima = OVERLAY (modelo subestimado).</div>
+      <div style="height:340px"><canvas id="chart-reliability"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="section-title"><span class="accent"></span>Hit Rate por Faixa de Edge</div>
+      <div class="section-sub">Quais edges historicamente cumprem a promessa. A v2 usa isso para calibrar o CCI.</div>
+      <div style="height:340px"><canvas id="chart-edge-hit"></canvas></div>
+    </div>
+    <div class="panel" style="grid-column:1/-1">
+      <div class="section-title"><span class="accent"></span>Hit Rate por Mercado (com ≥10 amostras)</div>
+      <div style="height:380px"><canvas id="chart-market-hit"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PANE: BANKROLL SIM ═══ -->
+<div class="pane" id="pane-bankroll">
+  <div class="sim-controls">
+    <label>Banca inicial<input type="number" id="sim-bank" value="1000" step="100"></label>
+    <label>Mín. Opus Score<input type="number" id="sim-min-opus" value="60" min="40" max="90" step="5"></label>
+    <label>Máx. picks<input type="number" id="sim-max-picks" value="50" min="5" max="200" step="5"></label>
+    <label>Simulações<input type="number" id="sim-runs" value="500" min="100" max="2000" step="100"></label>
+    <button class="btn btn-primary" onclick="runSim()" style="align-self:flex-end">Simular ▶</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px" id="sim-stats">
+    <div class="sim-stat"><div class="lbl">Picks</div><div class="val" id="ss-picks">—</div></div>
+    <div class="sim-stat"><div class="lbl">Banca esperada</div><div class="val" id="ss-mean">—</div></div>
+    <div class="sim-stat"><div class="lbl">ROI esperado</div><div class="val" id="ss-roi">—</div></div>
+    <div class="sim-stat"><div class="lbl">Sharpe</div><div class="val" id="ss-sharpe">—</div></div>
+    <div class="sim-stat"><div class="lbl">Drawdown médio</div><div class="val" id="ss-dd">—</div></div>
+    <div class="sim-stat"><div class="lbl">P10 / P90</div><div class="val" id="ss-pct" style="font-size:14px">—</div></div>
+  </div>
+  <div class="panel">
+    <div class="section-title"><span class="accent"></span>Caminho esperado da banca (Monte Carlo)</div>
+    <div style="height:380px"><canvas id="chart-bankroll"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══ PANE: SHARP PULSE ═══ -->
+<div class="pane" id="pane-sharp">
+  <div class="grid-2">
+    <div class="panel">
+      <div class="section-title"><span class="accent"></span>Top SHARP_OVERLAY</div>
+      <div class="section-sub">Mercados eficientes onde o modelo discorda no sentido positivo. Sinais mais sólidos do sistema.</div>
+      <div id="sharp-overlay-list" style="margin-top:10px"></div>
+    </div>
+    <div class="panel">
+      <div class="section-title"><span class="accent"></span>Contrarian Plays (modelo > mercado)</div>
+      <div class="section-sub">Maior gap entre prob do modelo e mediana do mercado.</div>
+      <div id="sharp-contrarian-list" style="margin-top:10px"></div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:18px">
+    <div class="section-title"><span class="accent"></span>Distribuição Sharp Disagreement (todas opps)</div>
+    <div style="height:280px"><canvas id="chart-sharp-dist"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══ DETAIL DRAWER ═══ -->
+<div class="drawer-overlay" id="drawer">
+  <div class="drawer">
+    <button class="drawer-close" onclick="closeDrawer()">×</button>
+    <div id="drawer-content"></div>
+  </div>
+</div>
+
+<!-- ═══ LOADING ═══ -->
+<div id="loading" style="display:none">
+  <div class="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">Carregando engine v2…</div>
+    <div class="loading-progress" id="loading-msg">conectando ao backend</div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// ApostasIA PRO — Frontend v2
+// ═══════════════════════════════════════════════════════════════
+const STATE = {
+  data: null,
+  filtered: [],
+  riskProfile: 'balanced',
+  charts: {},
+  filters: {q:'', minOpus:0, minCci:0, minEva:0, tier:'', market:'', tag:'', sort:'opus_score'},
+};
+
+// ─── Date helpers ───
+function todayBr(){
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset()*60000 - 3*3600000)
+    .toISOString().slice(0,10);
+}
+function setDefaultDates(){
+  const now = new Date();
+  const t = new Date(now.getTime() - 3*3600000);
+  const tomorrow = new Date(t.getTime() + 24*3600000);
+  const back7 = new Date(t.getTime() - 7*24*3600000);
+  document.getElementById('dt-from').value = back7.toISOString().slice(0,10);
+  document.getElementById('dt-to').value = tomorrow.toISOString().slice(0,10);
+}
+setDefaultDates();
+
+// ─── Risk profile ───
+document.querySelectorAll('.risk-opt').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.risk-opt').forEach(e => e.classList.remove('active'));
+    el.classList.add('active');
+    STATE.riskProfile = el.dataset.risk;
+    if (STATE.data) loadData();
+  });
+});
+
+// ─── Tabs ───
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('pane-'+t.dataset.tab).classList.add('active');
+    onTabSwitch(t.dataset.tab);
+  });
+});
+
+function onTabSwitch(tab){
+  if (!STATE.data) return;
+  if (tab === 'insights') renderInsights();
+  if (tab === 'heatmap') renderHeatmap();
+  if (tab === 'calib') renderCalibration();
+  if (tab === 'bankroll') renderBankroll();
+  if (tab === 'sharp') renderSharp();
+}
+
+// ─── Filters ───
+['search','f-min-opus','f-min-cci','f-min-eva','f-tier','f-market','f-tag','f-sort'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', applyFilters);
+  el.addEventListener('change', applyFilters);
+});
+function resetFilters(){
+  document.getElementById('search').value='';
+  document.getElementById('f-min-opus').value=0;
+  document.getElementById('f-min-cci').value=0;
+  document.getElementById('f-min-eva').value=0;
+  document.getElementById('f-tier').value='';
+  document.getElementById('f-market').value='';
+  document.getElementById('f-tag').value='';
+  document.getElementById('f-sort').value='opus_score';
+  applyFilters();
+}
+
+// ─── Toast ───
+function toast(msg, type='success'){
+  const t = document.createElement('div');
+  t.className = 'toast '+type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ─── Loading ───
+function showLoading(msg='processando engine v2'){
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('loading-msg').textContent = msg;
+  document.querySelectorAll('.pane').forEach(p => p.style.opacity = '0.3');
+}
+function hideLoading(){
+  document.getElementById('loading').style.display = 'none';
+  document.querySelectorAll('.pane').forEach(p => p.style.opacity = '1');
+}
+
+// ═══ DATA LOAD ═══
+async function loadData(){
+  const dtFrom = document.getElementById('dt-from').value;
+  const dtTo = document.getElementById('dt-to').value;
+  const params = new URLSearchParams({
+    risk_profile: STATE.riskProfile,
+    include_history: '1',
+    include_bankroll: '1',
+  });
+  if (dtFrom) params.set('date_from', dtFrom);
+  if (dtTo) params.set('date_to', dtTo);
+  showLoading('carregando dados do Supabase…');
+  try {
+    const r = await fetch('/api/v2/data?'+params.toString());
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'erro desconhecido');
+    STATE.data = j.data;
+    if (j.data.empty) {
+      toast(j.data.msg || 'Nenhuma oportunidade.', 'error');
+    }
+    populateMarketFilter();
+    applyFilters();
+    renderKPIs();
+    onTabSwitch(document.querySelector('.tab.active').dataset.tab);
+    toast(`✓ ${(j.data.opportunities||[]).length} oportunidades enriquecidas`);
+  } catch (e) {
+    toast('Erro: '+e.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+function populateMarketFilter(){
+  const sel = document.getElementById('f-market');
+  const cur = sel.value;
+  const markets = [...new Set((STATE.data?.opportunities||[]).map(o => o.market))].sort();
+  sel.innerHTML = '<option value="">Todos</option>' + markets.map(m => `<option value="${m}">${m}</option>`).join('');
+  sel.value = cur;
+}
+
+// ═══ FILTERING + RENDERING EDGE BOARD ═══
+function applyFilters(){
+  if (!STATE.data) return;
+  STATE.filters = {
+    q: (document.getElementById('search').value||'').toLowerCase().trim(),
+    minOpus: +document.getElementById('f-min-opus').value || 0,
+    minCci: +document.getElementById('f-min-cci').value || 0,
+    minEva: +document.getElementById('f-min-eva').value || -999,
+    tier: document.getElementById('f-tier').value,
+    market: document.getElementById('f-market').value,
+    tag: document.getElementById('f-tag').value,
+    sort: document.getElementById('f-sort').value,
+  };
+  let arr = (STATE.data.opportunities || []).filter(o => {
+    const v = o.v2 || {};
+    if (STATE.filters.minOpus && (v.opus_score||0) < STATE.filters.minOpus) return false;
+    if (STATE.filters.minCci && (v.cci?.cci||0) < STATE.filters.minCci) return false;
+    if ((v.eva||0) < STATE.filters.minEva) return false;
+    if (STATE.filters.tier && o.league_tier !== STATE.filters.tier) return false;
+    if (STATE.filters.market && o.market !== STATE.filters.market) return false;
+    if (STATE.filters.tag && !(v.tags||[]).includes(STATE.filters.tag)) return false;
+    if (STATE.filters.q){
+      const blob = `${o.home_team||''} ${o.away_team||''} ${o.league_name||''} ${o.market||''} ${o.selection||''}`.toLowerCase();
+      if (!blob.includes(STATE.filters.q)) return false;
+    }
+    return true;
+  });
+
+  arr.sort((a,b) => {
+    const va = sortVal(a, STATE.filters.sort);
+    const vb = sortVal(b, STATE.filters.sort);
+    return vb - va;
+  });
+  STATE.filtered = arr;
+  renderRows(arr);
+  document.getElementById('tab-count-board').textContent = arr.length;
+}
+
+function sortVal(o, key){
+  const v = o.v2 || {};
+  if (key === 'opus_score') return v.opus_score||0;
+  if (key === 'eva') return v.eva||0;
+  if (key === 'cci') return v.cci?.cci||0;
+  if (key === 'edge') return o.edge||0;
+  if (key === 'ras') return v.ras||0;
+  if (key === 'market_odd') return o.market_odd||0;
+  return 0;
+}
+
+function opusClass(s){
+  if (s >= 90) return 'opus-95';
+  if (s >= 75) return 'opus-80';
+  if (s >= 60) return 'opus-65';
+  if (s >= 45) return 'opus-50';
+  return 'opus-low';
+}
+function cciClass(label){
+  if (label === 'ELITE') return 'cci-elite';
+  if (label === 'ALTO')  return 'cci-alto';
+  if (label === 'MÉDIO') return 'cci-medio';
+  return 'cci-baixo';
+}
+function tagClass(t){
+  return ({
+    ELITE:'t-elite', HIGH_EV:'t-hev', SHARP_OVERLAY:'t-sharp',
+    DEEP_MARKET:'t-deep', CONTRARIAN:'t-contra', BET365:'t-bet365',
+    TOP_LEAGUE:'t-top', GOLDEN_ODDS:'t-golden', PREMIUM_DATA:'t-premium',
+    HISTORY_BACKED:'t-history', RISKY:'t-risky',
+  })[t] || '';
+}
+
+function renderRows(arr){
+  const wrap = document.getElementById('eb-rows');
+  if (!arr.length){
+    wrap.innerHTML = `<div class="empty"><div class="big">∅</div>Nenhuma oportunidade com os filtros atuais.<br>Tente reduzir o mínimo de Opus ou ampliar as datas.</div>`;
+    return;
+  }
+  const out = arr.slice(0, 500).map((o,i) => {
+    const v = o.v2 || {};
+    const opus = v.opus_score || 0;
+    const cci = v.cci || {};
+    const tags = (v.tags||[]).slice(0,4);
+    return `
+    <div class="eb-row" onclick='openDetail(${i})'>
+      <div class="opus-badge ${opusClass(opus)}" title="Opus Score">
+        <div>${opus.toFixed(0)}</div>
+        <div class="opus-label">OPUS</div>
+      </div>
+      <div class="eb-match-col">
+        <div class="eb-match-row">
+          <span class="eb-team">${esc(o.home_team)}</span>
+          <span class="eb-vs">vs</span>
+          <span class="eb-team">${esc(o.away_team)}</span>
+        </div>
+        <div class="eb-meta">
+          <span class="tier-${o.league_tier} tag" style="padding:1px 5px;border-radius:3px">${o.league_tier||'C'}</span>
+          <span class="league">${esc(o.league_name||'')}</span>
+          <span class="time">${o.match_date||''} ${o.match_time||''}</span>
+        </div>
+      </div>
+      <div class="eb-market-col">
+        <div class="market-name" title="${esc(o.market)}">${esc(o.market||'')}</div>
+        <div class="selection" title="${esc(o.selection)}">${esc(o.selection||'')}</div>
+      </div>
+      <div class="eb-num eb-odd">${(+o.market_odd||0).toFixed(2)}</div>
+      <div class="eb-num col-implied">${(+o.implied_prob||0).toFixed(1)}%</div>
+      <div class="eb-num">${(+o.model_prob||0).toFixed(1)}%</div>
+      <div class="eb-num ${(+o.edge||0)>0?'eb-pos':'eb-neg'}">${(+o.edge||0).toFixed(2)}%</div>
+      <div class="eb-num col-eva ${(v.eva||0)>0?'eb-pos':'eb-neg'}">${(v.eva||0).toFixed(2)}</div>
+      <div class="col-cci"><span class="cci-pill ${cciClass(cci.label)}">${cci.label||'?'} ${(cci.cci||0).toFixed(0)}</span></div>
+      <div class="eb-num col-stake">${((v.kelly_smart?.stake_pct)||0).toFixed(2)}%</div>
+      <div class="tags-cell">${tags.map(t => `<span class="tag ${tagClass(t)}">${t}</span>`).join('')}</div>
+      <div><button class="eb-action" onclick='event.stopPropagation();openDetail(${i})' title="Detalhes">›</button></div>
+    </div>`;
+  }).join('');
+  wrap.innerHTML = out;
+}
+
+function esc(s){ return String(s||'').replace(/[<>"&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;','&':'&amp;'}[c])); }
+
+// ═══ KPIs ═══
+function renderKPIs(){
+  const opps = STATE.data?.opportunities || [];
+  const meta = STATE.data?.meta || {};
+  document.getElementById('kpi-total').textContent = opps.length;
+  if (!opps.length) {
+    ['kpi-opus','kpi-eva','kpi-cci','kpi-elite','kpi-settled'].forEach(id =>
+      document.getElementById(id).textContent = '—');
+    return;
+  }
+  const opus = opps.map(o => o.v2?.opus_score||0);
+  const cci  = opps.map(o => o.v2?.cci?.cci||0);
+  const eva  = opps.map(o => o.v2?.eva||0).sort((a,b) => b-a);
+  const elite = opps.filter(o => o.v2?.cci?.label === 'ELITE').length;
+  document.getElementById('kpi-opus').textContent = avg(opus).toFixed(1);
+  document.getElementById('kpi-eva').textContent = avg(eva.slice(0,10)).toFixed(2);
+  document.getElementById('kpi-cci').textContent = avg(cci).toFixed(1);
+  document.getElementById('kpi-elite').textContent = elite;
+  document.getElementById('kpi-settled').textContent = meta.n_settled_history || 0;
+}
+function avg(a){ return a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0 }
+
+// ═══ INSIGHTS ═══
+function renderInsights(){
+  const ins = STATE.data?.insights || {};
+  const opps = STATE.data?.opportunities || [];
+
+  const renderList = (id, items, fmt) => {
+    const el = document.getElementById(id);
+    if (!items?.length) { el.innerHTML = '<div class="empty">sem dados</div>'; return; }
+    const max = Math.max(...items.map(x => x.avg_opus || x.count || 0));
+    el.innerHTML = items.slice(0,12).map(it => {
+      const v = it.avg_opus ?? it.count;
+      const w = max ? (v/max*100) : 0;
+      return `<div class="insight-item">
+        <span class="lbl" title="${esc(it.key||it.tag)}">${esc(it.key||it.tag||'')}</span>
+        <div class="bar"><div style="width:${w}%"></div></div>
+        <span class="n">${fmt(it)}</span>
+      </div>`;
+    }).join('');
+  };
+
+  renderList('ins-markets', ins.by_market, x => `${x.n} · O ${x.avg_opus?.toFixed(0)} · EVA ${x.avg_eva?.toFixed(1)}`);
+  renderList('ins-leagues', ins.by_league, x => `${x.n} · O ${x.avg_opus?.toFixed(0)}`);
+  renderList('ins-tags',    ins.top_tags,  x => `${x.count}`);
+
+  // Tier chart
+  const tierData = ins.by_tier || [];
+  destroyChart('chart-tier');
+  STATE.charts['chart-tier'] = new Chart(document.getElementById('chart-tier'), {
+    type: 'doughnut',
+    data: {
+      labels: tierData.map(t => `Tier ${t.key}`),
+      datasets: [{
+        data: tierData.map(t => t.n),
+        backgroundColor: tierData.map(t => ({S:'#fbbf24',A:'#a78bfa',B:'#22d3ee',C:'#64748b'}[t.key]||'#64748b')),
+        borderColor:'#0b0f1a', borderWidth:2,
+      }],
+    },
+    options: {
+      plugins:{legend:{position:'bottom',labels:{color:'#9aa3c4'}}},
+      responsive:true, maintainAspectRatio:false,
+    }
+  });
+
+  // Opus distribution
+  const dist = ins.opus_distribution || [];
+  destroyChart('chart-opus-dist');
+  STATE.charts['chart-opus-dist'] = new Chart(document.getElementById('chart-opus-dist'), {
+    type:'bar',
+    data:{
+      labels: dist.map((_,i) => `${i*10}-${(i+1)*10}`),
+      datasets:[{
+        data: dist,
+        backgroundColor: dist.map((_,i) => i>=8?'#fbbf24':i>=6?'#a78bfa':i>=5?'#22d3ee':i>=4?'#34d399':'#475569'),
+        borderRadius:6,
+      }],
+    },
+    options:{
+      plugins:{legend:{display:false}, tooltip:{callbacks:{title:c => `Opus ${c[0].label}`}}},
+      scales:{
+        x:{ticks:{color:'#9aa3c4',font:{size:10}}, grid:{display:false}},
+        y:{ticks:{color:'#9aa3c4'}, grid:{color:'rgba(42,51,96,0.3)'}, beginAtZero:true},
+      },
+      responsive:true, maintainAspectRatio:false,
+    },
+  });
+
+  // Scatter EVA × Edge (top 50 by opus)
+  const top = opps.slice(0,50);
+  destroyChart('chart-scatter');
+  STATE.charts['chart-scatter'] = new Chart(document.getElementById('chart-scatter'), {
+    type:'scatter',
+    data:{datasets:[{
+      data: top.map(o => ({x: o.edge, y: o.v2?.eva||0, r: 4 + (o.v2?.opus_score||0)/15})),
+      backgroundColor: top.map(o => {
+        const op = o.v2?.opus_score||0;
+        return op>=80?'rgba(251,191,36,0.7)':op>=65?'rgba(167,139,250,0.7)':op>=50?'rgba(34,211,238,0.7)':'rgba(100,116,139,0.55)';
+      }),
+      borderColor:'#0b0f1a', borderWidth:1,
+    }]},
+    options:{
+      plugins:{legend:{display:false}, tooltip:{callbacks:{
+        label: c => {
+          const o = top[c.dataIndex];
+          return `${o.home_team} vs ${o.away_team} | ${o.market} | ${o.selection} | Opus ${(o.v2?.opus_score||0).toFixed(0)}`;
+        }
+      }}},
+      scales:{
+        x:{title:{display:true,text:'Edge bruto (%)',color:'#9aa3c4'},ticks:{color:'#9aa3c4'},grid:{color:'rgba(42,51,96,0.3)'}},
+        y:{title:{display:true,text:'EVA (EV ajustado)',color:'#9aa3c4'},ticks:{color:'#9aa3c4'},grid:{color:'rgba(42,51,96,0.3)'}},
+      },
+      responsive:true, maintainAspectRatio:false,
+    },
+  });
+}
+
+// ═══ HEATMAP ═══
+function renderHeatmap(){
+  const opps = STATE.data?.opportunities || [];
+  const tiers = ['S','A','B','C'];
+  const markets = [...new Set(opps.map(o => o.market))].sort();
+  // Aggregate
+  const cells = {};
+  markets.forEach(m => tiers.forEach(t => cells[`${m}|${t}`] = {sum:0, n:0}));
+  opps.forEach(o => {
+    const k = `${o.market}|${o.league_tier||'C'}`;
+    if (cells[k]){
+      cells[k].sum += o.v2?.opus_score||0;
+      cells[k].n += 1;
+    }
+  });
+  const wrap = document.getElementById('heatmap');
+  const cols = `auto ${tiers.map(()=>'minmax(70px,1fr)').join(' ')}`;
+  let html = `<div class="heatmap" style="grid-template-columns:${cols}">`;
+  html += `<div class="hm-axis"></div>` + tiers.map(t => `<div class="hm-axis tier-${t} tag" style="padding:6px;border-radius:5px">Tier ${t}</div>`).join('');
+  markets.slice(0,40).forEach(m => {
+    html += `<div class="hm-axis" style="text-align:right;padding-right:10px">${esc(m)}</div>`;
+    tiers.forEach(t => {
+      const c = cells[`${m}|${t}`];
+      if (!c || c.n===0) {
+        html += `<div class="hm-cell" style="background:rgba(42,51,96,0.3);color:var(--text-mute)">—</div>`;
+      } else {
+        const avg = c.sum / c.n;
+        const intensity = Math.min(1, avg/95);
+        const bg = avg>=75 ? `rgba(251,191,36,${0.4+intensity*0.6})`
+                 : avg>=60 ? `rgba(167,139,250,${0.4+intensity*0.6})`
+                 : avg>=45 ? `rgba(34,211,238,${0.3+intensity*0.5})`
+                 : `rgba(100,116,139,${0.3+intensity*0.4})`;
+        html += `<div class="hm-cell" style="background:${bg}" title="${m} · Tier ${t} · ${c.n} opps"><div>${avg.toFixed(0)}</div><div class="hm-n">${c.n}</div></div>`;
+      }
+    });
+  });
+  html += '</div>';
+  wrap.innerHTML = html;
+
+  // League EVA bar chart
+  const leagues = (STATE.data?.insights?.by_league || []).slice(0,30);
+  destroyChart('chart-league-eva');
+  STATE.charts['chart-league-eva'] = new Chart(document.getElementById('chart-league-eva'), {
+    type:'bar',
+    data:{
+      labels: leagues.map(l => l.key.length>22?l.key.slice(0,22)+'…':l.key),
+      datasets:[{
+        label:'EVA médio', data: leagues.map(l => l.avg_eva),
+        backgroundColor: leagues.map(l => l.avg_eva>3?'#fbbf24':l.avg_eva>1?'#a78bfa':l.avg_eva>0?'#22d3ee':'#475569'),
+        borderRadius:5,
+      }],
+    },
+    options:{
+      indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:'#9aa3c4'}, grid:{color:'rgba(42,51,96,0.3)'}},
+        y:{ticks:{color:'#9aa3c4',font:{size:10}}, grid:{display:false}},
+      },
+      responsive:true, maintainAspectRatio:false,
+    },
+  });
+}
+
+// ═══ CALIBRATION ═══
+function renderCalibration(){
+  const calib = STATE.data?.calibration || {};
+  const rd = calib.reliability_diagram || [];
+
+  // Reliability diagram
+  destroyChart('chart-reliability');
+  STATE.charts['chart-reliability'] = new Chart(document.getElementById('chart-reliability'), {
+    type:'scatter',
+    data:{datasets:[
+      {
+        label:'Mercado calibrado',
+        data:[{x:0,y:0},{x:1,y:1}],
+        type:'line',borderColor:'#475569',borderDash:[6,4],pointRadius:0,
+        borderWidth:1.5,
+      },
+      {
+        label:'Histórico real',
+        data: rd.filter(b => b.hit_rate !== null && b.n>=5).map(b => ({
+          x: b.midpoint, y: b.hit_rate, r: 5 + Math.sqrt(b.n||1)
+        })),
+        backgroundColor: rd.map(b => b.hit_rate>b.midpoint?'rgba(52,211,153,0.7)':'rgba(248,113,113,0.7)'),
+        borderColor:'#0b0f1a', borderWidth:1.5, showLine:false, pointRadius:7,
+      }
+    ]},
+    options:{
+      plugins:{
+        legend:{labels:{color:'#9aa3c4'}},
+        tooltip:{callbacks:{label:c=>{
+          if (c.datasetIndex===0) return '';
+          const b = rd[c.dataIndex];
+          return [`Implícita ${(b.midpoint*100).toFixed(0)}%`,
+                  `Hit rate ${(b.hit_rate*100).toFixed(1)}%`,
+                  `n=${b.n}`,
+                  `ROI ${(b.roi*100).toFixed(1)}%`];
+        }}},
+      },
+      scales:{
+        x:{title:{display:true,text:'Probabilidade implícita',color:'#9aa3c4'},
+           min:0,max:1,ticks:{color:'#9aa3c4',callback:v=>(v*100).toFixed(0)+'%'},grid:{color:'rgba(42,51,96,0.3)'}},
+        y:{title:{display:true,text:'Hit rate real',color:'#9aa3c4'},
+           min:0,max:1,ticks:{color:'#9aa3c4',callback:v=>(v*100).toFixed(0)+'%'},grid:{color:'rgba(42,51,96,0.3)'}},
+      },
+      responsive:true, maintainAspectRatio:false,
+    },
+  });
+
+  // Edge bucket hit rate
+  const eb = calib.by_edge_bucket || {};
+  const order = ['neg','0-3','3-6','6-10','10-15','15+'];
+  destroyChart('chart-edge-hit');
+  STATE.charts['chart-edge-hit'] = new Chart(document.getElementById('chart-edge-hit'), {
+    type:'bar',
+    data:{
+      labels: order.filter(k => eb[k]),
+      datasets:[{
+        label:'Hit rate', data: order.filter(k => eb[k]).map(k => eb[k].hit_rate*100),
+        backgroundColor:'#a78bfa', borderRadius:6,
+      }],
+    },
+    options:{
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>{
+        const k = order.filter(x=>eb[x])[c.dataIndex];
+        return `${(eb[k].hit_rate*100).toFixed(1)}% (n=${eb[k].n})`;
+      }}}},
+      scales:{
+        x:{ticks:{color:'#9aa3c4'}, grid:{display:false}},
+        y:{ticks:{color:'#9aa3c4',callback:v=>v+'%'}, grid:{color:'rgba(42,51,96,0.3)'}, beginAtZero:true, max:100},
+      },
+      responsive:true, maintainAspectRatio:false,
+    },
+  });
+
+  // Market hit rate
+  const bm = calib.by_market || {};
+  const items = Object.entries(bm)
+    .filter(([k,v]) => v.n>=10)
+    .sort((a,b) => b[1].hit_rate - a[1].hit_rate)
+    .slice(0,25);
+  destroyChart('chart-market-hit');
+  STATE.charts['chart-market-hit'] = new Chart(document.getElementById('chart-market-hit'), {
+    type:'bar',
+    data:{
+      labels: items.map(x => x[0].length>22?x[0].slice(0,22)+'…':x[0]),
+      datasets:[{
+        data: items.map(x => x[1].hit_rate*100),
+        backgroundColor: items.map(x => x[1].hit_rate>0.6?'#34d399':x[1].hit_rate>0.5?'#a78bfa':x[1].hit_rate>0.4?'#22d3ee':'#f87171'),
+        borderRadius:5,
+      }],
+    },
+    options:{
+      indexAxis:'y',
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.x.toFixed(1)}% (n=${items[c.dataIndex][1].n})`}}},
+      scales:{x:{ticks:{color:'#9aa3c4',callback:v=>v+'%'},grid:{color:'rgba(42,51,96,0.3)'}, max:100},
+              y:{ticks:{color:'#9aa3c4',font:{size:10}},grid:{display:false}}},
+      responsive:true, maintainAspectRatio:false,
+    },
+  });
+}
+
+// ═══ BANKROLL SIM ═══
+function renderBankroll(){
+  const sim = STATE.data?.bankroll_sim;
+  if (!sim || !sim.n_picks){
+    document.getElementById('ss-picks').textContent = '0';
+    return;
+  }
+  fillSimStats(sim);
+  drawSimChart(sim);
+}
+function fillSimStats(sim){
+  document.getElementById('ss-picks').textContent = sim.n_picks;
+  document.getElementById('ss-mean').textContent = `R$ ${sim.mean_final.toLocaleString('pt-BR',{maximumFractionDigits:0})}`;
+  const roi = sim.expected_roi_pct;
+  document.getElementById('ss-roi').textContent = `${roi>0?'+':''}${roi.toFixed(1)}%`;
+  document.getElementById('ss-roi').style.color = roi>0?'var(--c-green)':'var(--c-red)';
+  document.getElementById('ss-sharpe').textContent = sim.sharpe.toFixed(3);
+  document.getElementById('ss-dd').textContent = `${sim.avg_max_drawdown_pct.toFixed(1)}%`;
+  document.getElementById('ss-pct').textContent = `${(sim.p10_final).toFixed(0)} / ${(sim.p90_final).toFixed(0)}`;
+}
+function drawSimChart(sim){
+  destroyChart('chart-bankroll');
+  const path = sim.expected_path || [];
+  STATE.charts['chart-bankroll'] = new Chart(document.getElementById('chart-bankroll'), {
+    type:'line',
+    data:{
+      labels: path.map((_,i) => i),
+      datasets:[
+        {
+          label:'Banca esperada (média)',
+          data: path,
+          borderColor:'#a78bfa', backgroundColor:'rgba(167,139,250,0.15)',
+          fill:true, tension:0.3, pointRadius:0, borderWidth:2.5,
+        },
+        {
+          label:'Banca inicial',
+          data: path.map(()=>sim.starting_bank),
+          borderColor:'#475569', borderDash:[6,4], pointRadius:0, borderWidth:1.5,
+        }
+      ],
+    },
+    options:{
+      plugins:{legend:{labels:{color:'#9aa3c4'}}},
+      scales:{
+        x:{title:{display:true,text:'Picks aplicados (em ordem de Opus)',color:'#9aa3c4'},
+           ticks:{color:'#9aa3c4'},grid:{color:'rgba(42,51,96,0.3)'}},
+        y:{title:{display:true,text:'Banca esperada',color:'#9aa3c4'},
+           ticks:{color:'#9aa3c4'},grid:{color:'rgba(42,51,96,0.3)'}},
+      },
+      responsive:true, maintainAspectRatio:false,
+    },
+  });
+}
+
+async function runSim(){
+  const opps = STATE.data?.opportunities || [];
+  if (!opps.length) return toast('Sem dados','error');
+  showLoading('rodando Monte Carlo…');
+  try {
+    const r = await fetch('/api/v2/simulate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        opportunities: opps,
+        starting_bank: +document.getElementById('sim-bank').value,
+        min_opus: +document.getElementById('sim-min-opus').value,
+        max_picks: +document.getElementById('sim-max-picks').value,
+        n_simulations: +document.getElementById('sim-runs').value,
+      }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error||'erro');
+    fillSimStats(j.sim);
+    drawSimChart(j.sim);
+    toast(`✓ ${j.sim.n_simulations} simulações com ${j.sim.n_picks} picks`);
+  } catch (e){ toast('Erro: '+e.message,'error') }
+  finally { hideLoading() }
+}
+
+// ═══ SHARP PULSE ═══
+function renderSharp(){
+  const opps = STATE.data?.opportunities || [];
+
+  const overlays = opps.filter(o => (o.v2?.tags||[]).includes('SHARP_OVERLAY'))
+    .sort((a,b) => (b.v2?.opus_score||0) - (a.v2?.opus_score||0)).slice(0,15);
+  document.getElementById('sharp-overlay-list').innerHTML = renderMiniList(overlays);
+
+  const contras = [...opps].sort((a,b) => (b.v2?.sharp_disagreement?.delta_pp||0) - (a.v2?.sharp_disagreement?.delta_pp||0)).slice(0,15);
+  document.getElementById('sharp-contrarian-list').innerHTML = renderMiniList(contras);
+
+  const buckets = new Array(15).fill(0);
+  opps.forEach(o => {
+    const d = o.v2?.sharp_disagreement?.delta_pp || 0;
+    const idx = Math.max(0, Math.min(14, Math.floor((d+10)/2)));
+    buckets[idx]++;
+  });
+  destroyChart('chart-sharp-dist');
+  STATE.charts['chart-sharp-dist'] = new Chart(document.getElementById('chart-sharp-dist'), {
+    type:'bar',
+    data:{
+      labels: buckets.map((_,i) => `${(i*2-10)}`),
+      datasets:[{
+        data: buckets,
+        backgroundColor: buckets.map((_,i) => {
+          const v = i*2-10;
+          return v>10?'#fbbf24':v>5?'#a78bfa':v>0?'#22d3ee':v<-3?'#f87171':'#475569';
+        }),
+        borderRadius:4,
+      }],
+    },
+    options:{
+      plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>`Δ ${c[0].label} pp`}}},
+      scales:{
+        x:{title:{display:true,text:'Sharp Disagreement (pp)',color:'#9aa3c4'},ticks:{color:'#9aa3c4'},grid:{display:false}},
+        y:{ticks:{color:'#9aa3c4'},grid:{color:'rgba(42,51,96,0.3)'},beginAtZero:true},
+      },
+      responsive:true, maintainAspectRatio:false,
+    },
+  });
+}
+
+function renderMiniList(arr){
+  if (!arr.length) return '<div class="empty" style="padding:30px">sem dados</div>';
+  return arr.map((o,i) => {
+    const v = o.v2 || {};
+    const idx = STATE.data.opportunities.indexOf(o);
+    return `<div class="insight-item" onclick='openDetail(${idx})' style="cursor:pointer">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:12px">${esc(o.home_team)} vs ${esc(o.away_team)}</div>
+        <div style="font-size:10px;color:var(--text-mute)">${esc(o.market)} · <span style="color:var(--c-cyan)">${esc(o.selection)}</span></div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:'JetBrains Mono',monospace;font-weight:700">${(v.opus_score||0).toFixed(0)}</div>
+        <div style="font-size:9px;color:var(--c-violet)">Δ ${(v.sharp_disagreement?.delta_pp||0).toFixed(1)}pp</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══ DETAIL DRAWER ═══
+function openDetail(idx){
+  const o = STATE.filtered[idx] || STATE.data.opportunities[idx];
+  if (!o) return;
+  const v = o.v2 || {};
+  const cci = v.cci || {breakdown:{}};
+  const mes = v.market_efficiency || {};
+  const ks = v.kelly_smart || {};
+  const sd = v.sharp_disagreement || {};
+  const tags = v.tags || [];
+
+  const html = `
+  <div style="margin-bottom:14px">
+    <div style="font-size:11px;color:var(--text-mute)">${esc(o.league_name)} · ${o.match_date} ${o.match_time}</div>
+    <h2 style="font-size:22px;font-weight:800;margin-top:4px">${esc(o.home_team)} <span style="color:var(--text-mute);font-size:14px">vs</span> ${esc(o.away_team)}</h2>
+    <div style="font-size:13px;color:var(--text-dim);margin-top:6px">
+      <strong>${esc(o.market)}</strong> · <span style="color:var(--c-cyan)">${esc(o.selection)}</span> @ <strong style="font-family:'JetBrains Mono',monospace">${(+o.market_odd).toFixed(2)}</strong>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:14px;align-items:center;margin:18px 0">
+    <div class="opus-badge ${opusClass(v.opus_score||0)}" style="width:90px;height:90px;font-size:32px;border-radius:20px">
+      <div>${(v.opus_score||0).toFixed(0)}</div>
+      <div class="opus-label" style="font-size:10px">OPUS</div>
+    </div>
+    <div style="flex:1">
+      <div class="cci-pill ${cciClass(cci.label)}" style="font-size:14px;padding:6px 14px;display:inline-block">
+        ${cci.label||'?'} · CCI ${(cci.cci||0).toFixed(0)}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px">
+        ${tags.map(t => `<span class="tag ${tagClass(t)}">${t}</span>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <div class="metric-grid">
+    <div class="metric-cell hi"><div class="lbl">EV Ajustado</div><div class="val">${(v.eva||0).toFixed(2)}</div></div>
+    <div class="metric-cell ${o.edge>0?'pos':'neg'}"><div class="lbl">Edge bruto</div><div class="val">${(+o.edge||0).toFixed(2)}%</div></div>
+    <div class="metric-cell"><div class="lbl">Risk-Adj</div><div class="val">${(v.ras||0).toFixed(2)}</div></div>
+    <div class="metric-cell"><div class="lbl">Stake (Kelly)</div><div class="val">${(ks.stake_pct||0).toFixed(2)}%</div></div>
+    <div class="metric-cell"><div class="lbl">Modelo</div><div class="val">${(+o.model_prob||0).toFixed(1)}%</div></div>
+    <div class="metric-cell"><div class="lbl">Implícita</div><div class="val">${(+o.implied_prob||0).toFixed(1)}%</div></div>
+    <div class="metric-cell"><div class="lbl">Sharp Δ</div><div class="val">${(sd.delta_pp||0).toFixed(1)}pp</div></div>
+    <div class="metric-cell"><div class="lbl">Mkt Eff</div><div class="val">${mes.score||0}</div></div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="section-title"><span class="accent"></span>CCI 2.0 — Breakdown</div>
+    <div style="height:240px"><canvas id="drawer-radar"></canvas></div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="section-title"><span class="accent"></span>Bookmakers (${mes.n_books||0})</div>
+    <div class="section-sub">Mediana <strong style="color:var(--text)">${(mes.median||0).toFixed(2)}</strong> · Melhor <strong style="color:var(--c-green)">${(mes.best||0).toFixed(2)}</strong> · CV ${((mes.cv||0)*100).toFixed(2)}%</div>
+    <div class="book-list">
+      ${(v.book_odds||[]).map((bo,i) => `<div class="book-chip ${i===0?'best':''}">${bo.toFixed(2)}</div>`).join('') || '<span class="book-chip">—</span>'}
+    </div>
+  </div>
+
+  ${v.history_hit_rate !== null && v.history_hit_rate !== undefined ? `
+  <div class="drawer-section">
+    <div class="section-title"><span class="accent"></span>Histórico de Calibração</div>
+    <div class="metric-cell" style="text-align:left">
+      <div class="lbl">Hit rate histórico em segmentos similares</div>
+      <div class="val" style="color:${v.history_hit_rate*100 > (+o.implied_prob)?'var(--c-green)':'var(--c-red)'}">${(v.history_hit_rate*100).toFixed(1)}% <span style="font-size:11px;color:var(--text-mute)">(implícita ${(+o.implied_prob).toFixed(1)}%)</span></div>
+    </div>
+  </div>` : ''}
+
+  ${o.reasoning ? `
+  <div class="drawer-section">
+    <div class="section-title"><span class="accent"></span>Raciocínio do Modelo</div>
+    <div class="reasoning-box">${esc(o.reasoning)}</div>
+  </div>` : ''}
+
+  ${o.result_status && o.result_status !== 'PENDENTE' ? `
+  <div class="drawer-section">
+    <div class="section-title"><span class="accent"></span>Resultado</div>
+    <div style="display:inline-block;padding:6px 14px;border-radius:8px;font-weight:800;
+                background:${o.result_status==='GREEN'?'var(--c-green-dim)':o.result_status==='RED'?'var(--c-red-dim)':'var(--c-yellow-dim)'};
+                color:${o.result_status==='GREEN'?'var(--c-green)':o.result_status==='RED'?'var(--c-red)':'var(--c-yellow)'}">
+      ${o.result_status}${o.result_score?` · ${o.result_score}`:''}
+    </div>
+  </div>` : ''}
+  `;
+
+  document.getElementById('drawer-content').innerHTML = html;
+  document.getElementById('drawer').classList.add('active');
+
+  // Radar chart for CCI breakdown
+  const bd = cci.breakdown || {};
+  setTimeout(() => {
+    new Chart(document.getElementById('drawer-radar'), {
+      type:'radar',
+      data:{
+        labels:['Edge','Odd','Modelo','Sharp','Mkt Eff','Qualidade','Histórico'],
+        datasets:[{
+          label:'CCI breakdown',
+          data:[bd.edge||0, bd.odd||0, bd.model||0, bd.sharp||0, bd.market||0, bd.quality||0, bd.history||0],
+          backgroundColor:'rgba(167,139,250,0.25)',
+          borderColor:'#a78bfa',
+          pointBackgroundColor:'#a78bfa',
+          pointRadius:4,
+        }],
+      },
+      options:{
+        plugins:{legend:{display:false}},
+        scales:{r:{
+          min:0, max:100,
+          ticks:{display:false},
+          grid:{color:'rgba(42,51,96,0.4)'},
+          angleLines:{color:'rgba(42,51,96,0.4)'},
+          pointLabels:{color:'#9aa3c4',font:{size:11}},
+        }},
+        responsive:true, maintainAspectRatio:false,
+      },
+    });
+  }, 50);
+}
+function closeDrawer(){
+  document.getElementById('drawer').classList.remove('active');
+}
+document.getElementById('drawer').addEventListener('click', (e) => {
+  if (e.target.id === 'drawer') closeDrawer();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
+function destroyChart(id){
+  if (STATE.charts[id]){ try { STATE.charts[id].destroy(); } catch(e){} STATE.charts[id]=null; }
+}
+
+// ═══ EXPORT ═══
+function exportCSV(){
+  const arr = STATE.filtered;
+  if (!arr.length) return toast('Sem dados para exportar','error');
+  const cols = ['match_date','match_time','league_name','league_tier','home_team','away_team',
+                'market','selection','market_odd','model_prob','implied_prob','edge',
+                'opus_score','cci','eva','ras','stake_pct','sharp_delta_pp','mes_score','tags','bookmaker'];
+  const rows = arr.map(o => {
+    const v = o.v2||{};
+    return [
+      o.match_date,o.match_time,o.league_name,o.league_tier,o.home_team,o.away_team,
+      o.market,o.selection,o.market_odd,o.model_prob,o.implied_prob,o.edge,
+      v.opus_score,v.cci?.cci,v.eva,v.ras,v.kelly_smart?.stake_pct,
+      v.sharp_disagreement?.delta_pp,v.market_efficiency?.score,(v.tags||[]).join('|'),o.bookmaker
+    ];
+  });
+  const csv = [cols.join(',')].concat(rows.map(r => r.map(c => {
+    const s = String(c??''); return s.includes(',') ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(','))).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`apostasia_pro_${todayBr()}.csv`; a.click();
+  toast('✓ CSV exportado');
+}
+
+// ═══ INIT ═══
+loadData();
+</script>
+</body>
+</html>{% endraw %}

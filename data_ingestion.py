@@ -993,6 +993,15 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
                 odds.all_markets[key] = dict(val_map)
 
     # ═══════════════════════════════════════════════════════════════════
+    # Marcar todos os mercados preenchidos na PRIMEIRA passagem com o
+    # bookmaker principal (bk_name). Assim cada mercado carrega a
+    # "fonte real" das odds, independente de preenchimentos posteriores.
+    # ═══════════════════════════════════════════════════════════════════
+    for _mk, _mdata in odds.all_markets.items():
+        if isinstance(_mdata, dict) and "_source_bookmaker" not in _mdata:
+            _mdata["_source_bookmaker"] = bk_name
+
+    # ═══════════════════════════════════════════════════════════════════
     # SEGUNDA PASSAGEM: Mercados especializados de OUTROS bookmakers
     # Ex: Pinnacle pode ter Shots 1x2, ShotOnGoal O/U que Bet365 não tem
     # (ou vice-versa) — preencher mercados que NÃO existem no bookmaker principal
@@ -1019,14 +1028,18 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
             if not val_map:
                 continue
             
+            _other_bk = bk.get("name", "?")
+
             # Total ShotOnGoal O/U (bet id 87)
             if bet_id == 87 or ("shotongoal" in bet_name_extra.replace(" ", "") and "1x2" not in bet_name_extra):
                 if "sot_ou" not in odds.all_markets:
                     sot_ou = {}
                     for k, v in val_map.items():
                         sot_ou[k.replace(" ", "_")] = v
+                    sot_ou["_source_bookmaker"] = _other_bk
+                    sot_ou["_source"] = _other_bk  # compat
                     odds.all_markets["sot_ou"] = sot_ou
-            
+
             # ShotOnTarget 1x2 (bet id 176)
             elif bet_id == 176 or ("shotontarget" in bet_name_extra.replace(" ", "") and "1x2" in bet_name_extra):
                 if "sot_1x2" not in odds.all_markets:
@@ -1034,9 +1047,10 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
                         "home": val_map.get("home", 0),
                         "draw": val_map.get("draw", 0),
                         "away": val_map.get("away", 0),
-                        "_source": bk.get("name", "?"),
+                        "_source_bookmaker": _other_bk,
+                        "_source": _other_bk,  # compat
                     }
-            
+
             # Shots.1x2 (bet id 340)
             elif bet_id == 340 or ("shots" in bet_name_extra and "1x2" in bet_name_extra):
                 if "shots_1x2" not in odds.all_markets:
@@ -1044,7 +1058,8 @@ def _parse_odds_response(odds_raw: dict) -> MarketOdds:
                         "home": val_map.get("home", 0),
                         "draw": val_map.get("draw", 0),
                         "away": val_map.get("away", 0),
-                        "_source": bk.get("name", "?"),
+                        "_source_bookmaker": _other_bk,
+                        "_source": _other_bk,  # compat
                     }
 
     # ═══════════════════════════════════════════════════════════════════
