@@ -675,6 +675,85 @@ def enrich_opportunity(
 # ════════════════════════════════════════════════════
 # 11) AGREGAÇÕES PARA INSIGHTS
 # ════════════════════════════════════════════════════
+def compute_performance_summary(opps_v2: list[dict]) -> dict:
+    """Performance REAL das oportunidades já liquidadas no dataset atual.
+    Calcula GREEN/RED/VOID, taxa de acerto, ROI em unidades (stake=1) e ROI Kelly."""
+    n_total = len(opps_v2)
+    n_green = n_red = n_void = n_pend = 0
+    profit_unit = 0.0          # 1 unidade por aposta
+    profit_kelly = 0.0         # stake = kelly_smart.adjusted
+    stake_kelly_total = 0.0
+    by_market = defaultdict(lambda: {"n": 0, "g": 0, "r": 0, "v": 0, "profit": 0.0})
+    by_label = defaultdict(lambda: {"n": 0, "g": 0, "r": 0, "v": 0, "profit": 0.0})
+    by_tier = defaultdict(lambda: {"n": 0, "g": 0, "r": 0, "v": 0, "profit": 0.0})
+    by_opus_bucket = defaultdict(lambda: {"n": 0, "g": 0, "r": 0, "v": 0, "profit": 0.0})
+
+    for o in opps_v2:
+        st = (o.get("result_status") or "PENDENTE").upper()
+        market = o.get("market", "?")
+        tier = o.get("league_tier", "C")
+        v2 = o.get("v2") or {}
+        cci_label = (v2.get("cci") or {}).get("label", "?")
+        opus = v2.get("opus_score", 0)
+        opus_b = "90+" if opus >= 90 else "75-89" if opus >= 75 else "60-74" if opus >= 60 else "45-59" if opus >= 45 else "<45"
+        odd = float(o.get("market_odd") or 1.0)
+        kelly_pct = ((v2.get("kelly_smart") or {}).get("adjusted") or 0)
+
+        if st == "GREEN":
+            n_green += 1
+            p = (odd - 1.0)
+            profit_unit += p
+            profit_kelly += kelly_pct * p
+            stake_kelly_total += kelly_pct
+            for d in (by_market[market], by_label[cci_label], by_tier[tier], by_opus_bucket[opus_b]):
+                d["g"] += 1; d["n"] += 1; d["profit"] += p
+        elif st == "RED":
+            n_red += 1
+            profit_unit -= 1.0
+            profit_kelly -= kelly_pct
+            stake_kelly_total += kelly_pct
+            for d in (by_market[market], by_label[cci_label], by_tier[tier], by_opus_bucket[opus_b]):
+                d["r"] += 1; d["n"] += 1; d["profit"] -= 1.0
+        elif st == "VOID":
+            n_void += 1
+            for d in (by_market[market], by_label[cci_label], by_tier[tier], by_opus_bucket[opus_b]):
+                d["v"] += 1; d["n"] += 1
+        else:
+            n_pend += 1
+
+    n_settled = n_green + n_red
+    hit_rate = (n_green / n_settled) if n_settled else 0
+    roi_unit_pct = (profit_unit / n_settled * 100) if n_settled else 0
+    roi_kelly_pct = (profit_kelly / stake_kelly_total * 100) if stake_kelly_total else 0
+
+    def _enrich(d):
+        out = []
+        for k, v in d.items():
+            decided = v["g"] + v["r"]
+            v["hit_rate"] = round(v["g"] / decided, 4) if decided else None
+            v["roi_pct"] = round(v["profit"] / decided * 100, 2) if decided else None
+            v["profit"] = round(v["profit"], 2)
+            out.append({"key": k, **v})
+        return sorted(out, key=lambda x: (x.get("profit") or 0), reverse=True)
+
+    return {
+        "n_total": n_total,
+        "n_green": n_green,
+        "n_red": n_red,
+        "n_void": n_void,
+        "n_pending": n_pend,
+        "n_settled": n_settled,
+        "hit_rate": round(hit_rate, 4),
+        "profit_unit": round(profit_unit, 2),
+        "roi_unit_pct": round(roi_unit_pct, 2),
+        "roi_kelly_pct": round(roi_kelly_pct, 2),
+        "by_market": _enrich(by_market)[:25],
+        "by_cci_label": _enrich(by_label),
+        "by_tier": _enrich(by_tier),
+        "by_opus_bucket": _enrich(by_opus_bucket),
+    }
+
+
 def aggregate_insights(opps_v2: list[dict]) -> dict:
     """Agregações para o Dashboard v2."""
     if not opps_v2:
@@ -850,12 +929,14 @@ def run_v2_enrichment(
 
     insights = aggregate_insights(enriched)
     bankroll = simulate_bankroll(enriched)
+    performance = compute_performance_summary(enriched)
 
     return {
         "opportunities": enriched,
         "insights": insights,
         "calibration": calib,
         "bankroll_sim": bankroll,
+        "performance": performance,
         "meta": {
             "risk_profile": risk_profile,
             "n_opportunities": len(enriched),
