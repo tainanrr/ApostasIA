@@ -1332,6 +1332,27 @@ def get_execution_history(exec_type: str = None, limit: int = 3):
         return []
 
 
+def was_executed_today(exec_type: str, since_iso: str) -> bool:
+    """Verifica se já houve execução (running/success) de exec_type desde since_iso."""
+    client = get_client()
+    if not client:
+        return False
+    try:
+        result = (
+            client.table("execution_history")
+            .select("id")
+            .eq("type", exec_type)
+            .gte("started_at", since_iso)
+            .in_("status", ["running", "success"])
+            .limit(1)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as e:
+        print(f"[SUPABASE] Erro ao verificar execução do dia: {e}")
+        return False
+
+
 # ═══════════════════════════════════════════════
 # SCHEDULER CONFIG
 # ═══════════════════════════════════════════════

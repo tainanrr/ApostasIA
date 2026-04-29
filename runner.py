@@ -197,7 +197,14 @@ def run_results(days_range: int = 2, trigger: str = "manual"):
 
 
 def check_schedule():
-    """Verifica Supabase se há algo agendado para o horário atual (+/- 15min)."""
+    """Verifica slots agendados e executa os que já passaram e não rodaram hoje.
+
+    Estratégia robusta contra delays do GitHub Actions cron:
+    - Para cada slot cujo horário já passou (com margem de 90min para catch-up),
+      verifica se já houve execução bem-sucedida desde 30min antes do slot.
+    - Se não houve, executa agora (catch-up).
+    - Executa no máximo 1 slot por tipo (pipeline/results) por invocação.
+    """
     configs = supabase_client.get_scheduler_config()
     if not configs:
         print("[RUNNER] Nenhuma configuração de scheduler encontrada.")
@@ -206,6 +213,7 @@ def check_schedule():
     now = datetime.now(config.BR_TIMEZONE)
     current_hhmm = now.strftime("%H:%M")
     current_minutes = now.hour * 60 + now.minute
+    today_str = now.strftime("%Y-%m-%d")
     ran_something = False
 
     for cfg in configs:
@@ -215,25 +223,44 @@ def check_schedule():
         days_range = cfg.get("days_range", 2)
         cfg_type = cfg["id"]
 
+        # Ordena slots do mais recente para o mais antigo (prioriza o mais próximo)
+        parsed_slots = []
         for h in hours:
             try:
                 parts = h.split(":")
-                sched_minutes = int(parts[0]) * 60 + int(parts[1])
+                slot_min = int(parts[0]) * 60 + int(parts[1])
+                parsed_slots.append((slot_min, h))
             except (ValueError, IndexError):
                 continue
+        parsed_slots.sort(reverse=True)
 
-            diff = abs(current_minutes - sched_minutes)
-            if diff <= 15:
-                print(f"[RUNNER] Horário compatível: {cfg_type} agendado para {h}, agora são {current_hhmm}")
-                if cfg_type == "pipeline":
-                    run_pipeline(days_range=days_range, trigger="scheduled")
-                elif cfg_type == "results":
-                    run_results(days_range=days_range, trigger="scheduled")
-                ran_something = True
-                break
+        for slot_min, h in parsed_slots:
+            diff = current_minutes - slot_min  # positivo = já passou
+
+            # Slot deve estar entre 0 e 90 min no passado
+            if diff < -5 or diff > 90:
+                continue
+
+            # Verifica dedup: checa se já rodou desde 30min antes do slot
+            dedup_minutes = max(0, slot_min - 30)
+            dedup_hour = dedup_minutes // 60
+            dedup_min = dedup_minutes % 60
+            since_iso = f"{today_str}T{dedup_hour:02d}:{dedup_min:02d}:00"
+
+            if supabase_client.was_executed_today(cfg_type, since_iso):
+                print(f"[RUNNER] Slot {cfg_type}@{h} já executado hoje, skip.")
+                continue
+
+            print(f"[RUNNER] Catch-up: {cfg_type} agendado para {h}, agora {current_hhmm} (atraso {diff}min)")
+            if cfg_type == "pipeline":
+                run_pipeline(days_range=days_range, trigger="scheduled")
+            elif cfg_type == "results":
+                run_results(days_range=days_range, trigger="scheduled")
+            ran_something = True
+            break  # 1 execução por tipo por invocação
 
     if not ran_something:
-        print(f"[RUNNER] Nenhuma execução agendada para {current_hhmm}")
+        print(f"[RUNNER] Nenhuma execução pendente para {current_hhmm}")
 
 
 if __name__ == "__main__":
