@@ -29,7 +29,7 @@ def generate_report(matches: list[MatchAnalysis],
     lines.append("# 🏟️ RELATÓRIO DIÁRIO DE ANÁLISE QUANTITATIVA ESPORTIVA")
     lines.append("")
     lines.append(f"**Gerado em:** {now}")
-    lines.append(f"**Período de Análise:** {config.TODAY} (T) e {config.TOMORROW} (T+1)")
+    lines.append(f"**Período de Análise:** {config.TODAY} (T) → {config.TOMORROW} (T+1) → {config.DAY_AFTER_TOMORROW} (T+2)")
     lines.append(f"**Modo:** {'Dados Sintéticos (Demo)' if config.USE_MOCK_DATA else 'API Real (Produção)'}")
     lines.append("")
     lines.append("---")

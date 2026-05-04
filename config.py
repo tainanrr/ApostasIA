@@ -25,15 +25,17 @@ OPENWEATHER_KEY = os.getenv("OPENWEATHER_KEY", "")
 # ═══════════════════════════════════════════════════════
 TODAY = datetime.now(BR_TIMEZONE).strftime("%Y-%m-%d")
 TOMORROW = (datetime.now(BR_TIMEZONE) + timedelta(days=1)).strftime("%Y-%m-%d")
-ANALYSIS_DATES = [TODAY, TOMORROW]          # Default — pode ser sobrescrito via /api/run
+DAY_AFTER_TOMORROW = (datetime.now(BR_TIMEZONE) + timedelta(days=2)).strftime("%Y-%m-%d")
+ANALYSIS_DATES = [TODAY, TOMORROW, DAY_AFTER_TOMORROW]  # T, T+1, T+2 — pode ser sobrescrito via /api/run
 
 
 def get_default_dates() -> list[str]:
-    """Retorna as datas padrão (hoje e amanhã em Brasília)."""
+    """Retorna as datas padrão (hoje, amanhã e depois de amanhã em Brasília)."""
     now = datetime.now(BR_TIMEZONE)
     return [
         now.strftime("%Y-%m-%d"),
         (now + timedelta(days=1)).strftime("%Y-%m-%d"),
+        (now + timedelta(days=2)).strftime("%Y-%m-%d"),
     ]
 
 

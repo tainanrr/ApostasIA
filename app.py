@@ -55,6 +55,17 @@ APP_COMMIT = os.environ.get("VERCEL_GIT_COMMIT_SHA", "local")[:7]
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+# ─────────────────────────────────────────────────────────────────────
+# v3 (sistema paralelo, isolado): registra blueprint /v3/*
+# Nao toca em rotas existentes da v1/v2. Falha graciosamente se a v3
+# tiver problemas de import.
+# ─────────────────────────────────────────────────────────────────────
+try:
+    from v3.app import v3_bp as _v3_blueprint  # type: ignore
+    app.register_blueprint(_v3_blueprint)
+except Exception as _e:
+    print(f"[v3] Blueprint nao registrado: {_e}")
+
 
 @app.errorhandler(500)
 def handle_500(e):
@@ -1288,7 +1299,7 @@ def api_run():
         print(f"[API/RUN] Data única: {date_from}")
     else:
         analysis_dates = config.get_default_dates()
-        print(f"[API/RUN] Usando datas padrão (hoje + amanhã)")
+        print(f"[API/RUN] Usando datas padrão (hoje + amanhã + depois de amanhã)")
 
     exec_id = supabase_client.log_execution_start("pipeline", "manual")
 

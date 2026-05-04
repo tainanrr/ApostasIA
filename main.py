@@ -46,7 +46,7 @@ def main():
     print_banner()
     start = time.time()
 
-    print(f"📅 Período de análise: {config.TODAY} (T) → {config.TOMORROW} (T+1)")
+    print(f"📅 Período de análise: {config.TODAY} (T) → {config.TOMORROW} (T+1) → {config.DAY_AFTER_TOMORROW} (T+2)")
     print(f"🔧 Modo: {'DADOS SINTÉTICOS (Demo)' if config.USE_MOCK_DATA else 'API REAL (Produção)'}")
     print(f"🎯 Edge mínimo: {config.MIN_EDGE_THRESHOLD*100:.0f}%")
     print(f"🎲 Monte Carlo: {config.MONTE_CARLO_SIMULATIONS:,} simulações/jogo")
