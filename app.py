@@ -2799,7 +2799,7 @@ def _fix_supabase_confidence_and_analysis_type():
 # SCHEDULER — Execução automática diária
 # ═══════════════════════════════════════════════
 
-SCHEDULER_HOURS = [7, 12]  # Horários de execução (Brasília): 07h e 12h
+SCHEDULER_HOURS = [7, 10, 12, 14, 18, 20]  # Horários de execução (Brasília)
 
 def _scheduled_run():
     """Executa o pipeline automaticamente no horário agendado."""

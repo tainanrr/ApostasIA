@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS scheduler_config (
 
 -- Insere configurações padrão para pipeline e results
 INSERT INTO scheduler_config (id, enabled, hours, days_range) VALUES
-('pipeline', false, '{"07:00","12:00"}', 2),
-('results', false, '{"18:00","22:00"}', 2)
+('pipeline', false, '{"07:00","10:00","12:00","14:00","18:00","20:00"}', 2),
+('results', false, '{"09:00","12:00","16:00","19:00","22:00"}', 2)
 ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------------------
