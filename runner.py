@@ -243,9 +243,12 @@ def check_schedule():
 
             # Verifica dedup: checa se já rodou desde 30min antes do slot
             dedup_minutes = max(0, slot_min - 30)
-            dedup_hour = dedup_minutes // 60
-            dedup_min = dedup_minutes % 60
-            since_iso = f"{today_str}T{dedup_hour:02d}:{dedup_min:02d}:00"
+            dedup_dt = now.replace(
+                hour=dedup_minutes // 60,
+                minute=dedup_minutes % 60,
+                second=0, microsecond=0,
+            )
+            since_iso = dedup_dt.isoformat()
 
             if supabase_client.was_executed_today(cfg_type, since_iso):
                 print(f"[RUNNER] Slot {cfg_type}@{h} já executado hoje, skip.")
