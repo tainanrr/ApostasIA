@@ -1410,7 +1410,7 @@ body.embed-mode .section.embed-active { display: block !important; }
         </div>
         <div class="date-picker-group" style="gap:4px">
             <label title="Filtro para acelerar buscas (ligas/países/tiers)">Filtro:</label>
-            <select id="pipeline-filter-select" title="Selecione um filtro salvo" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;max-width:140px;cursor:pointer">
+            <select id="pipeline-filter-select" title="Selecione um filtro salvo ou visão" onchange="onPipelineFilterChange()" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;max-width:180px;cursor:pointer">
                 <option value="">Sem filtro (tudo)</option>
             </select>
             <button onclick="openFilterManager()" title="Gerenciar filtros" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px">⚙</button>
@@ -1990,6 +1990,7 @@ function loadFilterView(id, applyTo) {
         _fvActiveId = null;
         clearAllFiltersGlobal();
         renderFilterViews();
+        _syncHeaderDropdownWithView(null);
         return;
     }
 
@@ -2000,16 +2001,27 @@ function loadFilterView(id, applyTo) {
     const targetTab = applyTo || (currentTab === 'performance' ? 'dash' : 'main');
 
     if (targetTab === 'main') {
-        // Se a view veio do main, aplica direto; se veio do dash, converte
         const mainState = view.target === 'main' ? view.state : _fvConvertState(view.state, 'dash');
         _applyMainFilters(mainState);
     } else {
-        // Se a view veio do dash, aplica direto; se veio do main, converte
         const dashState = view.target === 'dash' ? view.state : _fvConvertState(view.state, 'main');
         _applyDashFilters(dashState);
     }
 
     renderFilterViews();
+    _syncHeaderDropdownWithView(id);
+}
+
+function _syncHeaderDropdownWithView(viewId) {
+    const select = document.getElementById('pipeline-filter-select');
+    if (!select) return;
+    if (!viewId) {
+        select.value = '';
+    } else {
+        const viewVal = 'view:' + viewId;
+        const opt = [...select.options].find(o => o.value === viewVal);
+        if (opt) select.value = viewVal;
+    }
 }
 
 function renderFilterViews() {
@@ -2700,6 +2712,9 @@ async function loadDataByDates(dateFrom, dateTo) {
         } else {
             renderAll();
             showDashboard();
+            
+            // Aplicar visão salva selecionada no dropdown (filtros de coluna)
+            _applySelectedViewAfterLoad();
             
             dashboardLoaded = false;
             loadDashboard(true);
@@ -7729,28 +7744,63 @@ setInterval(loadSchedulerConfig, 60000);
 
 <script>
 let _pipelineFilters = [];
+let _allFilterViews = [];
 
 async function loadPipelineFilters() {
     try {
-        const res = await fetch('/api/pipeline-filters');
-        const data = await res.json();
-        if (data.ok) {
-            _pipelineFilters = data.filters || [];
-            const select = document.getElementById('pipeline-filter-select');
-            if (select) {
-                const currentVal = select.value;
-                select.innerHTML = '<option value="">Sem filtro (tudo)</option>';
+        // Carregar filtros de pipeline E todas as visões salvas em paralelo
+        const [pipeRes, viewsRes] = await Promise.all([
+            fetch('/api/pipeline-filters'),
+            fetch('/api/filter-views'),
+        ]);
+        const pipeData = await pipeRes.json();
+        const viewsData = await viewsRes.json();
+
+        _pipelineFilters = (pipeData.ok ? pipeData.filters : []) || [];
+        _allFilterViews = (viewsData.ok ? viewsData.views : []) || [];
+
+        // Visões existentes (target != 'pipeline')
+        const existingViews = _allFilterViews.filter(v => v.target !== 'pipeline');
+
+        const select = document.getElementById('pipeline-filter-select');
+        if (select) {
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Sem filtro (tudo)</option>';
+
+            // Grupo: filtros de pipeline
+            if (_pipelineFilters.length > 0) {
+                const grp1 = document.createElement('optgroup');
+                grp1.label = '⚙ Filtros de Pipeline';
                 _pipelineFilters.forEach(f => {
                     const state = f.state || {};
                     const desc = [];
                     if (state.countries) desc.push(state.countries.join(','));
                     if (state.tiers) desc.push('Tier ' + state.tiers.join(','));
                     if (state.league_ids) desc.push(state.league_ids.length + ' ligas');
-                    const label = f.name + (desc.length ? ` (${desc.join(' | ')})` : '');
-                    select.innerHTML += `<option value="${f.id}">${label}</option>`;
+                    const opt = document.createElement('option');
+                    opt.value = 'pipe:' + f.id;
+                    opt.textContent = f.name + (desc.length ? ` (${desc.join(' | ')})` : '');
+                    grp1.appendChild(opt);
                 });
-                if (currentVal) select.value = currentVal;
+                select.appendChild(grp1);
             }
+
+            // Grupo: visões salvas existentes
+            if (existingViews.length > 0) {
+                const grp2 = document.createElement('optgroup');
+                grp2.label = '📌 Visões Salvas';
+                existingViews.forEach(v => {
+                    const state = typeof v.state === 'string' ? JSON.parse(v.state) : (v.state || {});
+                    const opt = document.createElement('option');
+                    opt.value = 'view:' + v.id;
+                    const icon = v.target === 'main' ? '🎯' : '📊';
+                    opt.textContent = icon + ' ' + v.name;
+                    grp2.appendChild(opt);
+                });
+                select.appendChild(grp2);
+            }
+
+            if (currentVal) select.value = currentVal;
         }
     } catch(e) { console.error('Erro ao carregar filtros:', e); }
 }
@@ -7758,12 +7808,73 @@ async function loadPipelineFilters() {
 function getSelectedFilter() {
     const select = document.getElementById('pipeline-filter-select');
     if (!select || !select.value) return null;
-    return _pipelineFilters.find(f => f.id === select.value) || null;
+    const val = select.value;
+
+    if (val.startsWith('pipe:')) {
+        const id = val.substring(5);
+        return _pipelineFilters.find(f => f.id === id) || null;
+    }
+    if (val.startsWith('view:')) {
+        const id = val.substring(5);
+        const v = _allFilterViews.find(f => f.id === id);
+        if (!v) return null;
+        return { ...v, state: typeof v.state === 'string' ? JSON.parse(v.state) : v.state };
+    }
+    return null;
 }
 
 function getSelectedFilterState() {
-    const f = getSelectedFilter();
-    return f ? f.state : null;
+    const select = document.getElementById('pipeline-filter-select');
+    if (!select || !select.value) return null;
+    const val = select.value;
+
+    // Filtros de pipeline => aplicar no backend
+    if (val.startsWith('pipe:')) {
+        const f = getSelectedFilter();
+        return f ? f.state : null;
+    }
+    // Visões salvas => aplicam client-side, não enviar ao backend
+    return null;
+}
+
+function _applySelectedViewAfterLoad() {
+    const select = document.getElementById('pipeline-filter-select');
+    if (!select || !select.value) return;
+    const val = select.value;
+    if (!val.startsWith('view:')) return;
+    const id = val.substring(5);
+    const v = _allFilterViews.find(f => f.id === id);
+    if (!v) return;
+    const state = typeof v.state === 'string' ? JSON.parse(v.state) : v.state;
+    _fvActiveId = v.id;
+    _applyMainFilters(state);
+    renderFilterViews();
+}
+
+function onPipelineFilterChange() {
+    const select = document.getElementById('pipeline-filter-select');
+    if (!select) return;
+    const val = select.value;
+
+    if (val.startsWith('view:')) {
+        const id = val.substring(5);
+        const v = _allFilterViews.find(f => f.id === id);
+        if (v) {
+            const state = typeof v.state === 'string' ? JSON.parse(v.state) : v.state;
+            _fvActiveId = v.id;
+            _applyMainFilters(state);
+            renderFilterViews();
+        }
+    } else if (val.startsWith('pipe:')) {
+        _fvActiveId = null;
+        clearAllFiltersGlobal();
+        renderFilterViews();
+        _triggerDateLoad(true);
+    } else {
+        _fvActiveId = null;
+        clearAllFiltersGlobal();
+        renderFilterViews();
+    }
 }
 
 function openFilterManager() {
@@ -7777,26 +7888,50 @@ function closeFilterManager() {
 
 function renderFilterList() {
     const el = document.getElementById('filter-list');
-    if (!_pipelineFilters.length) {
-        el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:12px;text-align:center">Nenhum filtro salvo. Crie um abaixo.</div>';
-        return;
-    }
     let html = '';
-    _pipelineFilters.forEach(f => {
-        const state = f.state || {};
-        const parts = [];
-        if (state.countries) parts.push(`🌍 ${state.countries.join(', ')}`);
-        if (state.tiers) parts.push(`🏆 Tiers: ${state.tiers.join(', ')}`);
-        if (state.league_ids) parts.push(`⚽ ${state.league_ids.length} ligas`);
-        if (state.min_league_tier) parts.push(`Min: ${state.min_league_tier}`);
-        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
-            <div>
-                <div style="font-weight:600;font-size:13px">${f.name}</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${parts.join(' │ ') || 'Sem detalhes'}</div>
-            </div>
-            <button onclick="deletePipelineFilter('${f.id}')" style="background:none;border:1px solid var(--accent-red);color:var(--accent-red);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px">🗑</button>
-        </div>`;
-    });
+
+    // Filtros de pipeline
+    if (_pipelineFilters.length > 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">⚙ Filtros de Pipeline</div>';
+        _pipelineFilters.forEach(f => {
+            const state = f.state || {};
+            const parts = [];
+            if (state.countries) parts.push(`🌍 ${state.countries.join(', ')}`);
+            if (state.tiers) parts.push(`🏆 Tiers: ${state.tiers.join(', ')}`);
+            if (state.league_ids) parts.push(`⚽ ${state.league_ids.length} ligas`);
+            if (state.min_league_tier) parts.push(`Min: ${state.min_league_tier}`);
+            html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+                <div>
+                    <div style="font-weight:600;font-size:13px">${f.name}</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${parts.join(' │ ') || 'Sem detalhes'}</div>
+                </div>
+                <button onclick="deletePipelineFilter('${f.id}')" style="background:none;border:1px solid var(--accent-red);color:var(--accent-red);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px">🗑</button>
+            </div>`;
+        });
+    }
+
+    // Visões salvas existentes (do sistema principal)
+    const existingViews = _allFilterViews.filter(v => v.target !== 'pipeline');
+    if (existingViews.length > 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);margin:12px 0 6px;font-weight:600">📌 Visões Salvas (do sistema)</div>';
+        existingViews.forEach(v => {
+            const state = typeof v.state === 'string' ? JSON.parse(v.state) : (v.state || {});
+            const icon = v.target === 'main' ? '🎯' : '📊';
+            const stateKeys = Object.keys(state).filter(k => state[k] !== null && state[k] !== undefined && state[k] !== '');
+            const desc = stateKeys.length > 0 ? stateKeys.length + ' filtros ativos' : 'Filtros de coluna';
+            html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;opacity:0.85">
+                <div>
+                    <div style="font-weight:600;font-size:13px">${icon} ${v.name}</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${desc} — use no dropdown do header</div>
+                </div>
+                <span style="font-size:10px;color:var(--text-muted);padding:2px 8px;border:1px solid var(--border);border-radius:4px">${v.target}</span>
+            </div>`;
+        });
+    }
+
+    if (!html) {
+        html = '<div style="color:var(--text-muted);font-size:12px;padding:12px;text-align:center">Nenhum filtro salvo. Crie um abaixo ou salve uma visão na tabela.</div>';
+    }
     el.innerHTML = html;
 }
 
