@@ -497,6 +497,7 @@ class ValueOpportunity:
     confidence_score: float = 0.0  # Score numérico de confiança (0-100)
     bet365_available: bool = False  # True = Bet365 oferece este mercado para este jogo
     analysis_type: str = "PRE_JOGO"  # "PRE_JOGO" ou "RETROATIVA"
+    identified_at: str = ""          # ISO timestamp de quando a oportunidade foi identificada
     result_status: str = "PENDENTE"  # GREEN, RED, VOID, PENDENTE
     result_score: str = ""           # ex: "2-1"
     result_ht_score: str = ""        # ex: "1-0" (primeiro tempo)
@@ -1637,6 +1638,8 @@ def find_all_value(matches: list[MatchAnalysis]) -> list[ValueOpportunity]:
     rejected_by_scan = 0
     pre_game_count = 0
     retro_count = 0
+    skipped_not_pregame = 0
+    now_iso = datetime.now(config.BR_TIMEZONE).isoformat()
     
     for match in matches:
         if not ((match.has_real_odds or match.has_real_standings) and match.data_quality_score >= 0.20):
@@ -1644,14 +1647,17 @@ def find_all_value(matches: list[MatchAnalysis]) -> list[ValueOpportunity]:
             
         opps = scan_match_for_value(match)
         if opps:
-            # Determinar tipo de análise para cada oportunidade do match
             analysis_type = determine_analysis_type(match.match_date, match.match_time)
+            
+            if analysis_type != "PRE_JOGO":
+                skipped_not_pregame += len(opps)
+                retro_count += len(opps)
+                continue
+            
             for opp in opps:
                 opp.analysis_type = analysis_type
-                if analysis_type == "PRE_JOGO":
-                    pre_game_count += 1
-                else:
-                    retro_count += 1
+                opp.identified_at = now_iso
+                pre_game_count += 1
 
             all_opps.extend(opps)
             processed_count += 1
@@ -1668,7 +1674,7 @@ def find_all_value(matches: list[MatchAnalysis]) -> list[ValueOpportunity]:
     all_opps.sort(key=lambda x: x.edge, reverse=True)
 
     print(f"[VALUE] {len(all_opps)} oportunidades com Edge >= {config.MIN_EDGE_THRESHOLD*100:.0f}% encontradas")
-    print(f"[VALUE] Tipo: 🟢 {pre_game_count} Pré-Jogo | 🔵 {retro_count} Retroativa")
+    print(f"[VALUE] Tipo: 🟢 {pre_game_count} Pré-Jogo | 🔵 {retro_count} Retroativa (descartadas) | ⏩ {skipped_not_pregame} ignoradas (jogo já iniciou)")
 
     # Estatísticas
     if all_opps:

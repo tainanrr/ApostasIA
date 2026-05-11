@@ -375,7 +375,8 @@ def _api_football_request(endpoint: str, params: dict, cache_only: bool = False,
 
 def _fetch_fixtures(date: str, include_finished: bool = False) -> list[dict]:
     """Busca TODOS os jogos agendados para uma data.
-    Se include_finished=True, inclui jogos FT junto com NS/Live (para análise retroativa)."""
+    Se include_finished=True, inclui jogos FT junto com NS (para análise retroativa).
+    Para análise pré-jogo normal, retorna APENAS jogos NS (Not Started)."""
     print(f"  [ETL] Buscando fixtures para {date}{'  [+FT retroativo]' if include_finished else ''}...")
     data = _api_football_request("fixtures", {"date": date})
     raw = data.get("response", [])
@@ -387,29 +388,26 @@ def _fetch_fixtures(date: str, include_finished: bool = False) -> list[dict]:
         status_counts[st] = status_counts.get(st, 0) + 1
     print(f"  [ETL] Status breakdown: {status_counts}")
 
-    # Prioridade: jogos não iniciados
+    # Jogos não iniciados — SEMPRE incluídos (são o foco principal)
     ns_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") == "NS"]
 
-    # Jogos em andamento
-    live_status = {"1H", "HT", "2H", "LIVE", "ET", "P", "BT"}
-    live_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in live_status]
-
-    # TBD
+    # TBD/Suspensos — incluir pois podem ser reagendados
     tbd_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in {"TBD", "SUSP", "PST"}]
 
-    # Jogos finalizados
-    ft_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in {"FT", "AET", "PEN"}]
+    fixtures = ns_fixtures + tbd_fixtures
 
-    # Combinar: NS primeiro, depois live, depois TBD
-    fixtures = ns_fixtures + live_fixtures + tbd_fixtures
+    # Jogos finalizados — APENAS se include_finished=True (análise retroativa explícita)
+    if include_finished:
+        ft_fixtures = [f for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in {"FT", "AET", "PEN"}]
+        if ft_fixtures:
+            print(f"  [ETL] 📊 Incluindo {len(ft_fixtures)} jogos finalizados para análise retroativa")
+            fixtures = fixtures + ft_fixtures
 
-    # Se include_finished=True OU não há jogos futuros, incluir jogos FT
-    if include_finished and ft_fixtures:
-        print(f"  [ETL] 📊 Incluindo {len(ft_fixtures)} jogos finalizados para análise retroativa")
-        fixtures = fixtures + ft_fixtures
-    elif not fixtures and ft_fixtures:
-        print(f"  [ETL] ⚠️  Sem jogos futuros — incluindo {len(ft_fixtures)} jogos finalizados para análise")
-        fixtures = ft_fixtures
+    # Jogos ao vivo — NÃO incluir (não são pré-game)
+    live_status = {"1H", "HT", "2H", "LIVE", "ET", "P", "BT"}
+    live_count = sum(1 for f in raw if f.get("fixture", {}).get("status", {}).get("short", "") in live_status)
+    if live_count > 0:
+        print(f"  [ETL] ⏩ {live_count} jogos ao vivo ignorados (não são pré-game)")
 
     print(f"  [ETL] {len(fixtures)} jogos selecionados para {date} (de {len(raw)} total)")
     return fixtures
@@ -1367,11 +1365,11 @@ def _ingest_real_data(analysis_dates: list[str] = None, progress_cb=None, filter
     _report(phase="Buscando fixtures", detail=f"{len(analysis_dates)} datas...", total_days=len(analysis_dates))
     for _di, date in enumerate(analysis_dates):
         _report(current_day=_di+1, current_date=date, detail=f"Fixtures {date} ({_di+1}/{len(analysis_dates)})")
-        # Incluir jogos FT para datas passadas E para hoje (jogos que já terminaram mais cedo)
-        include_ft = date <= today_str
+        # Apenas datas PASSADAS incluem jogos FT (para análise retroativa)
+        # Hoje e futuras: apenas jogos NS (Not Started) para garantir pré-game
+        include_ft = date < today_str
         if include_ft:
-            label = "hoje (inclui FT)" if date == today_str else "passada"
-            print(f"  [ETL] ⏪ Data {label}: {date} — incluindo jogos finalizados")
+            print(f"  [ETL] ⏪ Data passada: {date} — incluindo jogos finalizados")
         fixes = _fetch_fixtures(date, include_finished=include_ft)
         all_fixtures_raw.extend(fixes)
 

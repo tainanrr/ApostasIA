@@ -325,6 +325,7 @@ def save_opportunities(run_id: str, opportunities: list[dict]) -> int:
                 "urgency_away": o.get("urgency_away", 0.5),
                 "confidence_score": o.get("confidence_score", 0.0),
                 "analysis_type": o.get("analysis_type", "PRE_JOGO"),
+                "identified_at": o.get("identified_at") or datetime.now().isoformat(),
                 "bet365_available": 1 if o.get("bet365_available") else 0,
                 "league_tier": o.get("league_tier", "C"),
             })
@@ -332,7 +333,7 @@ def save_opportunities(run_id: str, opportunities: list[dict]) -> int:
         # Inserir em lotes de 100 (limite do Supabase)
         saved = 0
         batch_size = 100
-        _new_columns = {"confidence_score", "analysis_type", "bet365_available", "league_tier"}
+        _new_columns = {"confidence_score", "analysis_type", "identified_at", "bet365_available", "league_tier"}
         _retry_without_new = False
 
         for i in range(0, len(rows), batch_size):
@@ -597,10 +598,11 @@ def _upsert_opportunities(run_id: str, new_opportunities: list[dict]):
     """
     Estratégia de UPSERT inteligente para oportunidades:
       1. Busca PENDENTES existentes no mesmo range de datas
-      2. Se já existe PENDENTE com mesmo (match_id, market, selection): DELETA a antiga
-      3. Insere TODAS as novas oportunidades
-      4. Oportunidades anteriores sem equivalente: PRESERVADAS (nunca tocadas)
-      5. Oportunidades já resolvidas (GREEN/RED/VOID): NUNCA tocadas
+      2. Se já existe PENDENTE com mesmo (match_id, market, selection) E a nova run
+         TAMBÉM tem essa mesma oportunidade: substitui (deleta antiga, insere nova)
+      3. Se a oportunidade existente NÃO tem equivalente na nova run: PRESERVA
+         (a oportunidade pode ter desaparecido porque odds mudaram, mas a original é válida)
+      4. Oportunidades já resolvidas (GREEN/RED/VOID): NUNCA tocadas
     """
     sb = get_client()
     if not sb or not run_id or not new_opportunities:
@@ -645,7 +647,6 @@ def _upsert_opportunities(run_id: str, new_opportunities: list[dict]):
         print(f"[SUPABASE] {len(existing_pendentes)} pendentes existentes no range {date_from} -> {date_to}")
 
         # 3. Mapear existentes por (match_id, market_lower, selection_lower)
-        #    Pode haver múltiplas (de runs diferentes) → acumular IDs
         existing_map = {}
         for e in existing_pendentes:
             key = (e.get("match_id"), (e.get("market") or "").lower(), (e.get("selection") or "").lower())
@@ -653,15 +654,23 @@ def _upsert_opportunities(run_id: str, new_opportunities: list[dict]):
                 existing_map[key] = []
             existing_map[key].append(e["id"])
 
-        # 4. Identificar quais pendentes existentes serão substituídas pelas novas
-        ids_to_delete = []
+        # 4. Mapear novas oportunidades
+        new_keys = set()
         for o in new_opportunities:
             key = (o.get("match_id"), (o.get("market") or "").lower(), (o.get("selection") or "").lower())
+            new_keys.add(key)
+
+        # 5. Deletar APENAS pendentes que serão SUBSTITUÍDAS (têm equivalente na nova run)
+        ids_to_delete = []
+        for key in new_keys:
             if key in existing_map:
                 ids_to_delete.extend(existing_map[key])
-                del existing_map[key]  # Consumido — não deletar de novo
 
-        # 5. Deletar duplicatas em lotes
+        preserved_count = 0
+        for key, ids in existing_map.items():
+            if key not in new_keys:
+                preserved_count += len(ids)
+
         if ids_to_delete:
             batch_size = 100
             total_deleted = 0
@@ -674,13 +683,11 @@ def _upsert_opportunities(run_id: str, new_opportunities: list[dict]):
                     print(f"[SUPABASE] Erro ao deletar lote de duplicatas: {e}")
             print(f"[SUPABASE] {total_deleted} pendentes substituídas (mesma partida/mercado/seleção)")
 
+        if preserved_count > 0:
+            print(f"[SUPABASE] {preserved_count} oportunidades anteriores PRESERVADAS (sem equivalente na nova run — odds podem ter mudado)")
+
         # 6. Inserir TODAS as novas oportunidades
         save_opportunities(run_id, new_opportunities)
-
-        # 7. Log de preservadas (existentes que não tiveram equivalente na nova run)
-        preserved_count = sum(len(ids) for ids in existing_map.values())
-        if preserved_count > 0:
-            print(f"[SUPABASE] {preserved_count} oportunidades anteriores preservadas (sem equivalente na nova run)")
 
     except Exception as e:
         print(f"[SUPABASE] Erro no upsert: {e}")
