@@ -2638,7 +2638,9 @@ async function loadDataByDates(dateFrom, dateTo) {
     
     const badge = document.getElementById("badge-status");
     const nDays = Math.max(1, Math.round((new Date(dateTo) - new Date(dateFrom)) / 86400000) + 1);
-    badge.textContent = `● CARREGANDO (${nDays} dias)...`;
+    const hasFilter = typeof getSelectedFilterState === 'function' && getSelectedFilterState() !== null;
+    const filterLabel = hasFilter ? ' + filtro' : '';
+    badge.textContent = `● CARREGANDO (${nDays} dias${filterLabel})...`;
     badge.style.color = "var(--accent-yellow)";
     badge.style.borderColor = "var(--accent-yellow)";
     
@@ -2664,9 +2666,28 @@ async function loadDataByDates(dateFrom, dateTo) {
         let loadUrl = `/api/load-by-dates?date_from=${dateFrom}&date_to=${dateTo}`;
         const selectedFilter = typeof getSelectedFilterState === 'function' ? getSelectedFilterState() : null;
         if (selectedFilter) {
+            // Pipeline filters (countries/tiers/league_ids)
             if (selectedFilter.countries) loadUrl += `&countries=${selectedFilter.countries.join(',')}`;
             if (selectedFilter.tiers) loadUrl += `&tiers=${selectedFilter.tiers.join(',')}`;
             if (selectedFilter.league_ids) loadUrl += `&leagues=${selectedFilter.league_ids.map(String).join(',')}`;
+            // View filters (markets, selections, odds, edge, etc.)
+            if (selectedFilter.markets) loadUrl += `&markets=${encodeURIComponent(selectedFilter.markets.join('||'))}`;
+            if (selectedFilter.selections) loadUrl += `&selections=${encodeURIComponent(selectedFilter.selections.join('||'))}`;
+            if (selectedFilter.confidence) loadUrl += `&confidence=${selectedFilter.confidence.join(',')}`;
+            if (selectedFilter.leagues) loadUrl += `&league_names=${encodeURIComponent(selectedFilter.leagues.join('||'))}`;
+            if (selectedFilter.analysis_types) loadUrl += `&analysis_types=${selectedFilter.analysis_types.join(',')}`;
+            if (selectedFilter.results) loadUrl += `&results=${selectedFilter.results.join(',')}`;
+            if (selectedFilter.odd_min) loadUrl += `&odd_min=${selectedFilter.odd_min}`;
+            if (selectedFilter.odd_max) loadUrl += `&odd_max=${selectedFilter.odd_max}`;
+            if (selectedFilter.fair_odd_min) loadUrl += `&fair_odd_min=${selectedFilter.fair_odd_min}`;
+            if (selectedFilter.fair_odd_max) loadUrl += `&fair_odd_max=${selectedFilter.fair_odd_max}`;
+            if (selectedFilter.edge_min) loadUrl += `&edge_min=${selectedFilter.edge_min}`;
+            if (selectedFilter.edge_max) loadUrl += `&edge_max=${selectedFilter.edge_max}`;
+            if (selectedFilter.prob_min) loadUrl += `&prob_min=${selectedFilter.prob_min}`;
+            if (selectedFilter.prob_max) loadUrl += `&prob_max=${selectedFilter.prob_max}`;
+            if (selectedFilter.score_min) loadUrl += `&score_min=${selectedFilter.score_min}`;
+            if (selectedFilter.score_max) loadUrl += `&score_max=${selectedFilter.score_max}`;
+            if (selectedFilter.team) loadUrl += `&team=${encodeURIComponent(selectedFilter.team)}`;
             console.log('[LOAD] Filtro aplicado:', selectedFilter);
         }
         const res = await fetch(loadUrl, {
@@ -4332,10 +4353,7 @@ function renderAll() {
     populateFilters();
     applyColumnFilters();
     renderMatches();
-    _fvSyncFromCloud().then(() => {
-        renderFilterViews();
-        _applySelectedViewAfterLoad();
-    });
+    _fvSyncFromCloud().then(() => renderFilterViews());
 }
 
 function renderRunInfo() {
@@ -7829,13 +7847,53 @@ function getSelectedFilterState() {
     if (!select || !select.value) return null;
     const val = select.value;
 
-    // Filtros de pipeline => aplicar no backend
+    // Filtros de pipeline => enviar state diretamente
     if (val.startsWith('pipe:')) {
         const f = getSelectedFilter();
         return f ? f.state : null;
     }
-    // Visões salvas => aplicam client-side, não enviar ao backend
+    // Visões salvas => converter state de coluna para params de filtro backend
+    if (val.startsWith('view:')) {
+        const id = val.substring(5);
+        let v = _allFilterViews.find(f => f.id === id);
+        if (!v && _fvCache) v = _fvCache.find(f => f.id === id);
+        if (!v) { const local = _fvLoad(); v = local.find(f => f.id === id); }
+        if (!v) return null;
+        const state = typeof v.state === 'string' ? JSON.parse(v.state) : v.state;
+        return _convertViewStateToBackendFilters(state);
+    }
     return null;
+}
+
+function _convertViewStateToBackendFilters(state) {
+    if (!state) return null;
+    const filters = {};
+
+    // Multi-selects => arrays
+    if (state['ms:cf-market'] && state['ms:cf-market'].length) filters.markets = state['ms:cf-market'];
+    if (state['ms:cf-selection'] && state['ms:cf-selection'].length) filters.selections = state['ms:cf-selection'];
+    if (state['ms:cf-confidence'] && state['ms:cf-confidence'].length) filters.confidence = state['ms:cf-confidence'];
+    if (state['ms:cf-league'] && state['ms:cf-league'].length) filters.leagues = state['ms:cf-league'];
+    if (state['ms:cf-league-tier'] && state['ms:cf-league-tier'].length) filters.tiers = state['ms:cf-league-tier'];
+    if (state['ms:cf-analysis-type'] && state['ms:cf-analysis-type'].length) filters.analysis_types = state['ms:cf-analysis-type'];
+    if (state['ms:cf-result'] && state['ms:cf-result'].length) filters.results = state['ms:cf-result'];
+
+    // Ranges numéricos
+    if (state['cf-odd-min']) filters.odd_min = state['cf-odd-min'];
+    if (state['cf-odd-max']) filters.odd_max = state['cf-odd-max'];
+    if (state['cf-fair-odd-min']) filters.fair_odd_min = state['cf-fair-odd-min'];
+    if (state['cf-fair-odd-max']) filters.fair_odd_max = state['cf-fair-odd-max'];
+    if (state['cf-edge-min']) filters.edge_min = state['cf-edge-min'];
+    if (state['cf-edge-max']) filters.edge_max = state['cf-edge-max'];
+    if (state['cf-prob-min']) filters.prob_min = state['cf-prob-min'];
+    if (state['cf-prob-max']) filters.prob_max = state['cf-prob-max'];
+    if (state['cf-score-min']) filters.score_min = state['cf-score-min'];
+    if (state['cf-score-max']) filters.score_max = state['cf-score-max'];
+
+    // Texto
+    if (state['cf-team']) filters.team = state['cf-team'];
+
+    return Object.keys(filters).length > 0 ? filters : null;
 }
 
 function _applySelectedViewAfterLoad() {
@@ -7863,24 +7921,14 @@ function onPipelineFilterChange() {
     if (!select) return;
     const val = select.value;
 
-    if (val.startsWith('view:')) {
-        const id = val.substring(5);
-        const v = _allFilterViews.find(f => f.id === id);
-        if (v) {
-            const state = typeof v.state === 'string' ? JSON.parse(v.state) : v.state;
-            _fvActiveId = v.id;
-            _applyMainFilters(state);
-            renderFilterViews();
-        }
-    } else if (val.startsWith('pipe:')) {
-        _fvActiveId = null;
-        clearAllFiltersGlobal();
-        renderFilterViews();
+    // Limpar filtros de coluna atuais
+    _fvActiveId = null;
+    clearAllFiltersGlobal();
+    renderFilterViews();
+
+    if (val.startsWith('view:') || val.startsWith('pipe:')) {
+        // Qualquer filtro selecionado => recarregar dados do backend com filtro
         _triggerDateLoad(true);
-    } else {
-        _fvActiveId = null;
-        clearAllFiltersGlobal();
-        renderFilterViews();
     }
 }
 

@@ -1505,14 +1505,36 @@ def api_load_by_dates():
         return jsonify({"ok": False, "error": "date_from e date_to são obrigatórios"}), 400
 
     # Filtros opcionais via query params
-    filter_leagues = flask_request.args.get("leagues", "")  # ex: "Premier League,La Liga"
+    filter_leagues = flask_request.args.get("leagues", "")  # IDs de liga (pipeline)
     filter_countries = flask_request.args.get("countries", "")  # ex: "England,Spain"
     filter_tiers = flask_request.args.get("tiers", "")  # ex: "S,A"
     filter_confidence = flask_request.args.get("confidence", "")  # ex: "ALTO,MÉDIO"
 
-    has_filters = any([filter_leagues, filter_countries, filter_tiers, filter_confidence])
+    # Filtros avançados (visões salvas)
+    filter_markets = flask_request.args.get("markets", "")  # "Under 1,5 FT||Over 2,5 FT" (separador ||)
+    filter_selections = flask_request.args.get("selections", "")
+    filter_league_names = flask_request.args.get("league_names", "")  # nomes de liga (visões)
+    filter_analysis_types = flask_request.args.get("analysis_types", "")
+    filter_results = flask_request.args.get("results", "")
+    filter_odd_min = flask_request.args.get("odd_min", "")
+    filter_odd_max = flask_request.args.get("odd_max", "")
+    filter_fair_odd_min = flask_request.args.get("fair_odd_min", "")
+    filter_fair_odd_max = flask_request.args.get("fair_odd_max", "")
+    filter_edge_min = flask_request.args.get("edge_min", "")
+    filter_edge_max = flask_request.args.get("edge_max", "")
+    filter_prob_min = flask_request.args.get("prob_min", "")
+    filter_prob_max = flask_request.args.get("prob_max", "")
+    filter_score_min = flask_request.args.get("score_min", "")
+    filter_score_max = flask_request.args.get("score_max", "")
+    filter_team = flask_request.args.get("team", "")
+
+    has_filters = any([filter_leagues, filter_countries, filter_tiers, filter_confidence,
+                       filter_markets, filter_selections, filter_league_names,
+                       filter_analysis_types, filter_results, filter_odd_min, filter_odd_max,
+                       filter_fair_odd_min, filter_fair_odd_max, filter_edge_min, filter_edge_max,
+                       filter_prob_min, filter_prob_max, filter_score_min, filter_score_max, filter_team])
     if has_filters:
-        print(f"[API/LOAD-BY-DATES] Filtros: leagues={filter_leagues or '-'} countries={filter_countries or '-'} tiers={filter_tiers or '-'} conf={filter_confidence or '-'}")
+        print(f"[API/LOAD-BY-DATES] Filtros ativos: {sum(1 for x in [filter_leagues, filter_countries, filter_tiers, filter_confidence, filter_markets, filter_selections, filter_league_names, filter_analysis_types, filter_results, filter_odd_min, filter_odd_max, filter_edge_min, filter_edge_max, filter_team] if x)} params")
 
     print(f"[API/LOAD-BY-DATES] Buscando dados Supabase: {date_from} -> {date_to}")
     _t0 = time.time()
@@ -1557,6 +1579,22 @@ def api_load_by_dates():
             _countries_set = set(x.strip().lower() for x in filter_countries.split(",") if x.strip()) if filter_countries else None
             _tiers_set = set(x.strip().upper() for x in filter_tiers.split(",") if x.strip()) if filter_tiers else None
             _conf_set = set(x.strip().upper() for x in filter_confidence.split(",") if x.strip()) if filter_confidence else None
+            _markets_set = set(x.strip().lower() for x in filter_markets.split("||") if x.strip()) if filter_markets else None
+            _selections_set = set(x.strip().lower() for x in filter_selections.split("||") if x.strip()) if filter_selections else None
+            _league_names_set = set(x.strip() for x in filter_league_names.split("||") if x.strip()) if filter_league_names else None
+            _analysis_set = set(x.strip().upper() for x in filter_analysis_types.split(",") if x.strip()) if filter_analysis_types else None
+            _results_set = set(x.strip().upper() for x in filter_results.split(",") if x.strip()) if filter_results else None
+            _odd_min = float(filter_odd_min) if filter_odd_min else None
+            _odd_max = float(filter_odd_max) if filter_odd_max else None
+            _fair_odd_min = float(filter_fair_odd_min) if filter_fair_odd_min else None
+            _fair_odd_max = float(filter_fair_odd_max) if filter_fair_odd_max else None
+            _edge_min = float(filter_edge_min) if filter_edge_min else None
+            _edge_max = float(filter_edge_max) if filter_edge_max else None
+            _prob_min = float(filter_prob_min) if filter_prob_min else None
+            _prob_max = float(filter_prob_max) if filter_prob_max else None
+            _score_min = float(filter_score_min) if filter_score_min else None
+            _score_max = float(filter_score_max) if filter_score_max else None
+            _team_q = filter_team.strip().lower() if filter_team else None
 
             def _pass_filter(opp):
                 if _leagues_set and (opp.get("league_name") or "") not in _leagues_set:
@@ -1569,13 +1607,58 @@ def api_load_by_dates():
                         return False
                 if _conf_set and (opp.get("confidence") or "").upper() not in _conf_set:
                     return False
+                if _markets_set and (opp.get("market") or "").lower() not in _markets_set:
+                    return False
+                if _selections_set and (opp.get("selection") or "").lower() not in _selections_set:
+                    return False
+                if _league_names_set and (opp.get("league_name") or "") not in _league_names_set:
+                    return False
+                if _analysis_set and (opp.get("analysis_type") or "").upper() not in _analysis_set:
+                    return False
+                if _results_set and (opp.get("result_status") or "PENDENTE").upper() not in _results_set:
+                    return False
+                # Odds (valores no Supabase são floats)
+                opp_odd = float(opp.get("market_odd") or 0)
+                if _odd_min and opp_odd < _odd_min:
+                    return False
+                if _odd_max and opp_odd > _odd_max:
+                    return False
+                opp_fair = float(opp.get("fair_odd") or 0)
+                if _fair_odd_min and opp_fair > 0 and opp_fair < _fair_odd_min:
+                    return False
+                if _fair_odd_max and opp_fair > 0 and opp_fair > _fair_odd_max:
+                    return False
+                # Edge (armazenado como decimal 0.05 = 5%)
+                opp_edge = float(opp.get("edge") or 0) * 100
+                if _edge_min and opp_edge < _edge_min:
+                    return False
+                if _edge_max and opp_edge > _edge_max:
+                    return False
+                # Prob (armazenado como decimal 0.71 = 71%)
+                opp_prob = float(opp.get("model_prob") or 0) * 100
+                if _prob_min and opp_prob < _prob_min:
+                    return False
+                if _prob_max and opp_prob > _prob_max:
+                    return False
+                # Score
+                opp_score = float(opp.get("confidence_score") or 0)
+                if _score_min and opp_score < _score_min:
+                    return False
+                if _score_max and opp_score > _score_max:
+                    return False
+                # Team
+                if _team_q:
+                    home = (opp.get("home_team") or "").lower()
+                    away = (opp.get("away_team") or "").lower()
+                    if _team_q not in home and _team_q not in away:
+                        return False
                 return True
 
             raw_opps = [o for o in raw_opps if _pass_filter(o)]
 
             # Filtrar matches correspondentes
             _match_ids_with_opps = {o.get("match_id") for o in raw_opps}
-            if _leagues_set or _countries_set or _tiers_set:
+            if _leagues_set or _countries_set or _tiers_set or _league_names_set:
                 def _pass_match_filter(m):
                     if _leagues_set and (m.get("league_name") or "") not in _leagues_set:
                         return False
@@ -1585,6 +1668,8 @@ def api_load_by_dates():
                         m_tier = config.get_league_tier(m.get("league_name", ""), m.get("league_country", ""))
                         if m_tier not in _tiers_set:
                             return False
+                    if _league_names_set and (m.get("league_name") or "") not in _league_names_set:
+                        return False
                     return True
                 raw_matches = [m for m in raw_matches if _pass_match_filter(m)]
 
