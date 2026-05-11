@@ -720,10 +720,11 @@ def _build_leagues_list() -> list:
 # ENGINE
 # ═══════════════════════════════════════════════
 
-def run_engine(analysis_dates: list[str] = None, progress_cb=None):
+def run_engine(analysis_dates: list[str] = None, progress_cb=None, filters: dict = None):
     """Executa o pipeline completo, cacheia e persiste em disco.
     Aceita lista customizada de datas; default = config.ANALYSIS_DATES.
-    progress_cb: callback opcional para reportar progresso (kwargs: phase, detail, etc.)"""
+    progress_cb: callback opcional para reportar progresso (kwargs: phase, detail, etc.)
+    filters: dict opcional com league_ids, countries, tiers para filtrar fixtures."""
     start = time.time()
     _report = progress_cb or (lambda **kw: None)
 
@@ -731,7 +732,7 @@ def run_engine(analysis_dates: list[str] = None, progress_cb=None):
         analysis_dates = config.get_default_dates()
 
     _report(phase="Ingestão de dados", detail=f"Processando {len(analysis_dates)} datas...", total_days=len(analysis_dates))
-    matches = ingest_all_fixtures(analysis_dates=analysis_dates, progress_cb=progress_cb)
+    matches = ingest_all_fixtures(analysis_dates=analysis_dates, progress_cb=progress_cb, filters=filters)
 
     _report(phase="Modelagem estatística", detail=f"Rodando modelos para {len(matches)} partidas...", matches_found=len(matches))
     matches = run_models_batch(matches)
@@ -1301,6 +1302,23 @@ def api_run():
         analysis_dates = config.get_default_dates()
         print(f"[API/RUN] Usando datas padrão (hoje + amanhã + depois de amanhã)")
 
+    # Montar filtros a partir do payload (se fornecidos)
+    run_filters = None
+    filter_name = data.get("filter_name") or data.get("filter")
+    if filter_name:
+        saved = supabase_client.get_filter_views()
+        found = [v for v in saved if v.get("name", "").lower() == filter_name.lower() or v.get("id") == filter_name]
+        if found:
+            run_filters = found[0].get("state", {})
+            print(f"[API/RUN] Filtro carregado: '{filter_name}' → {run_filters}")
+        else:
+            print(f"[API/RUN] ⚠️  Filtro '{filter_name}' não encontrado")
+
+    if data.get("filters"):
+        run_filters = run_filters or {}
+        run_filters.update(data["filters"])
+        print(f"[API/RUN] Filtros inline: {data['filters']}")
+
     exec_id = supabase_client.log_execution_start("pipeline", "manual")
 
     def _background_run():
@@ -1312,7 +1330,7 @@ def api_run():
                 current_date="", matches_found=0, opportunities_found=0,
                 api_calls=0,
             )
-            run_engine(analysis_dates=analysis_dates, progress_cb=_update_progress)
+            run_engine(analysis_dates=analysis_dates, progress_cb=_update_progress, filters=run_filters)
             supabase_client.log_execution_end(exec_id, "success", {
                 "matches": _cache["stats"].get("total_matches", 0),
                 "opportunities": _cache["stats"].get("total_opportunities", 0),
@@ -1342,6 +1360,7 @@ def api_run():
         "started": True,
         "total_days": len(analysis_dates),
         "analysis_dates": analysis_dates,
+        "filters": run_filters,
     })
 
 
@@ -1484,10 +1503,30 @@ def api_load_by_dates():
     if not date_from or not date_to:
         return jsonify({"ok": False, "error": "date_from e date_to são obrigatórios"}), 400
 
+    # Filtros opcionais via query params
+    filter_leagues = flask_request.args.get("leagues", "")  # ex: "Premier League,La Liga"
+    filter_countries = flask_request.args.get("countries", "")  # ex: "England,Spain"
+    filter_tiers = flask_request.args.get("tiers", "")  # ex: "S,A"
+    filter_confidence = flask_request.args.get("confidence", "")  # ex: "ALTO,MÉDIO"
+
+    has_filters = any([filter_leagues, filter_countries, filter_tiers, filter_confidence])
+    if has_filters:
+        print(f"[API/LOAD-BY-DATES] Filtros: leagues={filter_leagues or '-'} countries={filter_countries or '-'} tiers={filter_tiers or '-'} conf={filter_confidence or '-'}")
+
     print(f"[API/LOAD-BY-DATES] Buscando dados Supabase: {date_from} -> {date_to}")
     _t0 = time.time()
     _MAX_OPPS = 20000
-    _QUERY_TIMEOUT = 45
+
+    # Timeout dinâmico: base 60s + 2s por dia no range (mín 60, máx 300)
+    try:
+        from datetime import date as _date_cls
+        _d0 = _date_cls.fromisoformat(date_from)
+        _d1 = _date_cls.fromisoformat(date_to)
+        _n_days = max(1, (_d1 - _d0).days + 1)
+    except (ValueError, TypeError):
+        _n_days = 3
+    _QUERY_TIMEOUT = min(300, max(60, 60 + _n_days * 2))
+    print(f"[API/LOAD-BY-DATES] Periodo: {_n_days} dias | Timeout: {_QUERY_TIMEOUT}s")
 
     try:
         from concurrent.futures import TimeoutError as FuturesTimeout
@@ -1509,6 +1548,46 @@ def api_load_by_dates():
                 }), 504
 
         print(f"[API/LOAD-BY-DATES] Supabase retornou {len(raw_opps)} opps + {len(raw_matches)} matches em {time.time()-_t0:.1f}s")
+
+        # Aplicar filtros do lado do servidor (após busca no Supabase)
+        if has_filters:
+            _before_filter = len(raw_opps)
+            _leagues_set = set(x.strip() for x in filter_leagues.split(",") if x.strip()) if filter_leagues else None
+            _countries_set = set(x.strip().lower() for x in filter_countries.split(",") if x.strip()) if filter_countries else None
+            _tiers_set = set(x.strip().upper() for x in filter_tiers.split(",") if x.strip()) if filter_tiers else None
+            _conf_set = set(x.strip().upper() for x in filter_confidence.split(",") if x.strip()) if filter_confidence else None
+
+            def _pass_filter(opp):
+                if _leagues_set and (opp.get("league_name") or "") not in _leagues_set:
+                    return False
+                if _countries_set and (opp.get("league_country") or "").lower() not in _countries_set:
+                    return False
+                if _tiers_set:
+                    opp_tier = config.get_league_tier(opp.get("league_name", ""), opp.get("league_country", ""))
+                    if opp_tier not in _tiers_set:
+                        return False
+                if _conf_set and (opp.get("confidence") or "").upper() not in _conf_set:
+                    return False
+                return True
+
+            raw_opps = [o for o in raw_opps if _pass_filter(o)]
+
+            # Filtrar matches correspondentes
+            _match_ids_with_opps = {o.get("match_id") for o in raw_opps}
+            if _leagues_set or _countries_set or _tiers_set:
+                def _pass_match_filter(m):
+                    if _leagues_set and (m.get("league_name") or "") not in _leagues_set:
+                        return False
+                    if _countries_set and (m.get("league_country") or "").lower() not in _countries_set:
+                        return False
+                    if _tiers_set:
+                        m_tier = config.get_league_tier(m.get("league_name", ""), m.get("league_country", ""))
+                        if m_tier not in _tiers_set:
+                            return False
+                    return True
+                raw_matches = [m for m in raw_matches if _pass_match_filter(m)]
+
+            print(f"[API/LOAD-BY-DATES] Filtros: {_before_filter} → {len(raw_opps)} opps | {len(raw_matches)} matches")
 
         # Deduplicar oportunidades: manter apenas a mais recente por (match_id, market, selection)
         seen = {}
@@ -1579,6 +1658,13 @@ def api_load_by_dates():
             "api_calls_this_run": 0,
             "source": "supabase",
         }
+        if has_filters:
+            stats_summary["filters_applied"] = {
+                "leagues": filter_leagues or None,
+                "countries": filter_countries or None,
+                "tiers": filter_tiers or None,
+                "confidence": filter_confidence or None,
+            }
         if frontend_opps:
             top = max(frontend_opps, key=lambda o: o.get("edge", 0))
             stats_summary["max_edge_match"] = f"{top.get('home_team')} vs {top.get('away_team')}"
@@ -1615,7 +1701,7 @@ def api_load_by_dates():
         import traceback
         err_msg = str(e)
         if "timeout" in err_msg.lower() or "timed out" in err_msg.lower():
-            err_msg = f"Busca no Supabase excedeu o tempo limite para o período {date_from} → {date_to}. Tente um período menor."
+            err_msg = f"Busca no Supabase excedeu o tempo limite para o período {date_from} → {date_to} ({_n_days} dias). Tente um período menor ou use filtros."
         try:
             with open("_error_log.txt", "a", encoding="utf-8") as f:
                 f.write(f"\n{'='*60}\n[LOAD-BY-DATES ERROR] {e}\n")
@@ -2599,6 +2685,86 @@ def api_save_filter_view():
 def api_delete_filter_view(view_id):
     ok = supabase_client.delete_filter_view(view_id)
     return jsonify({"ok": ok})
+
+
+# ═══════════════════════════════════════════
+# PIPELINE FILTERS (Filtros para execução do pipeline)
+# ═══════════════════════════════════════════
+
+@app.route("/api/pipeline-filters")
+def api_get_pipeline_filters():
+    """Retorna filtros salvos para o pipeline (target='pipeline')."""
+    views = supabase_client.get_filter_views()
+    pipeline_filters = [v for v in views if v.get("target") == "pipeline"]
+    return jsonify({"ok": True, "filters": pipeline_filters})
+
+
+@app.route("/api/pipeline-filters", methods=["POST"])
+def api_save_pipeline_filter():
+    """Cria/atualiza um filtro para o pipeline."""
+    from flask import request
+    data = request.get_json(silent=True) or {}
+    name = data.get("name")
+    if not name:
+        return jsonify({"ok": False, "error": "Campo 'name' obrigatório"}), 400
+
+    import uuid
+    filter_id = data.get("id") or f"pf_{uuid.uuid4().hex[:8]}"
+
+    state = {}
+    if data.get("league_ids"):
+        state["league_ids"] = data["league_ids"]
+    if data.get("countries"):
+        state["countries"] = data["countries"]
+    if data.get("tiers"):
+        state["tiers"] = data["tiers"]
+    if data.get("exclude_league_ids"):
+        state["exclude_league_ids"] = data["exclude_league_ids"]
+    if data.get("min_league_tier"):
+        state["min_league_tier"] = data["min_league_tier"]
+
+    if not state:
+        return jsonify({"ok": False, "error": "Pelo menos um filtro deve ser fornecido (league_ids, countries, tiers, etc.)"}), 400
+
+    view = {
+        "id": filter_id,
+        "name": name,
+        "target": "pipeline",
+        "state": state,
+        "created_at": datetime.now(config.BR_TIMEZONE).isoformat(),
+    }
+    ok = supabase_client.save_filter_view(view)
+    return jsonify({"ok": ok, "filter": view})
+
+
+@app.route("/api/pipeline-filters/<filter_id>", methods=["DELETE"])
+def api_delete_pipeline_filter(filter_id):
+    ok = supabase_client.delete_filter_view(filter_id)
+    return jsonify({"ok": ok})
+
+
+@app.route("/api/available-leagues")
+def api_available_leagues():
+    """Retorna ligas disponíveis para uso em filtros, agrupadas por tier e país."""
+    leagues = []
+    for name, tier in config.LEAGUE_TIERS.items():
+        leagues.append({"name": name, "tier": tier, "tier_label": config.LEAGUE_TIER_LABELS.get(tier, "?")})
+
+    countries = []
+    for country, tier in config.LEAGUE_TIER_BY_COUNTRY.items():
+        countries.append({"country": country, "default_tier": tier})
+
+    return jsonify({
+        "ok": True,
+        "leagues": sorted(leagues, key=lambda x: ({"S": 0, "A": 1, "B": 2, "C": 3}.get(x["tier"], 4), x["name"])),
+        "countries": sorted(countries, key=lambda x: x["country"]),
+        "tiers": [
+            {"id": "S", "label": "Elite", "desc": "Top 5 EU + UCL/UEL"},
+            {"id": "A", "label": "Top", "desc": "Ligas fortes EU/SA, copas continentais"},
+            {"id": "B", "label": "Boa", "desc": "2a divisão top, ligas médias"},
+            {"id": "C", "label": "Secundária", "desc": "Todas as demais"},
+        ],
+    })
 
 
 def _fix_supabase_confidence_and_analysis_type():

@@ -1408,6 +1408,13 @@ body.embed-mode .section.embed-active { display: block !important; }
             <input type="date" id="date-end" title="Data fim da análise">
             <button id="btn-load-dates" onclick="_triggerDateLoad(true)" title="Buscar dados" style="background:var(--accent-green);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;font-weight:600">🔍</button>
         </div>
+        <div class="date-picker-group" style="gap:4px">
+            <label title="Filtro para acelerar buscas (ligas/países/tiers)">Filtro:</label>
+            <select id="pipeline-filter-select" title="Selecione um filtro salvo" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;max-width:140px;cursor:pointer">
+                <option value="">Sem filtro (tudo)</option>
+            </select>
+            <button onclick="openFilterManager()" title="Gerenciar filtros" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px">⚙</button>
+        </div>
         <div class="api-quota" id="api-quota">
             <span>API:</span>
             <div class="api-quota-bar"><div class="api-quota-fill" id="api-quota-fill" style="width:0%;background:var(--accent-green)"></div></div>
@@ -2633,14 +2640,23 @@ async function loadDataByDates(dateFrom, dateTo) {
         }, 3000);
     }
     
-    // AbortController com timeout de 120s
+    // AbortController com timeout dinâmico (120s base + 2s/dia, máx 300s)
     _loadAbortController = new AbortController();
+    const clientTimeout = Math.min(300000, Math.max(120000, 120000 + nDays * 2000));
     const timeoutId = setTimeout(() => {
         if (_loadAbortController) _loadAbortController.abort();
-    }, 120000);
+    }, clientTimeout);
     
     try {
-        const res = await fetch(`/api/load-by-dates?date_from=${dateFrom}&date_to=${dateTo}`, {
+        let loadUrl = `/api/load-by-dates?date_from=${dateFrom}&date_to=${dateTo}`;
+        const selectedFilter = typeof getSelectedFilterState === 'function' ? getSelectedFilterState() : null;
+        if (selectedFilter) {
+            if (selectedFilter.countries) loadUrl += `&countries=${selectedFilter.countries.join(',')}`;
+            if (selectedFilter.tiers) loadUrl += `&tiers=${selectedFilter.tiers.join(',')}`;
+            if (selectedFilter.league_ids) loadUrl += `&leagues=${selectedFilter.league_ids.map(String).join(',')}`;
+            console.log('[LOAD] Filtro aplicado:', selectedFilter);
+        }
+        const res = await fetch(loadUrl, {
             signal: _loadAbortController.signal,
         });
         clearTimeout(timeoutId);
@@ -2767,10 +2783,16 @@ async function executeEngine(autoCheckResults) {
         const endDate = document.getElementById("date-end").value;
         
         // 1. Iniciar pipeline em background (retorna imediatamente)
+        const selectedFilterState = typeof getSelectedFilterState === 'function' ? getSelectedFilterState() : null;
+        const runPayload = { start_date: startDate, end_date: endDate };
+        if (selectedFilterState) {
+            runPayload.filters = selectedFilterState;
+            console.log('[RUN] Filtro aplicado:', selectedFilterState);
+        }
         const runRes = await fetch("/api/run", { 
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ start_date: startDate, end_date: endDate })
+            body: JSON.stringify(runPayload)
         });
         
         let runData;
@@ -7672,6 +7694,147 @@ async function triggerManualRun(action) {
 
 loadSchedulerConfig();
 setInterval(loadSchedulerConfig, 60000);
+</script>
+
+<!-- ═══ PIPELINE FILTER MANAGER ═══ -->
+<div id="filter-manager-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)">
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-secondary);border:1px solid var(--border);border-radius:14px;padding:24px;width:min(520px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.5)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3 style="margin:0;font-size:16px">⚙ Gerenciar Filtros do Pipeline</h3>
+            <button onclick="closeFilterManager()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px">✕</button>
+        </div>
+        <div id="filter-list" style="margin-bottom:16px"></div>
+        <hr style="border-color:var(--border);margin:16px 0">
+        <h4 style="margin:0 0 12px;font-size:13px;color:var(--text-secondary)">➕ Criar Novo Filtro</h4>
+        <div style="display:grid;gap:8px">
+            <input id="new-filter-name" placeholder="Nome do filtro (ex: Top Ligas EU)" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div>
+                    <label style="font-size:11px;color:var(--text-muted)">Países (vírgula):</label>
+                    <input id="new-filter-countries" placeholder="England,Spain,Italy" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px;font-size:11px;width:100%;box-sizing:border-box">
+                </div>
+                <div>
+                    <label style="font-size:11px;color:var(--text-muted)">Tiers (S/A/B/C):</label>
+                    <input id="new-filter-tiers" placeholder="S,A" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px;font-size:11px;width:100%;box-sizing:border-box">
+                </div>
+            </div>
+            <div>
+                <label style="font-size:11px;color:var(--text-muted)">IDs de ligas (vírgula, opcional):</label>
+                <input id="new-filter-leagues" placeholder="39,140,135,78,61" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px;font-size:11px;width:100%;box-sizing:border-box">
+            </div>
+            <button onclick="createPipelineFilter()" style="background:var(--gradient-green);color:#000;border:none;border-radius:8px;padding:8px 16px;font-weight:700;font-size:12px;cursor:pointer">Criar Filtro</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let _pipelineFilters = [];
+
+async function loadPipelineFilters() {
+    try {
+        const res = await fetch('/api/pipeline-filters');
+        const data = await res.json();
+        if (data.ok) {
+            _pipelineFilters = data.filters || [];
+            const select = document.getElementById('pipeline-filter-select');
+            if (select) {
+                const currentVal = select.value;
+                select.innerHTML = '<option value="">Sem filtro (tudo)</option>';
+                _pipelineFilters.forEach(f => {
+                    const state = f.state || {};
+                    const desc = [];
+                    if (state.countries) desc.push(state.countries.join(','));
+                    if (state.tiers) desc.push('Tier ' + state.tiers.join(','));
+                    if (state.league_ids) desc.push(state.league_ids.length + ' ligas');
+                    const label = f.name + (desc.length ? ` (${desc.join(' | ')})` : '');
+                    select.innerHTML += `<option value="${f.id}">${label}</option>`;
+                });
+                if (currentVal) select.value = currentVal;
+            }
+        }
+    } catch(e) { console.error('Erro ao carregar filtros:', e); }
+}
+
+function getSelectedFilter() {
+    const select = document.getElementById('pipeline-filter-select');
+    if (!select || !select.value) return null;
+    return _pipelineFilters.find(f => f.id === select.value) || null;
+}
+
+function getSelectedFilterState() {
+    const f = getSelectedFilter();
+    return f ? f.state : null;
+}
+
+function openFilterManager() {
+    document.getElementById('filter-manager-modal').style.display = '';
+    renderFilterList();
+}
+
+function closeFilterManager() {
+    document.getElementById('filter-manager-modal').style.display = 'none';
+}
+
+function renderFilterList() {
+    const el = document.getElementById('filter-list');
+    if (!_pipelineFilters.length) {
+        el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:12px;text-align:center">Nenhum filtro salvo. Crie um abaixo.</div>';
+        return;
+    }
+    let html = '';
+    _pipelineFilters.forEach(f => {
+        const state = f.state || {};
+        const parts = [];
+        if (state.countries) parts.push(`🌍 ${state.countries.join(', ')}`);
+        if (state.tiers) parts.push(`🏆 Tiers: ${state.tiers.join(', ')}`);
+        if (state.league_ids) parts.push(`⚽ ${state.league_ids.length} ligas`);
+        if (state.min_league_tier) parts.push(`Min: ${state.min_league_tier}`);
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+            <div>
+                <div style="font-weight:600;font-size:13px">${f.name}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${parts.join(' │ ') || 'Sem detalhes'}</div>
+            </div>
+            <button onclick="deletePipelineFilter('${f.id}')" style="background:none;border:1px solid var(--accent-red);color:var(--accent-red);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px">🗑</button>
+        </div>`;
+    });
+    el.innerHTML = html;
+}
+
+async function createPipelineFilter() {
+    const name = document.getElementById('new-filter-name').value.trim();
+    if (!name) { alert('Nome é obrigatório'); return; }
+    const body = { name };
+    const countries = document.getElementById('new-filter-countries').value.trim();
+    const tiers = document.getElementById('new-filter-tiers').value.trim();
+    const leagues = document.getElementById('new-filter-leagues').value.trim();
+    if (countries) body.countries = countries.split(',').map(s => s.trim()).filter(Boolean);
+    if (tiers) body.tiers = tiers.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    if (leagues) body.league_ids = leagues.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+    if (!countries && !tiers && !leagues) { alert('Preencha pelo menos um critério (países, tiers ou ligas)'); return; }
+    try {
+        const res = await fetch('/api/pipeline-filters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('new-filter-name').value = '';
+            document.getElementById('new-filter-countries').value = '';
+            document.getElementById('new-filter-tiers').value = '';
+            document.getElementById('new-filter-leagues').value = '';
+            await loadPipelineFilters();
+            renderFilterList();
+        } else { alert('Erro: ' + (data.error || 'desconhecido')); }
+    } catch(e) { alert('Erro ao criar filtro: ' + e.message); }
+}
+
+async function deletePipelineFilter(id) {
+    if (!confirm('Remover este filtro?')) return;
+    try {
+        await fetch(`/api/pipeline-filters/${id}`, { method: 'DELETE' });
+        await loadPipelineFilters();
+        renderFilterList();
+    } catch(e) { alert('Erro: ' + e.message); }
+}
+
+loadPipelineFilters();
 </script>
 
 </body>

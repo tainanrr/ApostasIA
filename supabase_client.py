@@ -1071,39 +1071,36 @@ def get_all_opportunities_for_dashboard() -> dict:
 def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
     """
     Retorna TODAS as oportunidades cujo match_date está no intervalo [date_from, date_to].
-    Supabase PostgREST limita 1000 rows por request, então pagina de 1000 em 1000.
+    Supabase PostgREST limita 1000 rows por request, então pagina automaticamente.
+    Para períodos grandes (30+ dias), busca em sub-intervalos de 15 dias para evitar timeout.
     """
     sb = get_client()
     if not sb:
         return []
     try:
         import time as _time
+        from datetime import date as _date_cls, timedelta as _td
         _t0 = _time.time()
-        all_data = []
-        page_size = 1000
-        offset = 0
-        pages = 0
 
-        while True:
-            result = (
-                sb.table("opportunities")
-                .select("*")
-                .gte("match_date", date_from)
-                .lte("match_date", date_to)
-                .order("match_date", desc=False)
-                .order("match_time", desc=False)
-                .range(offset, offset + page_size - 1)
-                .execute()
-            )
-            batch = result.data or []
-            all_data.extend(batch)
-            pages += 1
-            if len(batch) < page_size:
-                break
-            offset += page_size
+        d0 = _date_cls.fromisoformat(date_from)
+        d1 = _date_cls.fromisoformat(date_to)
+        n_days = (d1 - d0).days + 1
 
-        print(f"[SUPABASE] Oportunidades {date_from} -> {date_to}: {len(all_data)} encontradas ({pages} páginas, {_time.time()-_t0:.1f}s)")
-        return all_data
+        # Para períodos > 30 dias, dividir em sub-intervalos de 15 dias
+        if n_days > 30:
+            all_data = []
+            chunk_start = d0
+            chunk_n = 0
+            while chunk_start <= d1:
+                chunk_end = min(chunk_start + _td(days=14), d1)
+                chunk_n += 1
+                chunk_data = _fetch_opps_chunk(sb, chunk_start.isoformat(), chunk_end.isoformat())
+                all_data.extend(chunk_data)
+                chunk_start = chunk_end + _td(days=1)
+            print(f"[SUPABASE] Oportunidades {date_from} -> {date_to}: {len(all_data)} encontradas ({chunk_n} chunks, {_time.time()-_t0:.1f}s)")
+            return all_data
+
+        return _fetch_opps_chunk(sb, date_from, date_to)
     except Exception as e:
         print(f"[SUPABASE] Erro ao buscar oportunidades por data: {e}")
         try:
@@ -1116,45 +1113,102 @@ def get_opportunities_by_dates(date_from: str, date_to: str) -> list[dict]:
         return []
 
 
+def _fetch_opps_chunk(sb, date_from: str, date_to: str) -> list[dict]:
+    """Busca oportunidades de um sub-intervalo de datas com paginação."""
+    import time as _time
+    _t0 = _time.time()
+    all_data = []
+    page_size = 1000
+    offset = 0
+    pages = 0
+
+    while True:
+        result = (
+            sb.table("opportunities")
+            .select("*")
+            .gte("match_date", date_from)
+            .lte("match_date", date_to)
+            .order("match_date", desc=False)
+            .order("match_time", desc=False)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = result.data or []
+        all_data.extend(batch)
+        pages += 1
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    print(f"[SUPABASE] Opps chunk {date_from} -> {date_to}: {len(all_data)} ({pages}p, {_time.time()-_t0:.1f}s)")
+    return all_data
+
+
 def get_matches_by_dates(date_from: str, date_to: str) -> list[dict]:
     """
     Retorna TODAS as partidas cujo match_date está no intervalo [date_from, date_to].
-    Supabase PostgREST limita 1000 rows por request, então pagina de 1000 em 1000.
+    Para períodos grandes (30+ dias), busca em sub-intervalos de 15 dias para evitar timeout.
     """
     sb = get_client()
     if not sb:
         return []
     try:
         import time as _time
+        from datetime import date as _date_cls, timedelta as _td
         _t0 = _time.time()
-        all_data = []
-        page_size = 1000
-        offset = 0
-        pages = 0
 
-        while True:
-            result = (
-                sb.table("matches")
-                .select("*")
-                .gte("match_date", date_from)
-                .lte("match_date", date_to)
-                .order("match_date", desc=False)
-                .order("match_time", desc=False)
-                .range(offset, offset + page_size - 1)
-                .execute()
-            )
-            batch = result.data or []
-            all_data.extend(batch)
-            pages += 1
-            if len(batch) < page_size:
-                break
-            offset += page_size
+        d0 = _date_cls.fromisoformat(date_from)
+        d1 = _date_cls.fromisoformat(date_to)
+        n_days = (d1 - d0).days + 1
 
-        print(f"[SUPABASE] Matches {date_from} -> {date_to}: {len(all_data)} encontradas ({pages} páginas, {_time.time()-_t0:.1f}s)")
-        return all_data
+        if n_days > 30:
+            all_data = []
+            chunk_start = d0
+            chunk_n = 0
+            while chunk_start <= d1:
+                chunk_end = min(chunk_start + _td(days=14), d1)
+                chunk_n += 1
+                chunk_data = _fetch_matches_chunk(sb, chunk_start.isoformat(), chunk_end.isoformat())
+                all_data.extend(chunk_data)
+                chunk_start = chunk_end + _td(days=1)
+            print(f"[SUPABASE] Matches {date_from} -> {date_to}: {len(all_data)} encontradas ({chunk_n} chunks, {_time.time()-_t0:.1f}s)")
+            return all_data
+
+        return _fetch_matches_chunk(sb, date_from, date_to)
     except Exception as e:
         print(f"[SUPABASE] Erro ao buscar partidas por data: {e}")
         return []
+
+
+def _fetch_matches_chunk(sb, date_from: str, date_to: str) -> list[dict]:
+    """Busca partidas de um sub-intervalo de datas com paginação."""
+    import time as _time
+    _t0 = _time.time()
+    all_data = []
+    page_size = 1000
+    offset = 0
+    pages = 0
+
+    while True:
+        result = (
+            sb.table("matches")
+            .select("*")
+            .gte("match_date", date_from)
+            .lte("match_date", date_to)
+            .order("match_date", desc=False)
+            .order("match_time", desc=False)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = result.data or []
+        all_data.extend(batch)
+        pages += 1
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    print(f"[SUPABASE] Matches chunk {date_from} -> {date_to}: {len(all_data)} ({pages}p, {_time.time()-_t0:.1f}s)")
+    return all_data
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1268,7 +1322,7 @@ def update_scheduler_config(config_id: str, enabled: bool = None, hours: list = 
         if hours is not None:
             data["hours"] = hours
         if days_range is not None:
-            data["days_range"] = max(1, min(5, days_range))
+            data["days_range"] = max(1, min(90, days_range))
         client.table("scheduler_config").update(data).eq("id", config_id).execute()
         return True
     except Exception as e:
@@ -1382,7 +1436,7 @@ def update_scheduler_config(config_id: str, enabled: bool = None, hours: list = 
         if hours is not None:
             data["hours"] = hours
         if days_range is not None:
-            data["days_range"] = max(1, min(5, days_range))
+            data["days_range"] = max(1, min(90, days_range))
         client.table("scheduler_config").update(data).eq("id", config_id).execute()
         return True
     except Exception as e:

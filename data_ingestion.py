@@ -1259,7 +1259,56 @@ def _check_api_plan() -> dict:
     return {"plan": plan, "limit": limit, "used": current, "available": limit - current}
 
 
-def _ingest_real_data(analysis_dates: list[str] = None, progress_cb=None) -> list[MatchAnalysis]:
+def _apply_fixture_filters(fixtures: list[dict], filters: dict) -> list[dict]:
+    """Aplica filtros aos fixtures brutos da API.
+    filters pode conter:
+      - league_ids: list[int] — manter apenas estas ligas
+      - countries: list[str] — manter apenas estes países (case-insensitive)
+      - tiers: list[str] — manter apenas estes tiers (S/A/B/C)
+      - exclude_league_ids: list[int] — excluir estas ligas
+      - min_league_tier: str — tier mínimo (ex: 'B' mantém S, A, B)
+    """
+    if not filters:
+        return fixtures
+
+    league_ids = set(filters.get("league_ids") or [])
+    countries = set((c.lower() for c in filters.get("countries", [])))
+    tiers = set((t.upper() for t in filters.get("tiers", [])))
+    exclude_ids = set(filters.get("exclude_league_ids") or [])
+    min_tier = (filters.get("min_league_tier") or "").upper()
+
+    tier_order = {"S": 0, "A": 1, "B": 2, "C": 3}
+    min_tier_idx = tier_order.get(min_tier, 99)
+
+    result = []
+    for f in fixtures:
+        league = f.get("league", {})
+        lid = league.get("id", 0)
+        lname = league.get("name", "")
+        lcountry = league.get("country", "")
+
+        if exclude_ids and lid in exclude_ids:
+            continue
+
+        if league_ids and lid not in league_ids:
+            continue
+
+        if countries and lcountry.lower() not in countries:
+            continue
+
+        if tiers or min_tier:
+            fixture_tier = config.get_league_tier(lname, lcountry)
+            if tiers and fixture_tier not in tiers:
+                continue
+            if min_tier and tier_order.get(fixture_tier, 3) > min_tier_idx:
+                continue
+
+        result.append(f)
+
+    return result
+
+
+def _ingest_real_data(analysis_dates: list[str] = None, progress_cb=None, filters: dict = None) -> list[MatchAnalysis]:
     """
     Pipeline COMPLETO de ingestão — Plano PRO.
     7.500 req/dia | 300 req/min | ALL endpoints | ALL seasons.
@@ -1270,6 +1319,11 @@ def _ingest_real_data(analysis_dates: list[str] = None, progress_cb=None) -> lis
       4. Odds REAIS (Pinnacle/Bet365) para TODOS os fixtures
       5. Lesões REAIS para todos os fixtures
       6. Clima real (OpenWeatherMap)
+
+    filters: dict opcional com:
+      - league_ids: list[int] — IDs de ligas a incluir
+      - countries: list[str] — Países a incluir
+      - tiers: list[str] — Tiers (S/A/B/C) a incluir
     """
     global _api_call_count
     _api_call_count = 0
@@ -1324,6 +1378,17 @@ def _ingest_real_data(analysis_dates: list[str] = None, progress_cb=None) -> lis
     if not all_fixtures_raw:
         print("[ETL] ⚠️  Nenhum fixture encontrado!")
         return []
+
+    print(f"[ETL] Total bruto: {len(all_fixtures_raw)} fixtures | API calls: {_api_call_count}")
+
+    # ── PASSO 1b: Aplicar filtros (se fornecidos) ──
+    if filters:
+        before = len(all_fixtures_raw)
+        all_fixtures_raw = _apply_fixture_filters(all_fixtures_raw, filters)
+        print(f"[ETL] ✂️  Filtros aplicados: {before} → {len(all_fixtures_raw)} fixtures")
+        if not all_fixtures_raw:
+            print("[ETL] ⚠️  Nenhum fixture restante após filtros!")
+            return []
 
     print(f"[ETL] Total: {len(all_fixtures_raw)} fixtures | API calls: {_api_call_count}")
 
@@ -2506,11 +2571,12 @@ def generate_synthetic_fixtures(date: str) -> list[MatchAnalysis]:
 # INTERFACE PÚBLICA
 # ═══════════════════════════════════════════════════════
 
-def ingest_all_fixtures(analysis_dates: list[str] = None, progress_cb=None) -> list[MatchAnalysis]:
+def ingest_all_fixtures(analysis_dates: list[str] = None, progress_cb=None, filters: dict = None) -> list[MatchAnalysis]:
     """
     Pipeline principal de ingestão de dados.
     Escolhe automaticamente entre API real e dados sintéticos.
     Aceita lista de datas customizada; default = config.ANALYSIS_DATES.
+    filters: dict opcional com league_ids, countries, tiers para filtrar fixtures.
     """
     if analysis_dates is None:
         analysis_dates = config.ANALYSIS_DATES
@@ -2530,7 +2596,9 @@ def ingest_all_fixtures(analysis_dates: list[str] = None, progress_cb=None) -> l
         print(f"[ETL] Datas solicitadas: {analysis_dates}")
         print(f"[ETL] API Key: {config.API_FOOTBALL_KEY[:8]}...{config.API_FOOTBALL_KEY[-4:]}")
         print(f"[ETL] Weather: {'Configurado' if config.OPENWEATHER_KEY else 'Não configurado'}")
-        return _ingest_real_data(analysis_dates=analysis_dates, progress_cb=progress_cb)
+        if filters:
+            print(f"[ETL] Filtros ativos: {filters}")
+        return _ingest_real_data(analysis_dates=analysis_dates, progress_cb=progress_cb, filters=filters)
 
 
 if __name__ == "__main__":

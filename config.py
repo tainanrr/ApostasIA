@@ -40,7 +40,8 @@ def get_default_dates() -> list[str]:
 
 
 def build_date_range(date_from: str, date_to: str) -> list[str]:
-    """Gera lista de datas YYYY-MM-DD entre date_from e date_to (inclusive)."""
+    """Gera lista de datas YYYY-MM-DD entre date_from e date_to (inclusive).
+    Suporta até 365 dias."""
     from datetime import date as _date
     try:
         start = _date.fromisoformat(date_from)
@@ -49,6 +50,8 @@ def build_date_range(date_from: str, date_to: str) -> list[str]:
         return get_default_dates()
     if end < start:
         start, end = end, start
+    if (end - start).days > 365:
+        end = start + timedelta(days=365)
     dates = []
     current = start
     while current <= end:

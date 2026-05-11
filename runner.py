@@ -23,8 +23,10 @@ from datetime import datetime, timedelta
 import supabase_client
 
 
-def run_pipeline(days_range: int = 2, trigger: str = "manual"):
-    """Executa o pipeline de análise para os próximos N dias."""
+def run_pipeline(days_range: int = 2, trigger: str = "manual", filters: dict = None):
+    """Executa o pipeline de análise para os próximos N dias.
+    Para períodos grandes (>7 dias), processa em batches de 7 dias.
+    filters: dict opcional com league_ids, countries, tiers para filtrar fixtures."""
     from data_ingestion import ingest_all_fixtures
     from models import run_models_batch
     from context_engine import apply_context_batch
@@ -35,46 +37,81 @@ def run_pipeline(days_range: int = 2, trigger: str = "manual"):
     now = datetime.now(config.BR_TIMEZONE)
     dates = [(now + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days_range)]
 
-    print(f"[RUNNER] Pipeline: {dates} ({days_range} dias) | trigger={trigger}")
+    filter_desc = ""
+    if filters:
+        parts = []
+        if filters.get("league_ids"):
+            parts.append(f"ligas={filters['league_ids']}")
+        if filters.get("countries"):
+            parts.append(f"países={filters['countries']}")
+        if filters.get("tiers"):
+            parts.append(f"tiers={filters['tiers']}")
+        filter_desc = f" | filtros: {', '.join(parts)}"
+
+    print(f"[RUNNER] Pipeline: {dates[0]}..{dates[-1]} ({days_range} dias) | trigger={trigger}{filter_desc}")
     start = time.time()
 
+    BATCH_SIZE = 7
+    all_matches = []
+    all_opportunities = []
+
     try:
-        matches = ingest_all_fixtures(analysis_dates=dates)
-        if not matches:
+        for batch_start in range(0, len(dates), BATCH_SIZE):
+            batch_dates = dates[batch_start:batch_start + BATCH_SIZE]
+            batch_num = batch_start // BATCH_SIZE + 1
+            total_batches = (len(dates) + BATCH_SIZE - 1) // BATCH_SIZE
+
+            if total_batches > 1:
+                print(f"[RUNNER] ═══ Batch {batch_num}/{total_batches}: {batch_dates[0]} → {batch_dates[-1]} ({len(batch_dates)} dias) ═══")
+
+            matches = ingest_all_fixtures(analysis_dates=batch_dates, filters=filters)
+            if not matches:
+                print(f"[RUNNER] Batch {batch_num}: nenhuma partida encontrada.")
+                continue
+
+            matches = run_models_batch(matches)
+            matches = apply_context_batch(matches)
+            opportunities = find_all_value(matches)
+
+            all_matches.extend(matches)
+            all_opportunities.extend(opportunities)
+
+            if total_batches > 1:
+                print(f"[RUNNER] Batch {batch_num}: {len(matches)} jogos, {len(opportunities)} oportunidades")
+
+        if not all_matches:
             supabase_client.log_execution_end(exec_id, "success", {"matches": 0, "opportunities": 0, "dates": dates})
             print("[RUNNER] Nenhuma partida encontrada.")
             return
 
-        matches = run_models_batch(matches)
-        matches = apply_context_batch(matches)
-        opportunities = find_all_value(matches)
-
-        n_leagues = len(set(m.league_name for m in matches))
+        n_leagues = len(set(m.league_name for m in all_matches))
         elapsed = round(time.time() - start, 2)
 
         from data_ingestion import _api_call_count
         details = {
-            "matches": len(matches),
-            "opportunities": len(opportunities),
+            "matches": len(all_matches),
+            "opportunities": len(all_opportunities),
             "leagues": n_leagues,
             "api_calls": _api_call_count,
             "elapsed_seconds": elapsed,
             "dates": dates,
         }
+        if filters:
+            details["filters"] = filters
 
-        if opportunities:
-            serialized_opps = [serialize_opportunity(o) for o in opportunities]
-            serialized_matches = [serialize_match(m) for m in matches]
+        if all_opportunities:
+            serialized_opps = [serialize_opportunity(o) for o in all_opportunities]
+            serialized_matches = [serialize_match(m) for m in all_matches]
             stats = {
                 "analysis_dates": dates,
-                "total_matches": len(matches),
+                "total_matches": len(all_matches),
                 "total_leagues": n_leagues,
-                "total_opportunities": len(opportunities),
-                "high_conf": sum(1 for o in opportunities if o.confidence == "ALTO"),
-                "med_conf": sum(1 for o in opportunities if o.confidence == "MÉDIO"),
-                "low_conf": sum(1 for o in opportunities if o.confidence == "BAIXO"),
-                "avg_edge": round(sum(o.edge for o in opportunities) / len(opportunities) * 100, 2) if opportunities else 0,
-                "max_edge": round(max(o.edge for o in opportunities) * 100, 2) if opportunities else 0,
+                "total_opportunities": len(all_opportunities),
+                "high_conf": sum(1 for o in all_opportunities if o.confidence == "ALTO"),
+                "med_conf": sum(1 for o in all_opportunities if o.confidence == "MÉDIO"),
+                "low_conf": sum(1 for o in all_opportunities if o.confidence == "BAIXO"),
+                "avg_edge": round(sum(o.edge for o in all_opportunities) / len(all_opportunities) * 100, 2) if all_opportunities else 0,
+                "max_edge": round(max(o.edge for o in all_opportunities) * 100, 2) if all_opportunities else 0,
                 "run_time": elapsed,
                 "api_calls_this_run": _api_call_count,
                 "mode": "API Real",
@@ -84,7 +121,7 @@ def run_pipeline(days_range: int = 2, trigger: str = "manual"):
             print(f"[RUNNER] Salvas {len(serialized_opps)} oportunidades no Supabase")
 
         supabase_client.log_execution_end(exec_id, "success", details)
-        print(f"[RUNNER] Pipeline concluído: {len(matches)} jogos, {len(opportunities)} oportunidades em {elapsed}s")
+        print(f"[RUNNER] Pipeline concluído: {len(all_matches)} jogos, {len(all_opportunities)} oportunidades em {elapsed}s")
 
     except Exception as e:
         supabase_client.log_execution_end(exec_id, "error", error_message=str(e))
@@ -271,14 +308,39 @@ if __name__ == "__main__":
     parser.add_argument("--check-schedule", action="store_true", help="Verifica agenda e executa se necessário")
     parser.add_argument("--pipeline", action="store_true", help="Executa pipeline de análise")
     parser.add_argument("--results", action="store_true", help="Verifica resultados")
-    parser.add_argument("--days", type=int, default=None, help="Range de dias (1-5)")
+    parser.add_argument("--days", type=int, default=None, help="Range de dias (1-90)")
     parser.add_argument("--trigger", type=str, default="github_actions", help="Origem da execução")
+    parser.add_argument("--leagues", type=str, default=None, help="IDs de ligas separados por vírgula (ex: 39,140,135)")
+    parser.add_argument("--countries", type=str, default=None, help="Países separados por vírgula (ex: England,Spain)")
+    parser.add_argument("--tiers", type=str, default=None, help="Tiers de liga separados por vírgula (ex: S,A)")
+    parser.add_argument("--filter", type=str, default=None, help="Nome de filtro salvo no Supabase para aplicar")
     args = parser.parse_args()
+
+    # Montar filtros a partir dos argumentos
+    run_filters = None
+    if args.leagues or args.countries or args.tiers or args.filter:
+        run_filters = {}
+        if args.filter:
+            saved = supabase_client.get_filter_views()
+            found = [v for v in saved if v.get("name", "").lower() == args.filter.lower()]
+            if found:
+                run_filters = found[0].get("state", {})
+                print(f"[RUNNER] Filtro carregado: '{args.filter}' → {run_filters}")
+            else:
+                print(f"[RUNNER] ⚠️  Filtro '{args.filter}' não encontrado. Filtros disponíveis:")
+                for v in saved:
+                    print(f"    - {v.get('name')}")
+        if args.leagues:
+            run_filters["league_ids"] = [int(x.strip()) for x in args.leagues.split(",") if x.strip().isdigit()]
+        if args.countries:
+            run_filters["countries"] = [x.strip() for x in args.countries.split(",")]
+        if args.tiers:
+            run_filters["tiers"] = [x.strip().upper() for x in args.tiers.split(",")]
 
     if args.check_schedule:
         check_schedule()
     elif args.pipeline:
-        run_pipeline(days_range=args.days or 2, trigger=args.trigger)
+        run_pipeline(days_range=args.days or 2, trigger=args.trigger, filters=run_filters)
     elif args.results:
         run_results(days_range=args.days or 2, trigger=args.trigger)
     else:
